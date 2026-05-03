@@ -3,8 +3,10 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/cloudnexus/server/pkg/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,15 +36,22 @@ func CORS() gin.HandlerFunc {
 
 func AuthRequired(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "missing token"})
+		header := c.GetHeader("Authorization")
+		if header == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "缺少认证令牌"})
 			return
 		}
-		if len(token) > 7 && token[:7] == "Bearer " {
+		token := header
+		if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 			token = token[7:]
 		}
-		c.Set("token", token)
+		claims, err := auth.ParseToken(token, secret)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "令牌无效或已过期"})
+			return
+		}
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
 		c.Next()
 	}
 }
