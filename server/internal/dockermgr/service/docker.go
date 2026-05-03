@@ -19,28 +19,35 @@ type DockerService struct {
 }
 
 func NewDockerService() (*DockerService, error) {
+	host := os.Getenv("DOCKER_HOST")
+	if host == "" {
+		if runtime.GOOS == "windows" {
+			host = "tcp://localhost:2375"
+		} else {
+			host = "unix:///var/run/docker.sock"
+		}
+	}
+
 	var transport *http.Transport
-	if runtime.GOOS == "windows" {
-		transport = &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", `\\.\pipe\docker_engine`)
-			},
-		}
-	} else {
-		sock := "/var/run/docker.sock"
-		if v := os.Getenv("DOCKER_HOST"); v != "" {
-			sock = strings.TrimPrefix(v, "unix://")
-		}
+	if strings.HasPrefix(host, "unix://") {
+		sock := strings.TrimPrefix(host, "unix://")
 		transport = &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 				return net.Dial("unix", sock)
 			},
 		}
+	} else {
+		transport = &http.Transport{}
+	}
+
+	baseURL := "http://localhost"
+	if strings.HasPrefix(host, "tcp://") {
+		baseURL = "http://" + strings.TrimPrefix(host, "tcp://")
 	}
 
 	return &DockerService{
 		httpClient: &http.Client{Transport: transport, Timeout: 30 * time.Second},
-		baseURL:    "http://localhost",
+		baseURL:    baseURL,
 	}, nil
 }
 

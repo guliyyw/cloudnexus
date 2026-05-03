@@ -6,6 +6,14 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/api/v1/im': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+      },
+      '/api/v1/docker': {
+        target: 'http://localhost:8083',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:8081',
         changeOrigin: true,

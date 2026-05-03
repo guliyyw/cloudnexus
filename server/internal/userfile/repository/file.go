@@ -39,7 +39,7 @@ func (r *FileRepository) FindByUserAndParent(userID, parentID uint64, page, page
 }
 
 func (r *FileRepository) SoftDelete(id, userID uint64) error {
-	return r.db.Model(&model.File{}).Where("id = ? AND user_id = ? AND deleted_at IS NULL", id, userID).Update("deleted_at", gorm.Expr("now()", true)).Error
+	return r.db.Model(&model.File{}).Where("id = ? AND user_id = ? AND deleted_at IS NULL", id, userID).Update("deleted_at", gorm.Expr("now()")).Error
 }
 
 func (r *FileRepository) SearchFiles(userID uint64, keyword string, page, pageSize int) ([]model.File, int64, error) {

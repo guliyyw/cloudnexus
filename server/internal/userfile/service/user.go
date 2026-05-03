@@ -1,7 +1,7 @@
 package service
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"time"
 
@@ -131,13 +131,6 @@ func (s *UserService) UpdateProfile(userID uint64, email, avatar string) (*model
 }
 
 func hashToken(token string) string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	h := hex.EncodeToString(b)
-	_ = h // unused, placeholder
-	// Simple hashing: truncate and store prefix for lookup
-	if len(token) > 64 {
-		return token[:64]
-	}
-	return token
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }

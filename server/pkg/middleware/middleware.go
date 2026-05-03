@@ -37,13 +37,15 @@ func CORS() gin.HandlerFunc {
 func AuthRequired(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
-		if header == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "缺少认证令牌"})
-			return
-		}
 		token := header
 		if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 			token = token[7:]
+		} else if token == "" {
+			token = c.Query("token")
+		}
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "缺少认证令牌"})
+			return
 		}
 		claims, err := auth.ParseToken(token, secret)
 		if err != nil {
