@@ -1,0 +1,48 @@
+# 集群模式 docker-compose (后期使用)
+# 此文件仅定义应用服务层，数据库/Redis/MinIO 需独立部署
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - user-file-svc
+      - im-svc
+      - docker-svc
+
+  user-file-svc:
+    build:
+      context: ../server
+      dockerfile: ../server/Dockerfile
+    environment:
+      - CONFIG_PATH=/app/config/config.cluster.yaml
+    volumes:
+      - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
+    deploy:
+      replicas: 2
+
+  im-svc:
+    build:
+      context: ../server
+      dockerfile: ../server/Dockerfile
+    environment:
+      - CONFIG_PATH=/app/config/config.cluster.yaml
+    volumes:
+      - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
+    deploy:
+      replicas: 2
+
+  docker-svc:
+    build:
+      context: ../server
+      dockerfile: ../server/Dockerfile
+    environment:
+      - CONFIG_PATH=/app/config/config.cluster.yaml
+    volumes:
+      - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
+    deploy:
+      replicas: 1

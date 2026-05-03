@@ -1,0 +1,24 @@
+server:
+  port: 8081
+  host: "0.0.0.0"
+
+database:
+  dsn: "host=pg-cluster.internal user=cloudnexus password=cloudnexus dbname=cloudnexus port=5432 sslmode=disable"
+
+redis:
+  addr: "redis-cluster.internal:6379"
+  password: ""
+  db: 0
+
+minio:
+  endpoint: "minio-cluster.internal:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  use_ssl: false
+  bucket: "cloudnexus"
+
+jwt:
+  access_secret: "change-me-in-production"
+  refresh_secret: "change-me-in-production-refresh"
+  access_ttl_sec: 900
+  refresh_ttl_sec: 604800
