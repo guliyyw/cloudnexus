@@ -13,6 +13,7 @@ import (
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/model"
+	"github.com/cloudnexus/server/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,8 +34,19 @@ func main() {
 		log.Fatalf("连接数据库失败: %v", err)
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
+	}
+
+	minioClient, err := storage.NewMinIO(storage.Config{
+		Endpoint:  cfg.MinIO.Endpoint,
+		AccessKey: cfg.MinIO.AccessKey,
+		SecretKey: cfg.MinIO.SecretKey,
+		UseSSL:    cfg.MinIO.UseSSL,
+		Bucket:    cfg.MinIO.Bucket,
+	})
+	if err != nil {
+		log.Fatalf("连接 MinIO 失败: %v", err)
 	}
 
 	jwtCfg := auth.Config{
@@ -47,6 +59,10 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	userSvc := service.NewUserService(userRepo, jwtCfg)
 	userH := handler.NewUserHandler(userSvc)
+
+	fileRepo := repository.NewFileRepository(db)
+	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
+	fileH := handler.NewFileHandler(fileSvc)
 
 	r := gin.Default()
 	r.Use(middleware.Logger())
@@ -66,6 +82,17 @@ func main() {
 				protected.GET("/profile", userH.HandleGetProfile)
 				protected.PUT("/profile", userH.HandleUpdateProfile)
 			}
+		}
+
+		file := api.Group("/file")
+		file.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		{
+			file.POST("/upload", fileH.HandleUpload)
+			file.GET("/list", fileH.HandleList)
+			file.GET("/download/:id", fileH.HandleDownload)
+			file.DELETE("/:id", fileH.HandleDelete)
+			file.POST("/mkdir", fileH.HandleMkdir)
+			file.GET("/search", fileH.HandleSearch)
 		}
 	}
 
