@@ -5,6 +5,7 @@ import { useAuthStore } from './stores/authStore'
 import AppLayout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import FileListPage from './pages/FileListPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -26,7 +27,7 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/files" element={<div>文件管理 (即将实现)</div>} />
+            <Route path="/files" element={<FileListPage />} />
             <Route path="/chat" element={<div>即时通讯 (即将实现)</div>} />
             <Route path="/docker" element={<div>Docker 管理 (即将实现)</div>} />
           </Route>
