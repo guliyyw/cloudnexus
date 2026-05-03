@@ -95,7 +95,7 @@ cloudnexus/
 |------|------|--------|------|
 | user-file-svc | 8081 | Gin + GORM + MinIO SDK | 用户认证 & 文件管理 |
 | im-svc | 8082 | Gin + WebSocket + Redis Pub/Sub | 即时通讯 |
-| docker-svc | 8083 | Gin + Docker SDK | Docker 容器管理 |
+| docker-svc | 8083 | Gin + Docker Engine API | Docker 容器管理 |
 
 ## 技术栈
 
