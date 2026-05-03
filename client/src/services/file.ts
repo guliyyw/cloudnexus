@@ -64,10 +64,18 @@ export async function searchFiles(keyword: string, page: number, pageSize: numbe
   return res.data.data
 }
 
+function getToken(): string {
+  try { return localStorage.getItem('access_token') || '' } catch { return '' }
+}
+
 export function getDownloadUrl(id: number): string {
-  return `/api/v1/file/download/${id}`
+  const token = getToken()
+  const sep = token ? `?token=${token}` : ''
+  return `/api/v1/file/download/${id}${sep}`
 }
 
 export function getPreviewUrl(id: number): string {
-  return `/api/v1/file/download/${id}?inline=true`
+  const token = getToken()
+  const sep = token ? `?inline=true&token=${token}` : '?inline=true'
+  return `/api/v1/file/download/${id}${sep}`
 }

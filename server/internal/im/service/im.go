@@ -123,11 +123,11 @@ func (s *IMService) RejectFriendRequest(requestID, userID uint64) error {
 	return nil
 }
 
-func (s *IMService) ListFriends(userID uint64) ([]model.Friend, error) {
+func (s *IMService) ListFriends(userID uint64) ([]model.FriendInfo, error) {
 	return s.repo.ListFriends(userID)
 }
 
-func (s *IMService) ListPendingRequests(userID uint64) ([]model.Friend, error) {
+func (s *IMService) ListPendingRequests(userID uint64) ([]model.FriendInfo, error) {
 	return s.repo.ListPendingRequests(userID)
 }
 

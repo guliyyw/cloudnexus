@@ -4,11 +4,12 @@ import {
   Space, message, Tag, Typography, Tooltip,
 } from 'antd'
 import {
-  UploadOutlined, FolderAddOutlined, SearchOutlined,
+  FolderAddOutlined, SearchOutlined,
   DeleteOutlined, DownloadOutlined, FolderOutlined,
   FileOutlined, HomeOutlined, ReloadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined,
+  InboxOutlined, CloudUploadOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
 import PreviewModal from '../components/PreviewModal'
@@ -53,6 +54,7 @@ export default function FileListPage() {
   const [mkdirName, setMkdirName] = useState('')
   const [searchValue, setSearchValue] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const uploadRef = useRef<any>(null)
 
@@ -112,7 +114,7 @@ export default function FileListPage() {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <Space>
-          <Upload
+          <Upload.Dragger
             ref={uploadRef}
             multiple
             showUploadList={true}
@@ -129,17 +131,30 @@ export default function FileListPage() {
             onRemove={(f) => {
               setSelectedFiles((prev) => prev.filter((_, i) => `${i}-${prev[i].name}` !== f.uid))
             }}
+            style={{ marginBottom: 8 }}
           >
-            <Button icon={<UploadOutlined />}>选择文件</Button>
-          </Upload>
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">点击或拖拽文件到此区域</p>
+            <p className="ant-upload-hint">支持单个或批量上传</p>
+          </Upload.Dragger>
           {selectedFiles.length > 0 && (
             <Button
               type="primary"
+              icon={<CloudUploadOutlined />}
+              loading={uploading}
               onClick={async () => {
-                await upload(selectedFiles)
-                setSelectedFiles([])
-                message.success(`上传完成`)
+                setUploading(true)
+                try {
+                  await upload(selectedFiles)
+                  setSelectedFiles([])
+                  message.success(`上传完成`)
+                } catch {
+                  message.error('上传失败')
+                } finally {
+                  setUploading(false)
+                }
               }}
+              block
             >
               上传 ({selectedFiles.length})
             </Button>

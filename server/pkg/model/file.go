@@ -17,7 +17,7 @@ type File struct {
 }
 
 type FileShare struct {
-	ID            uint64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	ID            uint64     `json:"id" gorm:"primaryKey"`
 	FileID        uint64     `json:"file_id" gorm:"not null"`
 	OwnerID       uint64     `json:"owner_id" gorm:"not null"`
 	ShareCode     string     `json:"share_code" gorm:"uniqueIndex;not null;size:32"`

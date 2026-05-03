@@ -73,7 +73,7 @@ The frontend dev server proxies /api requests to the correct backend service bas
 - `/api/v1/im/*` → `localhost:8082`
 - `/api/v1/docker/*` → `localhost:8083`
 - `/api/*` → `localhost:8081` (catch-all, must be last)
-- `/ws` → `ws://localhost:8082` (WebSocket)
+- `/ws` → `http://localhost:8082` (WebSocket; Vite target must be http://, not ws://)
 
 New IM or Docker endpoints automatically route correctly. New user-file endpoints on `/api/v1/...` also work.
 
@@ -86,8 +86,8 @@ New IM or Docker endpoints automatically route correctly. New user-file endpoint
 ### Error handling
 Handlers call `handleError(c, err)` which type-asserts to `*apperrors.AppError` to get the HTTP status code and message. Service methods return `apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)`.
 
-### File upload
-Multipart form with `file` field (repeated for batch). Stored in MinIO, metadata in `files` table. Download supports `?inline=true` for browser preview (images, video, audio, PDF) vs `attachment` for download.
+### File upload & preview
+Multipart form with `file` field (repeated for batch). Stored in MinIO, metadata in `files` table. Download supports `?inline=true` for browser preview (images, video, audio, PDF) vs `attachment` for download. Preview URLs must include `?token=` query param since browser `<img>`/`<video>`/`<iframe>` tags don't send Authorization headers.
 
 ### WebSocket (im-svc)
 Hub pattern: `internal/im/service/hub.go` manages `map[uint64]*Client` (one connection per user). Message types: `message`, `ping`/`pong`, `read_receipt`, `presence`, `ack`, `error`. Token passed as `?token=` query param on WebSocket upgrade.
@@ -95,8 +95,11 @@ Hub pattern: `internal/im/service/hub.go` manages `map[uint64]*Client` (one conn
 ### Conversation membership
 Private conversations have two `ConversationMember` rows. Per-user soft-delete via `deleted_at` on the member row. Private conversation names are derived dynamically from the other member's username (via JOIN on users table).
 
+### ID generation
+All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `BeforeCreate` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2. Snowflake must be initialized before database connection.
+
 ### Friend system
-Bidirectional `Friend` model with `uniqueIndex:idx_friend_pair` on `(user_id, friend_id)`. Status: `pending` → `accepted`. Auto-creates private conversation on accept. If both users send requests simultaneously, the second auto-accepts.
+Bidirectional `Friend` model with `uniqueIndex:idx_friend_pair` on `(user_id, friend_id)`. Status: `pending` → `accepted`. Auto-creates private conversation on accept. If both users send requests simultaneously, the second auto-accepts. Friend queries return `FriendInfo` (embeds Friend + `friend_username` from JOIN on users table) for display without extra queries.
 
 ## Testing
 

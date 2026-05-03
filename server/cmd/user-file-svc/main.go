@@ -13,6 +13,7 @@ import (
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/model"
+	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/storage"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
+
+	snowflake.Init(1)
 
 	db, err := database.NewPostgres(database.Config{DSN: cfg.Database.DSN})
 	if err != nil {

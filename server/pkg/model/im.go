@@ -11,7 +11,7 @@ type Conversation struct {
 }
 
 type ConversationMember struct {
-	ID             uint64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	ID             uint64     `json:"id" gorm:"primaryKey"`
 	ConversationID uint64     `json:"conversation_id" gorm:"not null;uniqueIndex:idx_conv_user"`
 	UserID         uint64     `json:"user_id" gorm:"not null;uniqueIndex:idx_conv_user"`
 	Role           string     `json:"role" gorm:"default:member;size:16"` // owner / admin / member
@@ -21,7 +21,7 @@ type ConversationMember struct {
 }
 
 type Friend struct {
-	ID        uint64    `json:"id" gorm:"primaryKey;autoIncrement"`
+	ID        uint64    `json:"id" gorm:"primaryKey"`
 	UserID    uint64    `json:"user_id" gorm:"not null;uniqueIndex:idx_friend_pair"`
 	FriendID  uint64    `json:"friend_id" gorm:"not null;uniqueIndex:idx_friend_pair"`
 	Status    string    `json:"status" gorm:"not null;size:16;default:pending"` // pending / accepted / blocked
@@ -29,8 +29,13 @@ type Friend struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type FriendInfo struct {
+	Friend
+	FriendUsername string `json:"friend_username"`
+}
+
 type Message struct {
-	ID             uint64    `json:"id" gorm:"primaryKey;autoIncrement"`
+	ID             uint64    `json:"id" gorm:"primaryKey"`
 	ConversationID uint64    `json:"conversation_id" gorm:"not null;index:idx_messages_conv_seq"`
 	SenderID       uint64    `json:"sender_id" gorm:"not null"`
 	Content        string    `json:"content" gorm:"not null;type:text"`

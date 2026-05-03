@@ -128,19 +128,29 @@ func (r *IMRepository) RejectFriendRequest(requestID, userID uint64) error {
 		Delete(&model.Friend{}).Error
 }
 
-func (r *IMRepository) ListFriends(userID uint64) ([]model.Friend, error) {
-	var friends []model.Friend
-	err := r.db.Where(
-		"(user_id = ? OR friend_id = ?) AND status = 'accepted'",
-		userID, userID,
-	).Order("updated_at DESC").Find(&friends).Error
+func (r *IMRepository) ListFriends(userID uint64) ([]model.FriendInfo, error) {
+	var friends []model.FriendInfo
+	err := r.db.Raw(`
+		SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at, f.updated_at,
+			u.username AS friend_username
+		FROM friends f
+		JOIN users u ON u.id = CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
+		WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
+		ORDER BY f.updated_at DESC
+	`, userID, userID, userID).Scan(&friends).Error
 	return friends, err
 }
 
-func (r *IMRepository) ListPendingRequests(userID uint64) ([]model.Friend, error) {
-	var requests []model.Friend
-	err := r.db.Where("friend_id = ? AND status = 'pending'", userID).
-		Order("created_at DESC").Find(&requests).Error
+func (r *IMRepository) ListPendingRequests(userID uint64) ([]model.FriendInfo, error) {
+	var requests []model.FriendInfo
+	err := r.db.Raw(`
+		SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at, f.updated_at,
+			u.username AS friend_username
+		FROM friends f
+		JOIN users u ON u.id = f.user_id
+		WHERE f.friend_id = ? AND f.status = 'pending'
+		ORDER BY f.created_at DESC
+	`, userID).Scan(&requests).Error
 	return requests, err
 }
 

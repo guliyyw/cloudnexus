@@ -119,7 +119,7 @@ export default function ChatPage() {
             <Text type="secondary" style={{ fontSize: 12 }}>待处理的好友请求</Text>
             {pendingRequests.map((req) => (
               <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                <Text>用户 {req.user_id}</Text>
+                <Text>{req.friend_username || `用户 ${req.user_id}`}</Text>
                 <Space size="small">
                   <Button size="small" type="primary" icon={<CheckOutlined />}
                     onClick={async () => {
@@ -240,7 +240,7 @@ export default function ChatPage() {
               >
                 <List.Item.Meta
                   avatar={<Avatar icon={<UserOutlined />} />}
-                  title={`用户 ${getFriendUserId(f, user!.id)}`}
+                  title={f.friend_username || `用户 ${getFriendUserId(f, user!.id)}`}
                 />
               </List.Item>
             )}
