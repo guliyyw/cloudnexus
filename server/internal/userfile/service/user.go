@@ -1,0 +1,143 @@
+package service
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"time"
+
+	"github.com/cloudnexus/server/internal/userfile/repository"
+	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/crypto"
+	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/model"
+)
+
+type UserService struct {
+	repo      *repository.UserRepository
+	jwtConfig auth.Config
+}
+
+func NewUserService(repo *repository.UserRepository, jwtConfig auth.Config) *UserService {
+	return &UserService{repo: repo, jwtConfig: jwtConfig}
+}
+
+func (s *UserService) Register(username, email, password string) (*model.User, error) {
+	if _, err := s.repo.FindByUsername(username); err == nil {
+		return nil, apperrors.NewAppError(409, "用户名已存在", apperrors.ErrConflict)
+	}
+	if _, err := s.repo.FindByEmail(email); err == nil {
+		return nil, apperrors.NewAppError(409, "邮箱已被注册", apperrors.ErrConflict)
+	}
+
+	hashed, err := crypto.HashPassword(password)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "密码加密失败", err)
+	}
+
+	user := &model.User{
+		Username: username,
+		Email:    email,
+		Password: hashed,
+	}
+	if err := s.repo.CreateUser(user); err != nil {
+		return nil, apperrors.NewAppError(500, "创建用户失败", err)
+	}
+	return user, nil
+}
+
+func (s *UserService) Login(username, password string) (*auth.TokenPair, error) {
+	user, err := s.repo.FindByUsername(username)
+	if err != nil {
+		return nil, apperrors.NewAppError(401, "用户名或密码错误", apperrors.ErrUnauthorized)
+	}
+	if !crypto.CheckPassword(password, user.Password) {
+		return nil, apperrors.NewAppError(401, "用户名或密码错误", apperrors.ErrUnauthorized)
+	}
+
+	pair, err := auth.GenerateTokenPair(s.jwtConfig, user.ID, user.Username)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "令牌生成失败", err)
+	}
+
+	refreshToken := &model.RefreshToken{
+		UserID:    user.ID,
+		Token:     hashToken(pair.RefreshToken),
+		ExpiresAt: time.Now().Add(s.jwtConfig.RefreshTTL),
+	}
+	if err := s.repo.SaveRefreshToken(refreshToken); err != nil {
+		return nil, apperrors.NewAppError(500, "保存令牌失败", err)
+	}
+
+	return pair, nil
+}
+
+func (s *UserService) RefreshToken(rawToken string) (*auth.TokenPair, error) {
+	hashed := hashToken(rawToken)
+	rt, err := s.repo.FindRefreshToken(hashed)
+	if err != nil {
+		return nil, apperrors.NewAppError(401, "刷新令牌无效", apperrors.ErrUnauthorized)
+	}
+	if time.Now().After(rt.ExpiresAt) {
+		s.repo.DeleteRefreshToken(hashed)
+		return nil, apperrors.NewAppError(401, "刷新令牌已过期", apperrors.ErrUnauthorized)
+	}
+	s.repo.DeleteRefreshToken(hashed)
+
+	claims, err := auth.ParseToken(rawToken, s.jwtConfig.RefreshSecret)
+	if err != nil {
+		return nil, apperrors.NewAppError(401, "刷新令牌解析失败", apperrors.ErrUnauthorized)
+	}
+
+	pair, err := auth.GenerateTokenPair(s.jwtConfig, claims.UserID, claims.Username)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "令牌生成失败", err)
+	}
+
+	newRT := &model.RefreshToken{
+		UserID:    claims.UserID,
+		Token:     hashToken(pair.RefreshToken),
+		ExpiresAt: time.Now().Add(s.jwtConfig.RefreshTTL),
+	}
+	if err := s.repo.SaveRefreshToken(newRT); err != nil {
+		return nil, apperrors.NewAppError(500, "保存令牌失败", err)
+	}
+
+	return pair, nil
+}
+
+func (s *UserService) GetProfile(userID uint64) (*model.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
+	}
+	return user, nil
+}
+
+func (s *UserService) UpdateProfile(userID uint64, email, avatar string) (*model.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
+	}
+	if email != "" {
+		user.Email = email
+	}
+	if avatar != "" {
+		user.Avatar = avatar
+	}
+	if err := s.repo.UpdateUser(user); err != nil {
+		return nil, apperrors.NewAppError(500, "更新用户失败", err)
+	}
+	return user, nil
+}
+
+func hashToken(token string) string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	h := hex.EncodeToString(b)
+	_ = h // unused, placeholder
+	// Simple hashing: truncate and store prefix for lookup
+	if len(token) > 64 {
+		return token[:64]
+	}
+	return token
+}

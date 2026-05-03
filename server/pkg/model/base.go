@@ -8,10 +8,3 @@ type BaseModel struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type User struct {
-	BaseModel
-	Username string `json:"username" gorm:"uniqueIndex;not null"`
-	Email    string `json:"email" gorm:"uniqueIndex;not null"`
-	Password string `json:"-" gorm:"not null"`
-	Avatar   string `json:"avatar"`
-}
