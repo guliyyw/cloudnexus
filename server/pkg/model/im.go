@@ -11,12 +11,22 @@ type Conversation struct {
 }
 
 type ConversationMember struct {
-	ID             uint64    `json:"id" gorm:"primaryKey;autoIncrement"`
-	ConversationID uint64    `json:"conversation_id" gorm:"not null;uniqueIndex:idx_conv_user"`
-	UserID         uint64    `json:"user_id" gorm:"not null;uniqueIndex:idx_conv_user"`
-	Role           string    `json:"role" gorm:"default:member;size:16"` // owner / admin / member
-	LastReadSeq    int64     `json:"last_read_seq" gorm:"default:0"`
-	JoinedAt       time.Time `json:"joined_at"`
+	ID             uint64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	ConversationID uint64     `json:"conversation_id" gorm:"not null;uniqueIndex:idx_conv_user"`
+	UserID         uint64     `json:"user_id" gorm:"not null;uniqueIndex:idx_conv_user"`
+	Role           string     `json:"role" gorm:"default:member;size:16"` // owner / admin / member
+	LastReadSeq    int64      `json:"last_read_seq" gorm:"default:0"`
+	JoinedAt       time.Time  `json:"joined_at"`
+	DeletedAt      *time.Time `json:"deleted_at" gorm:"index"`
+}
+
+type Friend struct {
+	ID        uint64    `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserID    uint64    `json:"user_id" gorm:"not null;uniqueIndex:idx_friend_pair"`
+	FriendID  uint64    `json:"friend_id" gorm:"not null;uniqueIndex:idx_friend_pair"`
+	Status    string    `json:"status" gorm:"not null;size:16;default:pending"` // pending / accepted / blocked
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Message struct {

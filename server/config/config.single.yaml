@@ -20,5 +20,5 @@ minio:
 jwt:
   access_secret: "change-me-in-production"
   refresh_secret: "change-me-in-production-refresh"
-  access_ttl_sec: 900
+  access_ttl_sec: 28800
   refresh_ttl_sec: 604800

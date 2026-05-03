@@ -76,6 +76,96 @@ func (h *IMHandler) HandleCreateConversation(c *gin.Context) {
 	c.JSON(http.StatusBadRequest, response.Error(400, "不支持的会话类型"))
 }
 
+// --- Friend handlers ---
+
+type sendFriendReq struct {
+	FriendName string `json:"friend_name" binding:"required"`
+}
+
+func (h *IMHandler) HandleSendFriendRequest(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req sendFriendReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	friend, err := h.svc.SendFriendRequest(userID, req.FriendName)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, response.OKWithData(friend))
+}
+
+func (h *IMHandler) HandleAcceptRequest(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	requestID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的请求ID"))
+		return
+	}
+	conv, err := h.svc.AcceptFriendRequest(requestID, userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(conv))
+}
+
+func (h *IMHandler) HandleRejectRequest(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	requestID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err := h.svc.RejectFriendRequest(requestID, userID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("rejected"))
+}
+
+func (h *IMHandler) HandleListFriends(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	friends, err := h.svc.ListFriends(userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(friends))
+}
+
+func (h *IMHandler) HandleListPendingRequests(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	requests, err := h.svc.ListPendingRequests(userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(requests))
+}
+
+func (h *IMHandler) HandleRemoveFriend(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	friendID, _ := strconv.ParseUint(c.Param("friend_id"), 10, 64)
+	if err := h.svc.RemoveFriend(userID, friendID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("removed"))
+}
+
+func (h *IMHandler) HandleDeleteConversation(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	if err := h.svc.DeleteConversation(userID, convID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("deleted"))
+}
+
 func (h *IMHandler) HandleGetMessages(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)

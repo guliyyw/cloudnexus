@@ -27,9 +27,24 @@ export async function getFileList(parentId: number, page: number, pageSize: numb
   return res.data.data
 }
 
+export interface BatchUploadResult {
+  files: FileItem[]
+  errors: string[]
+  total: number
+  ok: number
+}
+
 export async function uploadFile(file: File, parentId: number): Promise<FileItem> {
   const form = new FormData()
   form.append('file', file)
+  form.append('parent_id', String(parentId))
+  const res = await api.post('/file/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data.data
+}
+
+export async function uploadFiles(files: File[], parentId: number): Promise<BatchUploadResult> {
+  const form = new FormData()
+  files.forEach((f) => form.append('file', f))
   form.append('parent_id', String(parentId))
   const res = await api.post('/file/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   return res.data.data
@@ -51,4 +66,8 @@ export async function searchFiles(keyword: string, page: number, pageSize: numbe
 
 export function getDownloadUrl(id: number): string {
   return `/api/v1/file/download/${id}`
+}
+
+export function getPreviewUrl(id: number): string {
+  return `/api/v1/file/download/${id}?inline=true`
 }

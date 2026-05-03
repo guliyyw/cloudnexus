@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
+	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -32,12 +34,24 @@ func (h *FileHandler) HandleUpload(c *gin.Context) {
 		return
 	}
 
-	file, err := h.svc.Upload(userID, parentID, files[0])
-	if err != nil {
-		handleError(c, err)
-		return
+	results := make([]*model.File, 0, len(files))
+	errMsgs := make([]string, 0)
+
+	for _, fh := range files {
+		file, err := h.svc.Upload(userID, parentID, fh)
+		if err != nil {
+			errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", fh.Filename, err.Error()))
+			continue
+		}
+		results = append(results, file)
 	}
-	c.JSON(http.StatusCreated, response.OKWithData(file))
+
+	c.JSON(http.StatusCreated, response.OKWithData(gin.H{
+		"files":  results,
+		"errors": errMsgs,
+		"total":  len(files),
+		"ok":     len(results),
+	}))
 }
 
 func (h *FileHandler) HandleDownload(c *gin.Context) {
@@ -55,7 +69,11 @@ func (h *FileHandler) HandleDownload(c *gin.Context) {
 	}
 	defer stream.Close()
 
-	c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	disposition := "attachment"
+	if c.Query("inline") == "true" {
+		disposition = "inline"
+	}
+	c.Header("Content-Disposition", disposition+"; filename=\""+file.Name+"\"")
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Content-Length", strconv.FormatInt(file.Size, 10))
 	c.DataFromReader(http.StatusOK, file.Size, file.MimeType, stream, nil)

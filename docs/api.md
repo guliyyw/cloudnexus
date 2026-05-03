@@ -1,6 +1,6 @@
 # CloudNexus API 接口文档
 
-> 版本：v0.1.0 | 更新：2026-05-03
+> 版本：v0.3.0 | 更新：2026-05-04
 
 ## 通用约定
 
@@ -85,7 +85,7 @@
   "data": {
     "access_token": "eyJhbGci...",
     "refresh_token": "eyJhbGci...",
-    "expires_in": 900
+    "expires_in": 28800
   }
 }
 ```
@@ -109,7 +109,7 @@
   "data": {
     "access_token": "eyJhbGci...",
     "refresh_token": "eyJhbGci...",
-    "expires_in": 900
+    "expires_in": 28800
   }
 }
 ```
@@ -151,16 +151,16 @@
 
 #### POST /api/v1/file/upload
 
-上传文件 (需认证, multipart/form-data)。
+上传文件 (需认证, multipart/form-data)。支持单文件和批量上传。
 
 **表单字段：**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| file | File | 上传的文件 |
+| file | File (可多次) | 上传的文件，批量上传时多次 append |
 | parent_id | int | 父目录 ID，0 为根目录 |
 
-**响应 (201)：**
+**单文件响应 (201)：**
 ```json
 {
   "code": 201,
@@ -169,9 +169,30 @@
     "id": 100,
     "name": "report.pdf",
     "size": 204800,
-    "type": "application/pdf",
+    "mime_type": "application/pdf",
     "parent_id": 0,
     "created_at": "2026-05-03T10:00:00Z"
+  }
+}
+```
+
+**批量上传响应 (201)：**
+```json
+{
+  "code": 201,
+  "message": "uploaded",
+  "data": {
+    "files": [
+      {
+        "id": 100,
+        "name": "report.pdf",
+        "size": 204800,
+        "mime_type": "application/pdf"
+      }
+    ],
+    "errors": ["bigfile.mp4: 文件过大"],
+    "total": 3,
+    "ok": 2
   }
 }
 ```
@@ -214,7 +235,13 @@
 
 #### GET /api/v1/file/download/:id
 
-下载文件 (需认证)。返回文件流。
+下载或预览文件 (需认证)。返回文件流。
+
+**查询参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| inline | bool | 设为 true 时浏览器内联预览（图片/视频/PDF），默认 false 触发下载 |
 
 #### DELETE /api/v1/file/:id
 
@@ -347,7 +374,71 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 }
 ```
 
-### 2.2 WebSocket 协议
+#### DELETE /api/v1/im/conversations/:id
+
+删除会话 (需认证)。当前用户视角的软删除，不影响其他成员。
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "deleted"
+}
+```
+
+### 2.2 好友系统
+
+#### POST /api/v1/im/friends/requests
+
+发送好友请求 (需认证)。
+
+**请求体：**
+```json
+{
+  "friend_name": "bob"
+}
+```
+
+**响应 (201)：**
+```json
+{
+  "code": 201,
+  "message": "ok",
+  "data": {
+    "id": 1,
+    "user_id": 1,
+    "friend_id": 2,
+    "status": "pending",
+    "created_at": "2026-05-04T10:00:00Z"
+  }
+}
+```
+
+#### GET /api/v1/im/friends/requests
+
+列出待处理的好友请求 (需认证)。返回发给当前用户的 pending 请求。
+
+#### PUT /api/v1/im/friends/requests/:id/accept
+
+接受好友请求 (需认证)。接受后自动创建私聊会话。
+
+#### PUT /api/v1/im/friends/requests/:id/reject
+
+拒绝好友请求 (需认证)。
+
+#### GET /api/v1/im/friends
+
+列出已接受的好友 (需认证)。
+
+#### DELETE /api/v1/im/friends/:friend_id
+
+删除好友 (需认证)。
+
+#### GET /api/v1/im/friends/search?q=
+
+搜索用户 (需认证)。按用户名搜索。
+
+### 2.3 WebSocket 协议
 
 **连接地址：** `ws://host:8082/ws?token=<access_token>`
 
@@ -421,7 +512,7 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 }
 ```
 
-### 2.3 跨节点消息同步
+### 2.4 跨节点消息同步
 
 当用户连接在不同节点时，消息通过 Redis Pub/Sub 跨节点路由：
 
@@ -623,4 +714,6 @@ GET /healthz → 200 OK
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v0.3.0 | 2026-05-04 | JWT TTL 延长至8小时、批量上传/预览/会话删除/好友系统前后端联调完成 |
+| v0.2.0 | 2026-05-04 | 新增批量上传、文件预览、会话删除、好友系统接口 |
 | v0.1.0 | 2026-05-03 | 初始版本，定义三个服务全部接口 |

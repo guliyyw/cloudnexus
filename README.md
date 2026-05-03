@@ -73,6 +73,7 @@ curl http://localhost:8083/healthz  # docker-svc
 | [部署指南](docs/deployment.md) | 单机/集群部署、备份、监控 |
 | [开发指南](docs/development.md) | 环境搭建、项目结构、代码规范 |
 | [架构设计](docs/architecture.md) | 系统架构概览 |
+| [测试数据](docs/test-data.md) | 测试账号、基础设施连接信息 |
 
 ## 项目结构
 

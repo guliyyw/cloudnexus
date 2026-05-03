@@ -19,7 +19,7 @@ func (r *IMRepository) CreateConversation(conv *model.Conversation) error {
 
 func (r *IMRepository) FindConversationsByUserID(userID uint64) ([]model.Conversation, error) {
 	var convs []model.Conversation
-	subQuery := r.db.Table("conversation_members").Select("conversation_id").Where("user_id = ?", userID)
+	subQuery := r.db.Table("conversation_members").Select("conversation_id").Where("user_id = ? AND deleted_at IS NULL", userID)
 	err := r.db.Where("id IN (?)", subQuery).Order("updated_at DESC").Find(&convs).Error
 	return convs, err
 }
@@ -73,4 +73,100 @@ func (r *IMRepository) UpdateLastReadSeq(conversationID, userID, seq uint64) err
 	return r.db.Model(&model.ConversationMember{}).
 		Where("conversation_id = ? AND user_id = ?", conversationID, userID).
 		Update("last_read_seq", seq).Error
+}
+
+func (r *IMRepository) FindUserByID(id uint64) (*model.User, error) {
+	var user model.User
+	err := r.db.First(&user, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *IMRepository) DeleteConversationForUser(convID, userID uint64) error {
+	return r.db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", convID, userID).
+		Update("deleted_at", gorm.Expr("now()")).Error
+}
+
+// --- Friend methods ---
+
+func (r *IMRepository) CreateFriendRequest(userID, friendID uint64) error {
+	return r.db.Create(&model.Friend{UserID: userID, FriendID: friendID, Status: "pending"}).Error
+}
+
+func (r *IMRepository) FindFriendRequest(userID, friendID uint64) (*model.Friend, error) {
+	var f model.Friend
+	err := r.db.Where(
+		"(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+		userID, friendID, friendID, userID,
+	).First(&f).Error
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (r *IMRepository) FindFriendByID(id uint64) (*model.Friend, error) {
+	var f model.Friend
+	err := r.db.First(&f, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (r *IMRepository) AcceptFriendRequest(requestID, userID uint64) error {
+	return r.db.Model(&model.Friend{}).
+		Where("id = ? AND friend_id = ? AND status = 'pending'", requestID, userID).
+		Update("status", "accepted").Error
+}
+
+func (r *IMRepository) RejectFriendRequest(requestID, userID uint64) error {
+	return r.db.Where("id = ? AND friend_id = ? AND status = 'pending'", requestID, userID).
+		Delete(&model.Friend{}).Error
+}
+
+func (r *IMRepository) ListFriends(userID uint64) ([]model.Friend, error) {
+	var friends []model.Friend
+	err := r.db.Where(
+		"(user_id = ? OR friend_id = ?) AND status = 'accepted'",
+		userID, userID,
+	).Order("updated_at DESC").Find(&friends).Error
+	return friends, err
+}
+
+func (r *IMRepository) ListPendingRequests(userID uint64) ([]model.Friend, error) {
+	var requests []model.Friend
+	err := r.db.Where("friend_id = ? AND status = 'pending'", userID).
+		Order("created_at DESC").Find(&requests).Error
+	return requests, err
+}
+
+func (r *IMRepository) RemoveFriend(userID, friendID uint64) error {
+	return r.db.Where(
+		"(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+		userID, friendID, friendID, userID,
+	).Where("status = 'accepted'").Delete(&model.Friend{}).Error
+}
+
+func (r *IMRepository) FindUserByUsername(username string) (*model.User, error) {
+	var user model.User
+	err := r.db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *IMRepository) GetPrivateConvName(conversationID, currentUserID uint64) (string, error) {
+	var username string
+	err := r.db.Table("conversation_members").
+		Select("users.username").
+		Joins("JOIN users ON users.id = conversation_members.user_id").
+		Where("conversation_members.conversation_id = ? AND conversation_members.user_id != ?", conversationID, currentUserID).
+		Limit(1).
+		Scan(&username).Error
+	return username, err
 }

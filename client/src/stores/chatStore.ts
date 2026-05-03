@@ -13,6 +13,7 @@ interface ChatState {
   selectConv: (id: number) => void
   fetchMessages: (convId: number, before?: number) => Promise<void>
   addMessage: (msg: Message) => void
+  deleteConversation: (id: number) => Promise<void>
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -54,5 +55,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (exists) return state
       return { messages: [...state.messages, msg] }
     })
+  },
+
+  deleteConversation: async (id: number) => {
+    await chatApi.deleteConversation(id)
+    const state = get()
+    if (state.currentConvId === id) {
+      set({ currentConvId: null, messages: [] })
+    }
+    await get().fetchConversations()
   },
 }))

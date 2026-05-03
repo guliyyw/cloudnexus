@@ -37,6 +37,7 @@ func main() {
 		&model.Conversation{},
 		&model.ConversationMember{},
 		&model.Message{},
+		&model.Friend{},
 	); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
@@ -67,6 +68,17 @@ func main() {
 			im.GET("/conversations", imH.HandleGetConversations)
 			im.POST("/conversations", imH.HandleCreateConversation)
 			im.GET("/conversations/:id/messages", imH.HandleGetMessages)
+			im.DELETE("/conversations/:id", imH.HandleDeleteConversation)
+
+			friends := im.Group("/friends")
+			{
+				friends.POST("/requests", imH.HandleSendFriendRequest)
+				friends.GET("/requests", imH.HandleListPendingRequests)
+				friends.PUT("/requests/:id/accept", imH.HandleAcceptRequest)
+				friends.PUT("/requests/:id/reject", imH.HandleRejectRequest)
+				friends.GET("/", imH.HandleListFriends)
+				friends.DELETE("/:friend_id", imH.HandleRemoveFriend)
+			}
 		}
 	}
 

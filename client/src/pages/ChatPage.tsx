@@ -1,27 +1,51 @@
 import { useEffect, useState, useRef } from 'react'
 import {
-  List, Input, Button, Card, Typography, Avatar,
-  message, Modal, InputNumber,
+  List, Input, Button, Card, Typography, Avatar, Badge, Divider,
+  message, Modal, Popconfirm, Space,
 } from 'antd'
-import { SendOutlined, PlusOutlined, UserOutlined } from '@ant-design/icons'
+import {
+  SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
+  UserAddOutlined, CheckOutlined, CloseOutlined,
+} from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
+import { useAuthStore } from '../stores/authStore'
+import { useFriendStore } from '../stores/friendStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import type { Message } from '../services/chat'
+import type { FriendRequest } from '../services/chat'
 
 const { Text } = Typography
+
+function getFriendUserId(f: FriendRequest, myId: number): number {
+  return f.user_id === myId ? f.friend_id : f.user_id
+}
 
 export default function ChatPage() {
   const {
     conversations, currentConvId, messages, loading,
-    fetchConversations, createConv, selectConv, addMessage,
+    fetchConversations, createConv, selectConv, addMessage, deleteConversation,
   } = useChatStore()
+  const { user } = useAuthStore()
+  const {
+    friends, pendingRequests,
+    fetchFriends, fetchPendingRequests,
+    sendRequest, acceptRequest, rejectRequest,
+  } = useFriendStore()
 
   const [inputText, setInputText] = useState('')
-  const [newConvVisible, setNewConvVisible] = useState(false)
-  const [targetUserId, setTargetUserId] = useState<number | null>(null)
+  const [friendModalVisible, setFriendModalVisible] = useState(false)
+  const [addFriendVisible, setAddFriendVisible] = useState(false)
+  const [addFriendName, setAddFriendName] = useState('')
+  const [showRequests, setShowRequests] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { fetchConversations() }, [])
+  useEffect(() => {
+    fetchConversations()
+    if (user) {
+      fetchFriends()
+      fetchPendingRequests()
+    }
+  }, [user])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -52,13 +76,68 @@ export default function ChatPage() {
     setInputText('')
   }
 
+  const handleStartChat = async (friendId: number) => {
+    await createConv(friendId)
+    setFriendModalVisible(false)
+    message.success('会话已打开')
+  }
+
+  const handleAddFriend = async () => {
+    if (!addFriendName.trim()) return
+    try {
+      await sendRequest(addFriendName.trim())
+      message.success('好友请求已发送')
+      setAddFriendName('')
+      setAddFriendVisible(false)
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || '发送失败')
+    }
+  }
+
+  const pendingCount = pendingRequests.length
   const currentConv = conversations.find((c) => c.id === currentConvId)
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 200px)', gap: 16 }}>
       {/* Conversation List */}
-      <Card title="会话" style={{ width: 280, display: 'flex', flexDirection: 'column' }}
-        extra={<Button type="text" icon={<PlusOutlined />} onClick={() => setNewConvVisible(true)} />}>
+      <Card
+        title={
+          <Space>
+            <span>会话</span>
+            {pendingCount > 0 && (
+              <Badge count={pendingCount} size="small" onClick={() => setShowRequests(!showRequests)}>
+                <Button size="small" type={showRequests ? 'primary' : 'default'}>好友请求</Button>
+              </Badge>
+            )}
+          </Space>
+        }
+        style={{ width: 280, display: 'flex', flexDirection: 'column' }}
+        extra={<Button type="text" icon={<PlusOutlined />} onClick={() => setFriendModalVisible(true)} />}
+      >
+        {showRequests && pendingRequests.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>待处理的好友请求</Text>
+            {pendingRequests.map((req) => (
+              <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                <Text>用户 {req.user_id}</Text>
+                <Space size="small">
+                  <Button size="small" type="primary" icon={<CheckOutlined />}
+                    onClick={async () => {
+                      await acceptRequest(req.id)
+                      message.success('已接受好友请求')
+                      fetchConversations()
+                    }}
+                  />
+                  <Button size="small" danger icon={<CloseOutlined />}
+                    onClick={() => rejectRequest(req.id)}
+                  />
+                </Space>
+              </div>
+            ))}
+            <Divider style={{ margin: '8px 0' }} />
+          </div>
+        )}
+
         <List
           dataSource={conversations}
           loading={loading}
@@ -70,13 +149,29 @@ export default function ChatPage() {
                 borderRadius: 6,
                 background: currentConvId === conv.id ? '#e6f4ff' : undefined,
               }}
-              onClick={() => selectConv(conv.id)}
+              onClick={() => { selectConv(conv.id); setShowRequests(false) }}
             >
               <List.Item.Meta
                 avatar={<Avatar icon={<UserOutlined />} />}
                 title={conv.name || `会话 ${conv.id}`}
                 description={<Text type="secondary" ellipsis>{conv.type === 'private' ? '私聊' : '群聊'}</Text>}
               />
+              <Popconfirm
+                title="确定删除该会话？"
+                onConfirm={(e) => {
+                  e?.stopPropagation()
+                  deleteConversation(conv.id)
+                }}
+                onCancel={(e) => e?.stopPropagation()}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </Popconfirm>
             </List.Item>
           )}
         />
@@ -92,9 +187,9 @@ export default function ChatPage() {
           <>
             <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
               {messages.map((msg: Message) => (
-                <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: msg.sender_id === 0 ? 'flex-end' : 'flex-start' }}>
+                <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: msg.sender_id === user?.id ? 'flex-end' : 'flex-start' }}>
                   <Text type="secondary" style={{ fontSize: 12, marginBottom: 4 }}>
-                    {msg.sender_id} · {new Date(msg.created_at).toLocaleTimeString()}
+                    {msg.sender_id === user?.id ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
                   </Text>
                   <div style={{
                     maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
@@ -126,25 +221,49 @@ export default function ChatPage() {
         )}
       </Card>
 
+      {/* Friend Selection Modal */}
       <Modal
-        title="创建私聊"
-        open={newConvVisible}
-        onOk={async () => {
-          if (targetUserId) {
-            await createConv(targetUserId)
-            setNewConvVisible(false)
-            setTargetUserId(null)
-            message.success('会话已创建')
-          }
-        }}
-        onCancel={() => setNewConvVisible(false)}
+        title="选择好友"
+        open={friendModalVisible}
+        onCancel={() => setFriendModalVisible(false)}
+        footer={null}
       >
-        <InputNumber
-          placeholder="目标用户 ID"
-          value={targetUserId}
-          onChange={(v) => setTargetUserId(v)}
-          style={{ width: '100%' }}
-          min={1}
+        {friends.length === 0 ? (
+          <Text type="secondary">暂无好友，请先添加好友</Text>
+        ) : (
+          <List
+            dataSource={friends}
+            renderItem={(f) => (
+              <List.Item
+                style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6 }}
+                onClick={() => handleStartChat(getFriendUserId(f, user!.id))}
+              >
+                <List.Item.Meta
+                  avatar={<Avatar icon={<UserOutlined />} />}
+                  title={`用户 ${getFriendUserId(f, user!.id)}`}
+                />
+              </List.Item>
+            )}
+          />
+        )}
+        <Divider />
+        <Button type="dashed" icon={<UserAddOutlined />} block onClick={() => setAddFriendVisible(true)}>
+          添加好友
+        </Button>
+      </Modal>
+
+      {/* Add Friend Modal */}
+      <Modal
+        title="添加好友"
+        open={addFriendVisible}
+        onOk={handleAddFriend}
+        onCancel={() => setAddFriendVisible(false)}
+      >
+        <Input
+          placeholder="输入对方用户名"
+          value={addFriendName}
+          onChange={(e) => setAddFriendName(e.target.value)}
+          onPressEnter={handleAddFriend}
         />
       </Modal>
     </div>

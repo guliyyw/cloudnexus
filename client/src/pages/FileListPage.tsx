@@ -7,11 +7,30 @@ import {
   UploadOutlined, FolderAddOutlined, SearchOutlined,
   DeleteOutlined, DownloadOutlined, FolderOutlined,
   FileOutlined, HomeOutlined, ReloadOutlined,
+  FileImageOutlined, PlayCircleOutlined, SoundOutlined,
+  FilePdfOutlined, FileZipOutlined, EyeOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
+import PreviewModal from '../components/PreviewModal'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
+
+function isPreviewable(mime: string): boolean {
+  return mime?.startsWith('image/') || mime?.startsWith('video/') ||
+         mime?.startsWith('audio/') || mime === 'application/pdf'
+}
+
+function getFileIcon(mimeType: string, isDir: boolean) {
+  if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />
+  if (!mimeType) return <FileOutlined />
+  if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: '#52c41a' }} />
+  if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#1677ff' }} />
+  if (mimeType.startsWith('audio/')) return <SoundOutlined style={{ color: '#722ed1' }} />
+  if (mimeType === 'application/pdf') return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return <FileZipOutlined />
+  return <FileOutlined />
+}
 
 const { Text } = Typography
 
@@ -33,6 +52,8 @@ export default function FileListPage() {
   const [mkdirVisible, setMkdirVisible] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
   const [searchValue, setSearchValue] = useState('')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const uploadRef = useRef<any>(null)
 
   useEffect(() => { fetchFiles() }, [])
@@ -42,9 +63,11 @@ export default function FileListPage() {
       title: '名称', dataIndex: 'name', key: 'name', width: 300,
       render: (name: string, record: FileItem) => (
         <Space>
-          {record.is_dir ? <FolderOutlined style={{ color: '#faad14' }} /> : <FileOutlined />}
+          {getFileIcon(record.mime_type, record.is_dir)}
           {record.is_dir ? (
             <a onClick={() => navigateTo(record.id, record.name)}>{name}</a>
+          ) : isPreviewable(record.mime_type) ? (
+            <a onClick={() => setPreviewFile(record)}>{name}</a>
           ) : (
             <a href={getDownloadUrl(record.id)} download={name}>{name}</a>
           )}
@@ -67,6 +90,11 @@ export default function FileListPage() {
       title: '操作', key: 'actions', width: 120,
       render: (_: any, record: FileItem) => (
         <Space>
+          {!record.is_dir && isPreviewable(record.mime_type) && (
+            <Tooltip title="预览">
+              <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setPreviewFile(record)} />
+            </Tooltip>
+          )}
           {!record.is_dir && (
             <Tooltip title="下载">
               <Button type="link" size="small" icon={<DownloadOutlined />} href={getDownloadUrl(record.id)} download={record.name} />
@@ -86,11 +114,36 @@ export default function FileListPage() {
         <Space>
           <Upload
             ref={uploadRef}
-            showUploadList={false}
-            beforeUpload={(file) => { upload(file); return false }}
+            multiple
+            showUploadList={true}
+            fileList={selectedFiles.map((f, i) => ({
+              uid: `${i}-${f.name}`,
+              name: f.name,
+              size: f.size,
+              status: 'done' as const,
+            }))}
+            beforeUpload={(file) => {
+              setSelectedFiles((prev) => [...prev, file])
+              return false
+            }}
+            onRemove={(f) => {
+              setSelectedFiles((prev) => prev.filter((_, i) => `${i}-${prev[i].name}` !== f.uid))
+            }}
           >
-            <Button type="primary" icon={<UploadOutlined />}>上传文件</Button>
+            <Button icon={<UploadOutlined />}>选择文件</Button>
           </Upload>
+          {selectedFiles.length > 0 && (
+            <Button
+              type="primary"
+              onClick={async () => {
+                await upload(selectedFiles)
+                setSelectedFiles([])
+                message.success(`上传完成`)
+              }}
+            >
+              上传 ({selectedFiles.length})
+            </Button>
+          )}
           <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
           <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
         </Space>
@@ -153,6 +206,12 @@ export default function FileListPage() {
       >
         <Input placeholder="目录名称" value={mkdirName} onChange={(e) => setMkdirName(e.target.value)} />
       </Modal>
+
+      <PreviewModal
+        file={previewFile}
+        open={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+      />
     </div>
   )
 }

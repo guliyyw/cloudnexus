@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout as AntLayout, Menu, Button, theme } from 'antd'
 import {
@@ -17,7 +17,11 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout, user } = useAuthStore()
+  const { logout, user, fetchProfile } = useAuthStore()
+
+  useEffect(() => {
+    if (!user) fetchProfile()
+  }, [])
   const { token: themeToken } = theme.useToken()
 
   const menuItems = [
