@@ -1,18 +1,19 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   List, Input, Button, Card, Typography, Avatar,
-  message, Modal, Popconfirm, Space, Checkbox, Divider, Badge,
+  message, Modal, Popconfirm, Space, Checkbox, Divider, Badge, Tag,
 } from 'antd'
 import {
   SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
-  TeamOutlined, UsergroupAddOutlined,
+  TeamOutlined, UsergroupAddOutlined, CrownOutlined,
+  UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import { useFriendStore } from '../stores/friendStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useNavigate } from 'react-router-dom'
-import type { Message } from '../services/chat'
+import type { Message, GroupMember } from '../services/chat'
 import type { FriendRequest } from '../services/chat'
 
 const { Text } = Typography
@@ -24,8 +25,9 @@ function getFriendUserId(f: FriendRequest, myId: string): string {
 export default function ChatPage() {
   const navigate = useNavigate()
   const {
-    conversations, currentConvId, messages, loading,
+    conversations, currentConvId, messages, members, loading,
     fetchConversations, createConv, createGroup, selectConv, addMessage, deleteConversation,
+    addMember, removeMember, leaveGroup,
   } = useChatStore()
   const { user } = useAuthStore()
   const { friends, fetchFriends } = useFriendStore()
@@ -35,6 +37,7 @@ export default function ChatPage() {
   const [groupModalVisible, setGroupModalVisible] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [selectedFriends, setSelectedFriends] = useState<string[]>([])
+  const [memberModalVisible, setMemberModalVisible] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -60,12 +63,9 @@ export default function ChatPage() {
         created_at: wsMsg.created_at || new Date().toISOString(),
       })
     } else if (wsMsg.type === 'read_receipt' && wsMsg.conversation_id === currentConvId) {
-      // Another user read messages in current conversation - re-fetch to update read state
-      // Lightweight: just acknowledge, full read indicators would need message-level tracking
     }
   })
 
-  // Send read receipt when viewing messages
   useEffect(() => {
     if (!currentConvId || messages.length === 0) return
     const lastMsg = messages[messages.length - 1]
@@ -111,7 +111,42 @@ export default function ChatPage() {
     message.success('群聊已创建')
   }
 
+  const handleAddMember = async (friendId: string) => {
+    if (!currentConvId) return
+    await addMember(currentConvId, friendId)
+    setMemberModalVisible(false)
+    message.success('已添加成员')
+  }
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!currentConvId) return
+    await removeMember(currentConvId, userId)
+    message.success('已移除成员')
+  }
+
+  const handleLeaveGroup = async () => {
+    if (!currentConvId) return
+    Modal.confirm({
+      title: '退出群聊',
+      content: '确定要退出该群聊吗？',
+      onOk: async () => {
+        await leaveGroup(currentConvId)
+        message.success('已退出群聊')
+      },
+    })
+  }
+
   const currentConv = conversations.find((c) => c.id === currentConvId)
+  const isGroup = currentConv?.type === 'group'
+  const myMember = members.find((m) => m.user_id === user?.id)
+  const isOwner = myMember?.role === 'owner'
+
+  // Friends not already in group
+  const memberIds = new Set(members.map((m) => m.user_id))
+  const addableFriends = friends.filter((f) => {
+    const fid = getFriendUserId(f, user!.id)
+    return !memberIds.has(fid)
+  })
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 200px)', gap: 16 }}>
@@ -228,6 +263,44 @@ export default function ChatPage() {
         )}
       </Card>
 
+      {/* Member Panel for Group Chat */}
+      {isGroup && (
+        <Card
+          title={<span><TeamOutlined /> 成员 ({members.length})</span>}
+          style={{ width: 220, display: 'flex', flexDirection: 'column' }}
+          styles={{ body: { flex: 1, overflow: 'auto', padding: 0 } }}
+          extra={
+            <Button type="text" size="small" icon={<UserAddOutlined />}
+              onClick={() => setMemberModalVisible(true)} />
+          }
+        >
+          <List
+            dataSource={members}
+            size="small"
+            renderItem={(m: GroupMember) => (
+              <List.Item
+                style={{ padding: '6px 12px' }}
+                actions={isOwner && m.user_id !== user?.id ? [
+                  <Button key="remove" type="text" size="small" danger icon={<UserDeleteOutlined />}
+                    onClick={() => handleRemoveMember(m.user_id)} />
+                ] : []}
+              >
+                <Space>
+                  <Avatar icon={<UserOutlined />} size="small" />
+                  <span>{m.user_id === user?.id ? '我' : `用户 ${m.user_id}`}</span>
+                  {m.role === 'owner' && <Tag color="gold" style={{ margin: 0, fontSize: 10 }}><CrownOutlined /></Tag>}
+                </Space>
+              </List.Item>
+            )}
+          />
+          <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
+            <Button type="text" danger icon={<LogoutOutlined />} block onClick={handleLeaveGroup}>
+              退出群聊
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Friend Selection Modal */}
       <Modal
         title="选择好友"
@@ -306,6 +379,39 @@ export default function ChatPage() {
             </Checkbox.Group>
           )}
         </Space>
+      </Modal>
+
+      {/* Add Member Modal */}
+      <Modal
+        title="添加成员"
+        open={memberModalVisible}
+        onCancel={() => setMemberModalVisible(false)}
+        footer={null}
+      >
+        {addableFriends.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Text type="secondary">所有好友已在群中</Text>
+          </div>
+        ) : (
+          <List
+            dataSource={addableFriends}
+            renderItem={(f) => {
+              const fid = getFriendUserId(f, user!.id)
+              return (
+                <List.Item
+                  style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6 }}
+                  onClick={() => handleAddMember(fid)}
+                >
+                  <List.Item.Meta
+                    avatar={<Avatar icon={<UserOutlined />} />}
+                    title={f.friend_username || fid}
+                  />
+                  <Button type="primary" size="small" icon={<PlusOutlined />}>添加</Button>
+                </List.Item>
+              )
+            }}
+          />
+        )}
       </Modal>
     </div>
   )

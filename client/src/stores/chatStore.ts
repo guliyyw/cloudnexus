@@ -1,11 +1,12 @@
 import { create } from 'zustand'
 import * as chatApi from '../services/chat'
-import type { Conversation, Message } from '../services/chat'
+import type { Conversation, Message, GroupMember } from '../services/chat'
 
 interface ChatState {
   conversations: Conversation[]
   currentConvId: string | null
   messages: Message[]
+  members: GroupMember[]
   loading: boolean
 
   fetchConversations: () => Promise<void>
@@ -15,12 +16,17 @@ interface ChatState {
   fetchMessages: (convId: string, before?: string) => Promise<void>
   addMessage: (msg: Message) => void
   deleteConversation: (id: string) => Promise<void>
+  fetchMembers: (convId: string) => Promise<void>
+  addMember: (convId: string, userId: string) => Promise<void>
+  removeMember: (convId: string, userId: string) => Promise<void>
+  leaveGroup: (convId: string) => Promise<void>
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   currentConvId: null,
   messages: [],
+  members: [],
   loading: false,
 
   fetchConversations: async () => {
@@ -45,11 +51,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await get().fetchConversations()
     set({ currentConvId: conv.id })
     get().fetchMessages(conv.id)
+    get().fetchMembers(conv.id)
   },
 
   selectConv: (id: string) => {
-    set({ currentConvId: id, messages: [] })
+    set({ currentConvId: id, messages: [], members: [] })
     get().fetchMessages(id)
+    const conv = get().conversations.find((c) => c.id === id)
+    if (conv?.type === 'group') {
+      get().fetchMembers(id)
+    }
   },
 
   fetchMessages: async (convId: string, before?: string) => {
@@ -71,8 +82,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await chatApi.deleteConversation(id)
     const state = get()
     if (state.currentConvId === id) {
-      set({ currentConvId: null, messages: [] })
+      set({ currentConvId: null, messages: [], members: [] })
     }
+    await get().fetchConversations()
+  },
+
+  fetchMembers: async (convId: string) => {
+    const members = await chatApi.getGroupMembers(convId)
+    set({ members })
+  },
+
+  addMember: async (convId: string, userId: string) => {
+    await chatApi.addGroupMember(convId, userId)
+    get().fetchMembers(convId)
+  },
+
+  removeMember: async (convId: string, userId: string) => {
+    await chatApi.removeGroupMember(convId, userId)
+    get().fetchMembers(convId)
+  },
+
+  leaveGroup: async (convId: string) => {
+    await chatApi.leaveGroup(convId)
+    set({ currentConvId: null, messages: [], members: [] })
     await get().fetchConversations()
   },
 }))
