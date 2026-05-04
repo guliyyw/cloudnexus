@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -35,7 +36,7 @@ func Init(cfg Config) error {
 		CallerKey:      "caller",
 		FunctionKey:    zapcore.OmitKey,
 		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
+		StacktraceKey:  "stack",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.LowercaseLevelEncoder,
 		EncodeTime:     zapcore.ISO8601TimeEncoder,
@@ -68,7 +69,7 @@ func Init(cfg Config) error {
 	}
 
 	core := zapcore.NewTee(cores...)
-	Log = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	Log = zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1), zap.AddStacktrace(zapcore.ErrorLevel))
 
 	return nil
 }
@@ -79,16 +80,25 @@ func Sync() {
 	}
 }
 
-// GetLogDir returns the configured log directory, or empty string if not set.
 func GetLogDir() string {
 	return logDir
 }
 
-func WithRequestID(requestID string) *zap.Logger {
-	if requestID == "" {
+// FromContext returns a logger with request_id and user_id from the Gin context.
+func FromContext(c *gin.Context) *zap.Logger {
+	fields := []zap.Field{}
+	if rid, ok := c.Get("request_id"); ok {
+		if s, ok := rid.(string); ok && s != "" {
+			fields = append(fields, zap.String("request_id", s))
+		}
+	}
+	if uid, ok := c.Get("user_id"); ok {
+		fields = append(fields, zap.Uint64("user_id", uid.(uint64)))
+	}
+	if len(fields) == 0 {
 		return Log
 	}
-	return Log.With(zap.String("request_id", requestID))
+	return Log.With(fields...)
 }
 
 // --- ring buffer core ---
@@ -99,6 +109,9 @@ type LogEntry struct {
 	Message   string    `json:"message"`
 	Caller    string    `json:"caller,omitempty"`
 	Service   string    `json:"service,omitempty"`
+	RequestID string    `json:"request_id,omitempty"`
+	UserID    string    `json:"user_id,omitempty"`
+	Stack     string    `json:"stack,omitempty"`
 }
 
 var (
@@ -138,14 +151,29 @@ func (c *ringBufCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapc
 }
 
 func (c *ringBufCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	ringMu.Lock()
-	ringData[ringPos] = LogEntry{
+	le := LogEntry{
 		Timestamp: entry.Time,
 		Level:     entry.Level.String(),
 		Message:   entry.Message,
 		Caller:    entry.Caller.TrimmedPath(),
 		Service:   c.service,
+		Stack:     entry.Stack,
 	}
+
+	// Extract request_id and user_id from structured fields
+	for _, f := range fields {
+		switch f.Key {
+		case "request_id":
+			le.RequestID = f.String
+		case "user_id":
+			if f.Integer >= 0 {
+				le.UserID = fmt.Sprintf("%d", f.Integer)
+			}
+		}
+	}
+
+	ringMu.Lock()
+	ringData[ringPos] = le
 	ringPos = (ringPos + 1) % ringSize
 	ringMu.Unlock()
 	return nil
@@ -180,11 +208,11 @@ func QueryLogs(level string, limit int) []LogEntry {
 const maxFileSize = 10 * 1024 * 1024 // 10 MB per file
 
 type dailyWriter struct {
-	mu         sync.Mutex
-	logDir     string
-	service    string
-	currentDay string
-	file       *os.File
+	mu          sync.Mutex
+	logDir      string
+	service     string
+	currentDay  string
+	file        *os.File
 	currentSize int64
 }
 
@@ -206,7 +234,6 @@ func (w *dailyWriter) Write(p []byte) (n int, err error) {
 			return 0, err
 		}
 
-		// Find next available file index
 		base := filepath.Join(dir, w.service)
 		ext := ".log"
 		idx := 0
@@ -258,7 +285,6 @@ func (w *dailyWriter) Sync() error {
 
 // --- log cleanup ---
 
-// StartLogCleanup starts a goroutine that cleans up log directories older than 30 days.
 func StartLogCleanup() {
 	go func() {
 		cleanOldLogs()
@@ -293,7 +319,6 @@ func cleanOldLogs() {
 	}
 }
 
-// ListLogFiles returns info about available log date directories.
 type LogFileInfo struct {
 	Date string `json:"date"`
 	Size int64  `json:"size"`
@@ -327,7 +352,6 @@ func ListLogFiles() []LogFileInfo {
 	return result
 }
 
-// GetLogFilePath returns the primary log file path for a given date.
 func GetLogFilePath(date, service string) string {
 	if logDir == "" {
 		return ""

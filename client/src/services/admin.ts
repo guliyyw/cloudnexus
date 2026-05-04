@@ -49,6 +49,9 @@ export interface LogEntry {
   message: string
   caller: string
   service: string
+  request_id: string
+  user_id: string
+  stack: string
 }
 
 export async function getUsers(page: number, pageSize: number): Promise<AdminUserListResponse> {

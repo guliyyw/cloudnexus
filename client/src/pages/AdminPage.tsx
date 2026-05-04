@@ -322,6 +322,7 @@ function LogViewer() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [levelFilter, setLevelFilter] = useState<string>('')
+  const [expandedStacks, setExpandedStacks] = useState<Set<number>>(new Set())
   const intRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchLogs = useCallback(async () => {
@@ -384,19 +385,45 @@ function LogViewer() {
         {logs.length === 0 && !loading && (
           <div style={{ color: '#888' }}>暂无日志</div>
         )}
-        {logs.map((entry, i) => (
-          <div key={i} style={{ lineHeight: 1.8, whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#569cd6' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
-            {' '}
-            <Tag color={levelColor[entry.level] || 'default'} style={{ fontSize: 11, lineHeight: '16px' }}>{entry.level.toUpperCase()}</Tag>
-            {' '}
-            {entry.service && <Tag style={{ fontSize: 11, lineHeight: '16px' }}>{entry.service}</Tag>}
-            {' '}
-            <span style={{ color: '#888', fontSize: 12 }}>{entry.caller}</span>
-            {' '}
-            <span>{entry.message}</span>
-          </div>
-        ))}
+        {logs.map((entry, i) => {
+          const hasStack = !!entry.stack
+          const isExpanded = expandedStacks.has(i)
+          return (
+            <div key={i}>
+              <div style={{ lineHeight: 1.8, whiteSpace: 'nowrap', cursor: hasStack ? 'pointer' : 'default' }}
+                   onClick={() => {
+                     if (hasStack) {
+                       setExpandedStacks(prev => {
+                         const next = new Set(prev)
+                         if (next.has(i)) next.delete(i)
+                         else next.add(i)
+                         return next
+                       })
+                     }
+                   }}>
+                <span style={{ color: '#569cd6' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                {' '}
+                <Tag color={levelColor[entry.level] || 'default'} style={{ fontSize: 11, lineHeight: '16px' }}>{entry.level.toUpperCase()}</Tag>
+                {' '}
+                {entry.service && <Tag style={{ fontSize: 11, lineHeight: '16px' }}>{entry.service}</Tag>}
+                {' '}
+                {entry.request_id && <Tag color="geekblue" style={{ fontSize: 10, lineHeight: '15px', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }} title={entry.request_id}>{entry.request_id.slice(0, 8)}</Tag>}
+                {' '}
+                {entry.user_id && <Tag color="purple" style={{ fontSize: 10, lineHeight: '15px' }}>uid:{entry.user_id}</Tag>}
+                {' '}
+                <span style={{ color: '#888', fontSize: 12 }}>{entry.caller}</span>
+                {' '}
+                <span>{entry.message}</span>
+                {hasStack && <span style={{ color: '#f14c4c', marginLeft: 4, fontSize: 11 }}>{isExpanded ? '[-]' : '[+]'}</span>}
+              </div>
+              {hasStack && isExpanded && (
+                <pre style={{ background: '#2d2d2d', color: '#ce9178', margin: '4px 0 4px 20px', padding: 8, borderRadius: 4, fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflow: 'auto' }}>
+                  {entry.stack}
+                </pre>
+              )}
+            </div>
+          )
+        })}
         {loading && <div style={{ color: '#888' }}>加载中...</div>}
       </div>
     </div>

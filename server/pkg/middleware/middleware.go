@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"strings"
 	"time"
@@ -18,11 +20,18 @@ func Logger() gin.HandlerFunc {
 		if requestID == "" {
 			requestID = c.GetHeader("X-Request-ID")
 		}
+		if requestID == "" {
+			b := make([]byte, 6)
+			rand.Read(b)
+			requestID = hex.EncodeToString(b)
+		}
+		c.Set("request_id", requestID)
 		c.Header("X-Request-Id", requestID)
 
 		c.Next()
 
 		latency := time.Since(start)
+		userID := c.GetUint64("user_id")
 		fields := []zap.Field{
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
@@ -33,6 +42,9 @@ func Logger() gin.HandlerFunc {
 		}
 		if requestID != "" {
 			fields = append(fields, zap.String("request_id", requestID))
+		}
+		if userID != 0 {
+			fields = append(fields, zap.Uint64("user_id", userID))
 		}
 
 		log := logger.Log
