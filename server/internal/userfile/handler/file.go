@@ -163,6 +163,9 @@ func (h *FileHandler) HandleBatchDelete(c *gin.Context) {
 	}
 
 	deleted, errs := h.svc.BatchDelete(userID, parseIDs(req.IDs))
+	if errs == nil {
+		errs = []string{}
+	}
 	c.JSON(http.StatusOK, response.OKWithData(gin.H{
 		"deleted": deleted,
 		"errors":  errs,
