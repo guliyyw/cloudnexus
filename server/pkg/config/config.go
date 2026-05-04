@@ -28,6 +28,10 @@ type AppConfig struct {
 		UseSSL    bool   `yaml:"use_ssl"`
 		Bucket    string `yaml:"bucket"`
 	} `yaml:"minio"`
+	Log struct {
+		Level  string `yaml:"level"`
+		Format string `yaml:"format"`
+	} `yaml:"log"`
 	JWT struct {
 		AccessSecret  string `yaml:"access_secret"`
 		RefreshSecret string `yaml:"refresh_secret"`

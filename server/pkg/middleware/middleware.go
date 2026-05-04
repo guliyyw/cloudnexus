@@ -1,23 +1,48 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
+		requestID := c.GetHeader("X-Request-Id")
+		if requestID == "" {
+			requestID = c.GetHeader("X-Request-ID")
+		}
+		c.Header("X-Request-Id", requestID)
+
 		c.Next()
-		log.Printf("%s %s %d %s",
-			c.Request.Method, c.Request.URL.Path,
-			c.Writer.Status(), time.Since(start),
-		)
+
+		latency := time.Since(start)
+		fields := []zap.Field{
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Int("status", c.Writer.Status()),
+			zap.Duration("latency", latency),
+			zap.String("client_ip", c.ClientIP()),
+			zap.Int("body_size", c.Writer.Size()),
+		}
+		if requestID != "" {
+			fields = append(fields, zap.String("request_id", requestID))
+		}
+
+		log := logger.Log
+		if c.Writer.Status() >= 500 {
+			log.Error("request completed", fields...)
+		} else if c.Writer.Status() >= 400 {
+			log.Warn("request completed", fields...)
+		} else {
+			log.Info("request completed", fields...)
+		}
 	}
 }
 

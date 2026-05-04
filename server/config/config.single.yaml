@@ -17,6 +17,10 @@ minio:
   use_ssl: false
   bucket: "cloudnexus"
 
+log:
+  level: "debug"
+  format: "console"
+
 jwt:
   access_secret: "change-me-in-production"
   refresh_secret: "change-me-in-production-refresh"

@@ -11,12 +11,14 @@ import (
 	"github.com/cloudnexus/server/pkg/auth"
 	"github.com/cloudnexus/server/pkg/config"
 	"github.com/cloudnexus/server/pkg/database"
+	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/storage"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -30,15 +32,20 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
+	if err := logger.Init(logger.Config{Level: cfg.Log.Level, Format: cfg.Log.Format}); err != nil {
+		log.Fatalf("初始化日志失败: %v", err)
+	}
+	defer logger.Sync()
+
 	snowflake.Init(1)
 
 	db, err := database.NewPostgres(database.Config{DSN: cfg.Database.DSN})
 	if err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
+		logger.Log.Fatal("连接数据库失败", zap.Error(err))
 	}
 
 	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}); err != nil {
-		log.Fatalf("数据库迁移失败: %v", err)
+		logger.Log.Fatal("数据库迁移失败", zap.Error(err))
 	}
 
 	minioClient, err := storage.NewMinIO(storage.Config{
@@ -49,7 +56,7 @@ func main() {
 		Bucket:    cfg.MinIO.Bucket,
 	})
 	if err != nil {
-		log.Fatalf("连接 MinIO 失败: %v", err)
+		logger.Log.Fatal("连接 MinIO 失败", zap.Error(err))
 	}
 
 	jwtCfg := auth.Config{
@@ -103,9 +110,9 @@ func main() {
 
 	r.GET("/healthz", healthCheck)
 
-	log.Printf("user-file-svc starting on :%d", cfg.Server.Port)
+	logger.Log.Info("user-file-svc starting", zap.Int("port", cfg.Server.Port))
 	if err := r.Run(":8081"); err != nil {
-		log.Fatalf("启动失败: %v", err)
+		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
 }
 
