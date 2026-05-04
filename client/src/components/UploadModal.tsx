@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Modal, Upload, Button, Progress, message } from 'antd'
 import { InboxOutlined, FolderOutlined } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
+
+interface FileEntry {
+  uid: string
+  file: File
+}
 
 interface Props {
   open: boolean
@@ -12,27 +17,32 @@ interface Props {
 
 export default function UploadModal({ open, targetDirId, targetDirName, onClose }: Props) {
   const { upload, breadcrumb, currentParentId } = useFileStore()
-  const [files, setFiles] = useState<File[]>([])
+  const [entries, setEntries] = useState<FileEntry[]>([])
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const uidCounter = useRef(0)
 
-  // The actual parent to upload into: if targetDirId provided, use it, else current dir
   const parentId = targetDirId !== undefined ? targetDirId : currentParentId
   const dirLabel = targetDirName || breadcrumb[breadcrumb.length - 1]?.name || '根目录'
 
+  const reset = () => {
+    setEntries([])
+    setProgress(0)
+  }
+
   const handleUpload = async () => {
-    if (files.length === 0) return
+    if (entries.length === 0) return
     setUploading(true)
     setProgress(0)
     try {
+      const files = entries.map((e) => e.file)
       const result = await upload(files, parentId, (pct) => setProgress(pct))
       if (result.errors?.length > 0) {
         message.warning(`部分文件上传失败: ${result.errors.join(', ')}`)
       } else {
         message.success(`成功上传 ${result.ok} 个文件`)
       }
-      setFiles([])
-      setProgress(0)
+      reset()
       onClose()
     } catch {
       message.error('上传失败')
@@ -49,13 +59,13 @@ export default function UploadModal({ open, targetDirId, targetDirName, onClose 
         </span>
       }
       open={open}
-      onCancel={() => { if (!uploading) { setFiles([]); onClose() } }}
+      onCancel={() => { if (!uploading) { reset(); onClose() } }}
       footer={[
-        <Button key="cancel" onClick={() => { setFiles([]); onClose() }} disabled={uploading}>
+        <Button key="cancel" onClick={() => { reset(); onClose() }} disabled={uploading}>
           取消
         </Button>,
-        <Button key="upload" type="primary" onClick={handleUpload} loading={uploading} disabled={files.length === 0}>
-          上传 ({files.length})
+        <Button key="upload" type="primary" onClick={handleUpload} loading={uploading} disabled={entries.length === 0}>
+          上传 ({entries.length})
         </Button>,
       ]}
       width={560}
@@ -64,18 +74,20 @@ export default function UploadModal({ open, targetDirId, targetDirName, onClose 
       <Upload.Dragger
         multiple
         showUploadList={true}
-        fileList={files.map((f, i) => ({
-          uid: `${Date.now()}-${i}-${f.name}`,
-          name: f.name,
-          size: f.size,
+        fileList={entries.map((e) => ({
+          uid: e.uid,
+          name: e.file.name,
+          size: e.file.size,
           status: 'done' as const,
         }))}
         beforeUpload={(file) => {
-          setFiles((prev) => [...prev, file])
+          uidCounter.current += 1
+          const uid = `upload-${uidCounter.current}-${file.name}`
+          setEntries((prev) => [...prev, { uid, file }])
           return false
         }}
         onRemove={(f) => {
-          setFiles((prev) => prev.filter((_, i) => `${Date.now()}-${i}-${prev[i].name}` !== f.uid))
+          setEntries((prev) => prev.filter((e) => e.uid !== f.uid))
         }}
         disabled={uploading}
       >
