@@ -37,30 +37,51 @@ docs/                      api.md, database.md, deployment.md, development.md, p
 
 ## Build & Run
 
-### Infrastructure (first time)
+### Full-stack in Docker (recommended)
+
+```bash
+# Build frontend
+cd client && npm install && npm run build
+
+# Start everything (infra + Go services + nginx + frontend)
+cd ../deploy
+docker compose -f docker-compose.single.yml up --build -d
+
+# Access at http://localhost (only port 80 exposed)
+```
+
+All three Go services are built via multi-stage Docker builds from `server/Dockerfile` with a `SERVICE` build arg (e.g., `SERVICE=user-file-svc`). The Docker Compose file builds all three in parallel.
+
+### Individual services (host development)
+
+```bash
+cd server
+CONFIG_PATH=config/config.single.yaml go run ./cmd/user-file-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/im-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/docker-svc &
+```
+
+### Infrastructure only
+
 ```bash
 cd deploy
 docker compose up -d              # PostgreSQL:5432, Redis:6379, MinIO:9000/9001
 ```
 
-### Backend (run from server/ directory)
-```bash
-cd server
-go build ./cmd/user-file-svc/     # build one
-go build ./cmd/...                # build all
-go run ./cmd/user-file-svc &
-go run ./cmd/im-svc &
-go run ./cmd/docker-svc &
-```
+### Frontend dev
 
-All services read `config/config.single.yaml` by default, overridable via `CONFIG_PATH` env var.
-
-### Frontend
 ```bash
 cd client
 npm install
 npm run dev                       # Vite dev server on :3000
 npx tsc --noEmit                  # type-check only
+```
+
+### Build all Go binaries
+
+```bash
+cd server
+go build ./cmd/...                # build all
 ```
 
 ## Key Patterns
@@ -96,7 +117,30 @@ Hub pattern: `internal/im/service/hub.go` manages `map[uint64]*Client` (one conn
 Private conversations have two `ConversationMember` rows. Per-user soft-delete via `deleted_at` on the member row. Private conversation names are derived dynamically from the other member's username (via JOIN on users table).
 
 ### ID generation
-All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `BeforeCreate` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2. Snowflake must be initialized before database connection.
+All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2. Snowflake must be initialized before database connection.
+
+**JSON serialization**: All `uint64` ID fields use `json:"id,string"` tags to serialize as JSON strings, preventing JavaScript `number` precision loss (JS `number` max safe integer is 2^53-1, while Snowflake uint64 can exceed this). All frontend TypeScript ID types are `string`.
+
+### Nginx proxy
+Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry point on **port 80** — the only port exposed to the host:
+- `/api/v1/im/*` → im-svc:8082 (Docker service name, not host IP)
+- `/api/v1/docker/*` → docker-svc:8083
+- `/api/*` → user-file-svc:8081
+- `/ws` → im-svc:8082 (WebSocket upgrade)
+- `/` → Serves `client/dist/` static files with SPA `try_files` fallback
+
+The frontend connects to `window.location.host` for both API calls and WebSocket. Vite proxy config is retained as an alternative for devs who prefer not to run nginx.
+
+### Docker multi-stage build
+`server/Dockerfile` uses a `SERVICE` build arg to select which `cmd/` binary to build:
+- Builder stage: `golang:1.25-alpine`, downloads deps, compiles with `CGO_ENABLED=0 GOOS=linux -ldflags="-s -w"`
+- Runtime stage: `alpine:3.21` with `ca-certificates`, `tzdata`, `curl` (for healthcheck)
+- docker-svc compiled as `GOOS=linux` defaults to `unix:///var/run/docker.sock` (no code change needed)
+
+### Config files
+- `config.single.yaml` — host development (all hostnames = `localhost`)
+- `config.docker.yaml` — Docker deployment (hostnames = `postgres`, `redis`, `minio`)
+- Set via `CONFIG_PATH` env var (each `main.go` reads it)
 
 ### Friend system
 Bidirectional `Friend` model with `uniqueIndex:idx_friend_pair` on `(user_id, friend_id)`. Status: `pending` → `accepted`. Auto-creates private conversation on accept. If both users send requests simultaneously, the second auto-accepts. Friend queries return `FriendInfo` (embeds Friend + `friend_username` from JOIN on users table) for display without extra queries.
@@ -108,6 +152,9 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 ## Common Gotchas
 
 - **Working directory**: Go commands must run from `server/` directory (where `go.mod` is)
-- **Windows Docker**: The Docker service connects via `tcp://localhost:2375` on Windows (not Unix socket). Docker Desktop must expose this port.
+- **Windows Docker**: docker-svc in Docker uses `/var/run/docker.sock` (mounted from host). For host development on Windows, set `DOCKER_HOST=tcp://localhost:2375` and enable Docker Desktop TCP exposure.
+- **Docker build context**: The build context is `../server` (relative to `deploy/`). All Go source changes invalidate the layer cache, so incremental builds recompile.
 - **GORM AutoMigrate**: Each service's `main.go` calls AutoMigrate for its models. Adding a field to a model struct will auto-add the column on restart.
 - **Config changes**: Services must be restarted to pick up config changes (e.g., JWT TTL)
+- **docker-svc**: Does NOT connect to PostgreSQL or initialize Snowflake (no database models). DockerNode model is defined for future cluster features.
+- **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.

@@ -1,14 +1,15 @@
 # CloudNexus 数据库设计文档
 
-> 版本：v0.1.0 | 数据库：PostgreSQL 15 | ORM：GORM
+> 版本：v0.6.0 | 数据库：PostgreSQL 15 | ORM：GORM
 
 ## 1. 设计原则
 
-- 使用 `BIGSERIAL` 作为主键，全局唯一自增
+- 使用 Snowflake 算法生成全局唯一 uint64 主键（由 GORM `Before("gorm:create")` 回调自动分配）
+- 所有 ID 字段在 JSON 中序列化为字符串（`json:",string"`），避免 JavaScript 精度丢失
+- 各服务使用不同 Snowflake node ID (user-file-svc=1, im-svc=2)
 - 时间字段统一使用 `TIMESTAMPTZ`
 - 软删除使用 `deleted_at` 字段 (GORM 软删除)
 - 外键约束在应用层保证，数据库层保持灵活
-- 集群模式考虑使用 UUID 主键或 Snowflake 替代 BIGSERIAL
 
 ---
 
@@ -18,16 +19,14 @@
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | 用户 ID |
+| id | BIGINT | PK | Snowflake 用户 ID |
 | username | VARCHAR(64) | UNIQUE, NOT NULL | 用户名 |
 | email | VARCHAR(255) | UNIQUE, NOT NULL | 邮箱 |
 | password | VARCHAR(255) | NOT NULL | bcrypt 哈希 |
 | avatar | VARCHAR(512) | | 头像 URL |
 | status | SMALLINT | DEFAULT 1 | 1=正常, 0=禁用 |
-| last_login_at | TIMESTAMPTZ | | 最后登录时间 |
 | created_at | TIMESTAMPTZ | NOT NULL | 创建时间 |
 | updated_at | TIMESTAMPTZ | NOT NULL | 更新时间 |
-| deleted_at | TIMESTAMPTZ | | 软删除时间 |
 
 **索引：**
 ```sql
@@ -40,7 +39,7 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID |
 | user_id | BIGINT | NOT NULL | 关联 users.id |
 | token | VARCHAR(512) | UNIQUE, NOT NULL | 令牌哈希 |
 | expires_at | TIMESTAMPTZ | NOT NULL | 过期时间 |
@@ -60,7 +59,7 @@ CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID |
 | user_id | BIGINT | NOT NULL | 所属用户 |
 | name | VARCHAR(255) | NOT NULL | 文件名 |
 | is_dir | BOOLEAN | DEFAULT false | 是否为目录 |
@@ -86,7 +85,7 @@ CREATE INDEX idx_files_storage_key ON files(storage_key);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID | |
 | file_id | BIGINT | NOT NULL | 关联 files.id |
 | owner_id | BIGINT | NOT NULL | 分享发起者 |
 | share_code | VARCHAR(32) | UNIQUE, NOT NULL | 分享码 |
@@ -109,7 +108,7 @@ CREATE INDEX idx_file_shares_share_code ON file_shares(share_code);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID | |
 | type | VARCHAR(16) | NOT NULL | private / group |
 | name | VARCHAR(128) | | 群聊名称，私聊可为空 |
 | creator_id | BIGINT | NOT NULL | 创建者 |
@@ -127,7 +126,7 @@ CREATE INDEX idx_conversations_creator_id ON conversations(creator_id);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID | |
 | conversation_id | BIGINT | NOT NULL | |
 | user_id | BIGINT | NOT NULL | |
 | role | VARCHAR(16) | DEFAULT 'member' | owner / admin / member |
@@ -146,7 +145,7 @@ CREATE INDEX idx_conv_members_conv_id ON conversation_members(conversation_id);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | 消息 ID (全局递增) |
+| id | BIGINT | PK | Snowflake ID | 消息 ID (全局递增) |
 | conversation_id | BIGINT | NOT NULL | |
 | sender_id | BIGINT | NOT NULL | 发送者 |
 | content | TEXT | NOT NULL | 消息内容 |
@@ -171,7 +170,7 @@ CREATE INDEX idx_messages_created_at ON messages(created_at);
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGSERIAL | PK | |
+| id | BIGINT | PK | Snowflake ID | |
 | name | VARCHAR(64) | UNIQUE, NOT NULL | 节点名称 |
 | host | VARCHAR(255) | NOT NULL | 主机 IP 或域名 |
 | port | INT | DEFAULT 2376 | Docker TLS 端口 |
@@ -190,21 +189,7 @@ CREATE INDEX idx_docker_nodes_status ON docker_nodes(status);
 
 ---
 
-## 6. 系统配置模块
-
-### system_configs — 系统配置表
-
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | BIGSERIAL | PK | |
-| key | VARCHAR(128) | UNIQUE, NOT NULL | 配置键 |
-| value | TEXT | | 配置值 |
-| description | VARCHAR(255) | | 说明 |
-| updated_at | TIMESTAMPTZ | NOT NULL | |
-
----
-
-## 7. ER 关系图
+## 6. ER 关系图
 
 ```
 users ──1:N──> refresh_tokens
@@ -213,27 +198,14 @@ users ──1:N──> file_shares
 users ──< conversation_members >── conversations
 conversations ──1:N──> messages
 users ──1:N──> messages
-docker_nodes (独立)
-system_configs (独立)
+docker_nodes (计划中)
+friends (好友关系)
 ```
 
 ---
 
-## 8. 迁移计划
+## 7. 集群模式注意事项
 
-| 阶段 | 迁移内容 |
-|------|----------|
-| Phase 1 | users, refresh_tokens, files |
-| Phase 2 | conversations, conversation_members, messages |
-| Phase 3 | docker_nodes, file_shares |
-| Phase 4 | 性能优化：分区、索引调优 |
-
----
-
-## 9. 集群模式注意事项
-
-- 主键 `BIGSERIAL` 在单机下高效，集群模式下可考虑：
-  - Citus 分布式表使用 `BIGSERIAL` 配合分布键
-  - 或使用 ULID/Snowflake 代替自增 ID
-- `messages` 表建议按 `conversation_id` 做分布键
-- Redis 维护每个会话的最后 seq，避免每次查询 MAX(seq)
+- 主键使用 Snowflake uint64，天然支持分布式全局唯一，无需额外配置
+- 集群模式下各服务使用不同的 Snowflake node ID (user-file-svc=1, im-svc=2)
+- 所有服务运行在 Docker 容器中，通过 Docker 内部网络通信

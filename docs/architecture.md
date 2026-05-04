@@ -1,6 +1,6 @@
 # CloudNexus 架构设计
 
-> 版本：v3.0 | 更新：2026-05-03
+> 版本：v4.0 | 更新：2026-05-04
 
 ## 1. 项目概述
 
@@ -14,6 +14,8 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 ## 2. 核心设计原则
 
+- **全容器化**：所有服务（含后端、前端、基础设施）均运行在 Docker 容器中
+- **单端口暴露**：仅 nginx 对外暴露 80 端口，后端服务端口仅内部可访问
 - **无状态服务**：所有应用服务不保存本地状态，共享数据库和缓存
 - **单机起步，集群扩展**：初期 docker-compose 一键部署，后期平滑迁移到集群
 - **数据私有**：用户完全掌控自己的数据，依赖全部开源可自建
@@ -21,27 +23,43 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 ## 3. 系统架构
 
-### 3.1 单机架构
+### 3.1 单机架构（全容器化）
 
 ```
-客户端 → Nginx → user-file-svc / im-svc / docker-svc → PostgreSQL + Redis + MinIO
-```
+                    宿主机 Port 80 (唯一对外端口)
+                            |
+                      +-----------+
+                      |   nginx   |  (静态文件 + 反向代理)
+                      +-----------+
+                       /    |     \
+                      /     |      \
+          +-----------+  +-------+  +------------+
+          |user-file-svc| |im-svc |  | docker-svc |
+          |   (:8081)  |  |(:8082)|  |  (:8083)   |
+          +-----------+  +-------+  +------------+
+               |    |        |    |        |
+               v    v        v    v        v
+          +--------+  +-------+  +----+  +===============+
+          |PostgreSQL| | MinIO |  |Redis|  | Docker Daemon |
+          |  (:5432)|  |(:9000)|  |:6379|  |(socket mount) |
+          +--------+  +-------+  +----+  +===============+
 
-所有服务与依赖放在一台服务器上。
+          所有服务通过 Docker 内部网络通信，仅 nginx 暴露端口
+```
 
 ### 3.2 集群架构
 
 ```
                       ┌──────────────┐
                       │  负载均衡器   │
+                      │  (Port 80/443)│
                       └───┬──────────┘
               ┌───────────┼───────────┐
               │           │           │
         ┌─────▼─────┐┌────▼──────┐┌───▼───────┐
         │ 节点 1    ││ 节点 2    ││ 节点 3    │
-        │ userfile  ││ userfile  ││ userfile  │
-        │ im        ││ im        ││ im        │
-        │ docker    ││ docker    ││ docker    │
+        │ (nginx +  ││ (nginx +  ││ (nginx +  │
+        │  Go svcs) ││  Go svcs) ││  Go svcs) │
         └─────┬─────┘└────┬──────┘└───┬───────┘
               │           │           │
               └───────────┼───────────┘
@@ -59,35 +77,48 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 ### 4.1 文件上传
 
 ```
-客户端 → Nginx → user-file-svc → MinIO (存储文件)
-                  ├── 写入 files 表 (元数据)
-                  └── 返回文件 ID
+客户端 → nginx(:80) → user-file-svc (Docker) → MinIO (Docker)
+                          ├── 写入 files 表 (PostgreSQL)
+                          └── 返回文件 ID (Snowflake string)
 ```
 
 ### 4.2 IM 消息流
 
 ```
-发送方 WS → im-svc(节点1) ──┬──→ PostgreSQL (存储)
-                           └──→ Redis Pub/Sub (广播)
-                                     │
-接收方 WS ← im-svc(节点2) ←──────────┘ (其他节点订阅)
+发送方浏览器 → nginx(:80 /ws) → im-svc(Docker) ──┬──→ PostgreSQL (存储)
+                                                  └──→ Redis Pub/Sub (广播)
+                                                            │
+接收方浏览器 ← nginx(:80 /ws) ← im-svc(Docker) ←──────────┘
 ```
 
 ### 4.3 Docker 操作
 
 ```
-客户端 HTTP → docker-svc → Docker Socket (本地) 或 Docker TLS (远程)
+客户端 HTTP → nginx(:80) → docker-svc (Docker) → Docker Socket (/var/run/docker.sock)
 ```
 
-## 5. 安全模型
+## 5. 技术栈
 
-- **认证**：JWT (access token 短期 + refresh token 长期)
+| 层 | 技术 |
+|----|------|
+| 入口 | nginx:alpine (Docker) |
+| 后端 | Go + Gin + GORM |
+| 前端 | React 18 + TypeScript + Vite + Ant Design 5 + Zustand |
+| 数据库 | PostgreSQL 15 |
+| 缓存/消息 | Redis 7 |
+| 对象存储 | MinIO (S3 兼容) |
+| 容器化 | Docker Compose, 多阶段构建 |
+
+## 6. 安全模型
+
+- **认证**：JWT (access token 8h + refresh token 7d)
 - **授权**：服务内权限检查，管理员 vs 普通用户
 - **传输安全**：HTTPS + WSS (生产环境必须)
 - **存储安全**：密码 bcrypt 哈希，文件可选加密
-- **Docker 安全**：TLS 双向认证，非必要不暴露 2376 端口
+- **Docker 安全**：Socket 挂载到 docker-svc 容器，通过 API 权限控制
+- **端口安全**：仅 nginx 80 端口对外，所有后端端口仅内网
 
-## 6. 扩展点
+## 7. 扩展点
 
 | 扩展项 | 预留方式 |
 |--------|----------|
@@ -97,19 +128,6 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 水平扩容 | 所有服务无状态，增加实例 + 负载均衡即可 |
 | Docker 多主机 | node 参数 + TLS 客户端工厂模式 |
 | K8s 部署 | deploy/k8s/ 目录预留 |
-
-## 7. 技术选型依据
-
-| 选择 | 原因 |
-|------|------|
-| Go | 编译为单一二进制，低内存，高并发 (goroutine) |
-| Gin | 轻量 HTTP 框架，性能好，生态成熟 |
-| GORM | Go 最流行的 ORM，支持 PostGIS、软删除 |
-| PostgreSQL | ACID 事务，全文搜索，Citus 扩展支持集群 |
-| Redis | 高性能缓存 + Pub/Sub 消息总线路由 |
-| MinIO | S3 兼容，单机和分布式统一 API |
-| React + Vite | 组件化开发，热更新快 |
-| JWT | 无状态认证，天然支持多节点 |
 
 ## 8. 相关文档
 

@@ -1,6 +1,6 @@
 # CloudNexus 开发指南
 
-> 版本：v0.1.0 | 更新：2026-05-03
+> 版本：v0.6.0 | 更新：2026-05-04
 
 ## 1. 环境准备
 
@@ -10,7 +10,7 @@
 |------|----------|------|
 | Go | 1.22+ | 后端开发 |
 | Node.js | 18+ | 前端开发 |
-| Docker | 24+ | 运行依赖服务 |
+| Docker | 24+ | 运行所有服务（含后端） |
 | Git | 2.x | 版本控制 |
 
 ### 1.2 推荐 IDE
@@ -25,14 +25,17 @@
 git clone <repo-url> cloudnexus
 cd cloudnexus
 
-# 启动依赖服务
-docker compose -f deploy/docker-compose.single.yml up -d
-
 # 安装前端依赖
-cd client && npm install && cd ..
+cd client && npm install
 
-# 运行脚本一键初始化 (Mac/Linux)
-bash scripts/setup_dev.sh
+# 构建前端
+npm run build
+
+# 启动全栈 (Docker)
+cd ../deploy
+docker compose -f docker-compose.single.yml up --build -d
+
+# 访问 http://localhost
 ```
 
 ---
@@ -47,7 +50,7 @@ cloudnexus/
 │       ├── pages/                   # 页面级组件
 │       ├── hooks/                   # 自定义 React Hooks
 │       ├── services/                # 后端 API 调用封装
-│       ├── stores/                  # 状态管理
+│       ├── stores/                  # 状态管理 (Zustand)
 │       └── utils/                   # 工具函数
 │
 ├── server/                          # Go 后端
@@ -67,70 +70,89 @@ cloudnexus/
 │   │   ├── storage/                 # MinIO 对象存储客户端
 │   │   ├── config/                  # YAML 配置加载
 │   │   ├── model/                   # 共享数据模型
+│   │   ├── snowflake/               # Snowflake ID 生成
 │   │   ├── response/               # HTTP 统一响应格式
 │   │   └── errors/                  # 错误码定义
 │   ├── config/                      # 配置文件
-│   │   ├── config.single.yaml       # 单机部署
+│   │   ├── config.single.yaml       # 宿主机开发
+│   │   ├── config.docker.yaml       # Docker 部署
 │   │   └── config.cluster.yaml      # 集群部署
+│   ├── Dockerfile                   # 多阶段构建 (SERVICE build arg)
+│   ├── .dockerignore
 │   └── go.mod
 │
 ├── deploy/                          # 部署配置
-│   ├── docker-compose.single.yml    # 单机基础设施
+│   ├── docker-compose.single.yml    # 单机全栈 Docker Compose
 │   ├── docker-compose.cluster.yml   # 集群应用服务
-│   ├── nginx/nginx.conf             # 反向代理配置
-│   └── k8s/                         # Kubernetes 资源 (后期)
+│   ├── nginx/nginx.conf             # 反向代理 + 静态文件
+│   └── k8s/                         # Kubernetes 资源 (预留)
 │
 ├── docs/                            # 项目文档
 │   ├── api.md                       # API 接口文档
 │   ├── database.md                  # 数据库设计
 │   ├── deployment.md                # 部署指南
 │   ├── development.md               # 开发指南 (本文件)
-│   └── architecture.md              # 架构概览
+│   ├── architecture.md              # 架构概览
+│   ├── test-data.md                 # 测试数据参考
+│   └── progress.md                  # 开发进度
 │
 └── scripts/                         # 工具脚本
-    ├── setup_dev.sh
-    └── migrate.sh
 ```
 
 ---
 
 ## 3. 开发工作流
 
-### 3.1 启动后端服务
+### 3.1 方式一：Docker 全栈开发（推荐）
 
-每个服务独立运行，开发时可逐个启动：
+所有服务运行在 Docker 中，代码变更后重建对应服务：
 
 ```bash
+cd client && npm run build       # 前端变更后
+cd deploy
+docker compose -f docker-compose.single.yml up --build -d    # 全量重建
+
+# 或只重建单个 Go 服务（更快）
+docker compose -f docker-compose.single.yml up --build -d im-svc
+```
+
+### 3.2 方式二：宿主机开发（Go 开发迭代快）
+
+Go 服务在宿主机运行，基础设施 + nginx 在 Docker 中：
+
+```bash
+# 1. 启动基础设施
+cd deploy
+docker compose -f docker-compose.single.yml up -d postgres redis minio
+
+# 2. 修改 nginx.conf 将 proxy_pass 指向 host.docker.internal
+# （或使用 Vite 自带的代理，见 3.3）
+
+# 3. 启动 Go 服务（使用 localhost 配置）
 cd server
+CONFIG_PATH=config/config.single.yaml go run ./cmd/user-file-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/im-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/docker-svc &
 
-# 终端 1 — 用户文件服务
-go run ./cmd/user-file-svc
-
-# 终端 2 — IM 服务
-go run ./cmd/im-svc
-
-# 终端 3 — Docker 管理服务
-go run ./cmd/docker-svc
+# 4. 启动前端
+cd client && npm run dev
+# 访问 http://localhost:3000 (Vite 自带代理)
 ```
 
-验证：
-```bash
-curl http://localhost:8081/healthz  # → {"code":200,"message":"user-file-svc healthy"}
-curl http://localhost:8082/healthz  # → {"code":200,"message":"im-svc healthy"}
-curl http://localhost:8083/healthz  # → {"code":200,"message":"docker-svc healthy"}
-```
+### 3.3 方式三：Vite 代理（纯前端开发）
 
-### 3.2 启动前端
+不需要 nginx 时，Vite 自带代理转发 API 请求：
 
 ```bash
-cd client
-npm run dev
-# 浏览器打开 http://localhost:3000
+cd client && npm run dev
+# Vite 自动代理：
+#   /api/v1/im/*    → localhost:8082
+#   /api/v1/docker/* → localhost:8083
+#   /api/*          → localhost:8081
+#   /ws             → localhost:8082
 ```
 
-Vite 配置了代理：`/api/*` → `localhost:8081`，`/ws` → `localhost:8082`
-
-### 3.3 编译命令
+### 3.4 编译命令
 
 ```bash
 # 编译所有服务
@@ -138,6 +160,9 @@ go build ./cmd/...
 
 # 编译单个服务
 go build -o bin/user-file-svc ./cmd/user-file-svc
+
+# Docker 构建单个服务
+docker build --build-arg SERVICE=user-file-svc -t user-file-svc .
 
 # 静态分析
 go vet ./...
@@ -154,9 +179,9 @@ go fmt ./...
 
 - 遵循 [Effective Go](https://go.dev/doc/effective_go)
 - 包名小写单数：`handler` 不是 `handlers`
-- 接口定义在使用方，而非实现方
-- 错误处理：不忽略 error，使用 `pkg/errors` 中的 `AppError`
-- 日志：使用标准库 `log`，后期可切换到 `slog` 或 `zap`
+- 错误处理：使用 `pkg/errors` 中的 `AppError`
+- 日志：使用标准库 `log`
+- **ID 类型**：所有 uint64 ID 字段 JSON tag 加 `,string`，避免 JavaScript 精度丢失
 
 ### 4.2 分层架构
 
@@ -180,7 +205,8 @@ repository (数据层) → 数据库操作、缓存访问
 - 严格模式 (`tsconfig.json` 中 `strict: true`)
 - 使用函数组件 + Hooks，不写 class 组件
 - API 调用统一封装在 `services/` 中
-- 状态管理使用 React Context 或 Zustand
+- 状态管理使用 Zustand
+- **ID 类型**：所有 ID 为 `string` 类型（对应后端 Snowflake uint64）
 
 ### 4.4 文件命名
 
@@ -190,27 +216,16 @@ repository (数据层) → 数据库操作、缓存访问
 
 ---
 
-## 5. 测试
+## 5. 配置说明
 
-### 5.1 Go 测试
+两个配置文件对应不同部署模式：
 
-```bash
-# 运行所有测试
-go test ./...
+| 文件 | host 值 | 用途 |
+|------|---------|------|
+| `config.single.yaml` | `localhost` | 宿主机开发 |
+| `config.docker.yaml` | `postgres`, `redis`, `minio` | Docker 部署 |
 
-# 带覆盖率
-go test -cover ./...
-
-# 详细输出
-go test -v ./...
-```
-
-### 5.2 测试规范
-
-- 单元测试文件与源文件同目录：`xxx_test.go`
-- 使用 [testify](https://github.com/stretchr/testify) 断言库
-- 数据库测试使用测试专用 PostgreSQL 实例
-- 集成测试放在 `internal/*/` 下的 `_test.go` 文件中
+通过 `CONFIG_PATH` 环境变量指定，每个 `main.go` 已支持。
 
 ---
 
@@ -229,29 +244,19 @@ go test -v ./...
 
 ## 7. 调试
 
-### 7.1 Go 调试
+### 7.1 查看 Docker 日志
 
-使用 delve:
 ```bash
-dlv debug ./cmd/user-file-svc
+docker compose -f deploy/docker-compose.single.yml logs -f user-file-svc
+docker compose -f deploy/docker-compose.single.yml logs -f im-svc
 ```
 
-或 IDE 内置调试器 (GoLand / VS Code Go 插件)。
-
-### 7.2 前端调试
-
-- Chrome DevTools
-- React DevTools 浏览器扩展
-
-### 7.3 数据库调试
+### 7.2 数据库调试
 
 ```bash
-# 连接本地 PostgreSQL
 docker exec -it deploy-postgres-1 psql -U cloudnexus
-
 # 查看表结构
 \d users
-
 # 查看索引
 \di
 ```
@@ -265,17 +270,14 @@ docker exec -it deploy-postgres-1 psql -U cloudnexus
 go env -w GOPROXY=https://goproxy.cn,direct
 ```
 
-**Q: Docker 容器启动失败？**
-```bash
-docker compose -f deploy/docker-compose.single.yml logs postgres
-docker compose -f deploy/docker-compose.single.yml logs redis
-```
+**Q: Docker 镜像构建慢？**
+- 首次构建需要下载 Go 依赖，后续利用 Docker 层缓存
+- 可在 Dockerfile 中设置 `ENV GOPROXY=https://goproxy.cn,direct`
 
 **Q: 端口被占用？**
 ```bash
 # Windows
-netstat -ano | findstr :8081
-
+netstat -ano | findstr :80
 # Linux/Mac
-lsof -i :8081
+lsof -i :80
 ```

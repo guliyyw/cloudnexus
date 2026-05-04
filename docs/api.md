@@ -1,6 +1,6 @@
 # CloudNexus API 接口文档
 
-> 版本：v0.3.0 | 更新：2026-05-04
+> 版本：v0.6.0 | 更新：2026-05-04
 
 ## 通用约定
 
@@ -8,6 +8,8 @@
 
 - Content-Type: `application/json`
 - 认证方式：Bearer Token (JWT)，通过 `Authorization: Bearer <access_token>` 传递
+- 入口：所有 API 通过 nginx:80 统一访问，后端端口不对外暴露
+- ID 类型：所有 ID 字段为 JSON 字符串（Snowflake uint64，避免 JS 精度丢失）
 
 ### 响应格式
 
@@ -57,7 +59,7 @@
   "code": 201,
   "message": "registered",
   "data": {
-    "id": 1,
+    "id": "123456789012345678",
     "username": "alice",
     "email": "alice@example.com",
     "created_at": "2026-05-03T10:00:00Z"
@@ -714,6 +716,8 @@ GET /healthz → 200 OK
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v0.6.0 | 2026-05-04 | 全容器化部署 (Go 服务 + 前端 Docker 化)，仅 nginx 80 端口对外 |
+| v0.5.0 | 2026-05-04 | ID 类型安全 (Go json:,string + TS number→string)、Nginx Docker 统一入口 |
 | v0.3.0 | 2026-05-04 | JWT TTL 延长至8小时、批量上传/预览/会话删除/好友系统前后端联调完成 |
 | v0.2.0 | 2026-05-04 | 新增批量上传、文件预览、会话删除、好友系统接口 |
 | v0.1.0 | 2026-05-03 | 初始版本，定义三个服务全部接口 |
