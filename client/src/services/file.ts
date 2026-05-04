@@ -75,6 +75,28 @@ export async function searchFiles(keyword: string, page: number, pageSize: numbe
   return res.data.data
 }
 
+export interface BatchDeleteResult {
+  deleted: number
+  errors: string[]
+}
+
+export async function batchDeleteFiles(ids: string[]): Promise<BatchDeleteResult> {
+  const res = await api.post('/file/batch-delete', { ids })
+  return res.data.data
+}
+
+export async function batchDownloadFiles(ids: string[]): Promise<void> {
+  const res = await api.post('/file/batch-download', { ids }, { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  const disposition = res.headers['content-disposition']
+  const match = disposition?.match(/filename="?(.+?)"?$/)
+  a.download = match?.[1] || 'files.zip'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function getToken(): string {
   try { return localStorage.getItem('access_token') || '' } catch { return '' }
 }

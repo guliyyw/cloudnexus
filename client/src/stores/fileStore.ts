@@ -16,6 +16,8 @@ interface FileState {
   fetchFiles: (parentId?: string, page?: number) => Promise<void>
   upload: (files: File[], parentId?: string, onProgress?: (pct: number) => void) => Promise<fileApi.BatchUploadResult>
   remove: (id: string) => Promise<void>
+  batchRemove: (ids: string[]) => Promise<fileApi.BatchDeleteResult>
+  batchDownload: (ids: string[]) => Promise<void>
   mkdir: (name: string) => Promise<void>
   search: (keyword: string) => Promise<void>
   navigateTo: (parentId: string, name: string) => void
@@ -60,6 +62,16 @@ export const useFileStore = create<FileState>((set, get) => ({
   remove: async (id: string) => {
     await fileApi.deleteFile(id)
     await get().fetchFiles()
+  },
+
+  batchRemove: async (ids: string[]) => {
+    const result = await fileApi.batchDeleteFiles(ids)
+    await get().fetchFiles()
+    return result
+  },
+
+  batchDownload: async (ids: string[]) => {
+    await fileApi.batchDownloadFiles(ids)
   },
 
   mkdir: async (name: string) => {

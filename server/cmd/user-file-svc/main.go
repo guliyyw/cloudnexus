@@ -96,6 +96,8 @@ func main() {
 			file.DELETE("/:id", fileH.HandleDelete)
 			file.POST("/mkdir", fileH.HandleMkdir)
 			file.GET("/search", fileH.HandleSearch)
+			file.POST("/batch-delete", fileH.HandleBatchDelete)
+			file.POST("/batch-download", fileH.HandleBatchDownload)
 		}
 	}
 

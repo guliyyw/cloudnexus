@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
 	"github.com/cloudnexus/server/pkg/model"
@@ -132,6 +136,88 @@ func (h *FileHandler) HandleMkdir(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, response.OKWithData(dir))
+}
+
+type batchReq struct {
+	IDs []string `json:"ids" binding:"required"`
+}
+
+func parseIDs(strs []string) []uint64 {
+	ids := make([]uint64, 0, len(strs))
+	for _, s := range strs {
+		id, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (h *FileHandler) HandleBatchDelete(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req batchReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误：请提供 ids 数组"))
+		return
+	}
+
+	deleted, errs := h.svc.BatchDelete(userID, parseIDs(req.IDs))
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"deleted": deleted,
+		"errors":  errs,
+	}))
+}
+
+func (h *FileHandler) HandleBatchDownload(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req batchReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误：请提供 ids 数组"))
+		return
+	}
+
+	ids := parseIDs(req.IDs)
+	if len(ids) == 0 {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请选择至少一个文件"))
+		return
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		zw := zip.NewWriter(pw)
+		defer zw.Close()
+		defer pw.Close()
+
+		seen := make(map[string]int)
+		for _, id := range ids {
+			stream, file, err := h.svc.Download(userID, id)
+			if err != nil {
+				continue
+			}
+
+			name := file.Name
+			if cnt, ok := seen[name]; ok {
+				ext := filepath.Ext(name)
+				base := name[:len(name)-len(ext)]
+				name = fmt.Sprintf("%s_%d%s", base, cnt, ext)
+			}
+			seen[file.Name]++
+
+			fw, err := zw.Create(name)
+			if err != nil {
+				stream.Close()
+				continue
+			}
+
+			io.Copy(fw, stream)
+			stream.Close()
+		}
+	}()
+
+	filename := fmt.Sprintf("files-%s.zip", time.Now().Format("20060102-150405"))
+	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	c.DataFromReader(http.StatusOK, -1, "application/zip", pr, nil)
 }
 
 func (h *FileHandler) HandleSearch(c *gin.Context) {

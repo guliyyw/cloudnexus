@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Table, Button, Modal, Input, Breadcrumb, Popconfirm,
-  Space, message, Tag, Typography, Tooltip,
+  Space, message, Tag, Typography, Tooltip, Card,
 } from 'antd'
 import {
   FolderAddOutlined, SearchOutlined,
@@ -47,7 +47,7 @@ function formatSize(bytes: number): string {
 export default function FileListPage() {
   const {
     files, total, page, pageSize, breadcrumb, loading, searchMode, searchKeyword,
-    fetchFiles, remove, mkdir, search, navigateTo, setPage, currentParentId,
+    fetchFiles, remove, batchRemove, batchDownload, mkdir, search, navigateTo, setPage, currentParentId,
   } = useFileStore()
 
   const [mkdirVisible, setMkdirVisible] = useState(false)
@@ -57,6 +57,7 @@ export default function FileListPage() {
   const [uploadTargetDir, setUploadTargetDir] = useState({ id: '0', name: '根目录' })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const [dropDirId, setDropDirId] = useState<string | null>(null)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
 
   useEffect(() => { fetchFiles() }, [])
 
@@ -87,6 +88,47 @@ export default function FileListPage() {
     if (e.dataTransfer.files.length > 0) {
       openUploadModal(dirId, dirName)
     }
+  }
+
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: `确认删除 ${selectedRowKeys.length} 个文件？`,
+      content: '此操作不可恢复',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const result = await batchRemove(selectedRowKeys)
+        setSelectedRowKeys([])
+        if (result.errors.length > 0) {
+          message.warning(`部分删除失败: ${result.errors.join(', ')}`)
+        } else {
+          message.success(`已删除 ${result.deleted} 个文件`)
+        }
+      },
+    })
+  }
+
+  const handleBatchDownload = async () => {
+    const fileIds = selectedRowKeys.filter((id) => {
+      const f = files.find((item) => item.id === id)
+      return f && !f.is_dir
+    })
+    if (fileIds.length === 0) {
+      message.warning('所选均为目录，无可下载文件')
+      return
+    }
+    try {
+      await batchDownload(fileIds)
+      message.success(`正在下载 ${fileIds.length} 个文件`)
+    } catch {
+      message.error('批量下载失败')
+    }
+  }
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as string[]),
   }
 
   const columns: ColumnsType<FileItem> = [
@@ -185,6 +227,23 @@ export default function FileListPage() {
         </Space>
       </div>
 
+      {selectedRowKeys.length > 0 && (
+        <Card size="small" style={{ marginBottom: 16, background: '#e6f4ff', borderColor: '#91caff' }}>
+          <Space>
+            <Text strong>已选择 {selectedRowKeys.length} 项</Text>
+            <Button type="primary" danger size="small" icon={<DeleteOutlined />}
+              onClick={handleBatchDelete}>
+              批量删除
+            </Button>
+            <Button type="primary" size="small" icon={<DownloadOutlined />}
+              onClick={handleBatchDownload}>
+              批量下载
+            </Button>
+            <Button size="small" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+          </Space>
+        </Card>
+      )}
+
       <Breadcrumb
         style={{ marginBottom: 16 }}
         items={breadcrumb.map((b, i) => ({
@@ -201,6 +260,7 @@ export default function FileListPage() {
       )}
 
       <Table
+        rowSelection={rowSelection}
         columns={columns}
         dataSource={files}
         rowKey="id"

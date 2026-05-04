@@ -113,6 +113,37 @@ func (s *FileService) Mkdir(userID uint64, parentID uint64, name string) (*model
 	return dir, nil
 }
 
+func (s *FileService) BatchDelete(userID uint64, ids []uint64) (int64, []string) {
+	var errs []string
+	validIDs := make([]uint64, 0, len(ids))
+
+	for _, id := range ids {
+		file, err := s.repo.FindByID(id)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("文件 %d: 不存在", id))
+			continue
+		}
+		if file.UserID != userID {
+			errs = append(errs, fmt.Sprintf("%s: 无权删除", file.Name))
+			continue
+		}
+		if !file.IsDir {
+			s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
+		}
+		validIDs = append(validIDs, id)
+	}
+
+	if len(validIDs) == 0 {
+		return 0, errs
+	}
+
+	deleted, err := s.repo.BatchSoftDelete(validIDs, userID)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("数据库错误: %s", err.Error()))
+	}
+	return deleted, errs
+}
+
 func (s *FileService) Search(userID uint64, keyword string, page, pageSize int) ([]model.File, int64, error) {
 	if page < 1 {
 		page = 1

@@ -54,3 +54,10 @@ func (r *FileRepository) SearchFiles(userID uint64, keyword string, page, pageSi
 	err := query.Order("is_dir DESC, name ASC").Offset(offset).Limit(pageSize).Find(&files).Error
 	return files, total, err
 }
+
+func (r *FileRepository) BatchSoftDelete(ids []uint64, userID uint64) (int64, error) {
+	result := r.db.Model(&model.File{}).
+		Where("id IN ? AND user_id = ? AND deleted_at IS NULL", ids, userID).
+		Update("deleted_at", gorm.Expr("now()"))
+	return result.RowsAffected, result.Error
+}
