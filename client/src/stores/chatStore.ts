@@ -33,8 +33,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   createConv: async (targetUserId: number) => {
-    await chatApi.createConversation('private', [targetUserId])
+    const conv = await chatApi.createConversation('private', [targetUserId])
     await get().fetchConversations()
+    set({ currentConvId: conv.id })
+    get().fetchMessages(conv.id)
   },
 
   selectConv: (id: number) => {
