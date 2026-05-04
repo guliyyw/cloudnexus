@@ -79,6 +79,7 @@ func main() {
 				friends.GET("/requests", imH.HandleListPendingRequests)
 				friends.PUT("/requests/:id/accept", imH.HandleAcceptRequest)
 				friends.PUT("/requests/:id/reject", imH.HandleRejectRequest)
+				friends.GET("", imH.HandleListFriends)
 				friends.GET("/", imH.HandleListFriends)
 				friends.DELETE("/:friend_id", imH.HandleRemoveFriend)
 			}

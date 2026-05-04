@@ -24,7 +24,7 @@ export function useWebSocket(handler: MessageHandler) {
     if (!token) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
+    const host = import.meta.env.DEV ? 'localhost:8082' : window.location.host
     const url = `${protocol}//${host}/ws?token=${token}`
 
     wsRef.current = new WebSocket(url)
