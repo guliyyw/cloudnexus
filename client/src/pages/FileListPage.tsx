@@ -8,11 +8,12 @@ import {
   DeleteOutlined, DownloadOutlined, FolderOutlined,
   FileOutlined, HomeOutlined, ReloadOutlined, UploadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
-  FilePdfOutlined, FileZipOutlined, EyeOutlined,
+  FilePdfOutlined, FileZipOutlined, EyeOutlined, ShareAltOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
 import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
+import ShareModal from '../components/ShareModal'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
@@ -56,6 +57,7 @@ export default function FileListPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadTargetDir, setUploadTargetDir] = useState({ id: '0', name: '根目录' })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
+  const [shareFile, setShareFile] = useState<FileItem | null>(null)
   const [dropDirId, setDropDirId] = useState<string | null>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
 
@@ -192,6 +194,11 @@ export default function FileListPage() {
               <Button type="link" size="small" icon={<DownloadOutlined />} href={getDownloadUrl(record.id)} download={record.name} />
             </Tooltip>
           )}
+          {!record.is_dir && (
+            <Tooltip title="分享">
+              <Button type="link" size="small" icon={<ShareAltOutlined />} onClick={() => setShareFile(record)} />
+            </Tooltip>
+          )}
           <Popconfirm title="确定删除？" onConfirm={() => remove(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -315,6 +322,12 @@ export default function FileListPage() {
         file={previewFile}
         open={!!previewFile}
         onClose={() => setPreviewFile(null)}
+      />
+
+      <ShareModal
+        file={shareFile}
+        open={!!shareFile}
+        onClose={() => setShareFile(null)}
       />
     </div>
   )

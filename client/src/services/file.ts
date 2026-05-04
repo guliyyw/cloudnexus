@@ -112,3 +112,40 @@ export function getPreviewUrl(id: string): string {
   const sep = token ? `?inline=true&token=${token}` : '?inline=true'
   return `/api/v1/file/download/${id}${sep}`
 }
+
+export interface ShareInfo {
+  id: string
+  file_id: string
+  owner_id: string
+  share_code: string
+  expires_at: string | null
+  download_limit: number
+  download_count: number
+  created_at: string
+  file_name: string
+  file_size: number
+  has_password: boolean
+}
+
+export async function createShare(fileId: string, password?: string, expiresIn?: number): Promise<ShareInfo> {
+  const res = await api.post(`/file/${fileId}/share`, { password, expires_in: expiresIn })
+  return res.data.data
+}
+
+export async function getFileShares(fileId: string): Promise<ShareInfo[]> {
+  const res = await api.get(`/file/${fileId}/shares`)
+  return res.data.data
+}
+
+export async function getMyShares(): Promise<ShareInfo[]> {
+  const res = await api.get('/shares/my')
+  return res.data.data
+}
+
+export async function deleteShare(shareId: string): Promise<void> {
+  await api.delete(`/shares/${shareId}`)
+}
+
+export function getShareUrl(code: string): string {
+  return `${window.location.origin}/api/v1/share/${code}/download`
+}

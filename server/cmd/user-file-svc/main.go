@@ -44,7 +44,7 @@ func main() {
 		logger.Log.Fatal("连接数据库失败", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}); err != nil {
 		logger.Log.Fatal("数据库迁移失败", zap.Error(err))
 	}
 
@@ -74,6 +74,10 @@ func main() {
 	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
 	fileH := handler.NewFileHandler(fileSvc)
 	systemH := handler.NewSystemHandler(db, minioClient)
+
+	shareRepo := repository.NewShareRepository(db)
+	shareSvc := service.NewShareService(shareRepo, fileRepo)
+	shareH := handler.NewShareHandler(shareSvc, fileSvc)
 
 	r := gin.Default()
 	r.Use(middleware.Logger())
@@ -106,6 +110,22 @@ func main() {
 			file.GET("/search", fileH.HandleSearch)
 			file.POST("/batch-delete", fileH.HandleBatchDelete)
 			file.POST("/batch-download", fileH.HandleBatchDownload)
+			file.POST("/:id/share", shareH.HandleCreateShare)
+			file.GET("/:id/shares", shareH.HandleListSharesByFile)
+		}
+
+		shares := api.Group("/shares")
+		shares.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		{
+			shares.GET("/my", shareH.HandleListMyShares)
+			shares.DELETE("/:id", shareH.HandleDeleteShare)
+		}
+
+		share := api.Group("/share")
+		{
+			share.GET("/:code", shareH.HandleGetShareByCode)
+			share.POST("/:code/verify", shareH.HandleVerifyPassword)
+			share.GET("/:code/download", shareH.HandleDownloadShare)
 		}
 
 		api.GET("/metrics", systemH.HandleMetrics)
