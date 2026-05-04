@@ -9,6 +9,7 @@ import (
 type Claims struct {
 	UserID   uint64 `json:"user_id"`
 	Username string `json:"username"`
+	IsAdmin  bool   `json:"is_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -25,10 +26,11 @@ type Config struct {
 	RefreshTTL    time.Duration
 }
 
-func GenerateTokenPair(cfg Config, userID uint64, username string) (*TokenPair, error) {
+func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool) (*TokenPair, error) {
 	accessClaims := &Claims{
 		UserID:   userID,
 		Username: username,
+		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.AccessTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -42,6 +44,7 @@ func GenerateTokenPair(cfg Config, userID uint64, username string) (*TokenPair, 
 	refreshClaims := &Claims{
 		UserID:   userID,
 		Username: username,
+		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.RefreshTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

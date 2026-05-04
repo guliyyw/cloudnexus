@@ -9,6 +9,7 @@ type User struct {
 	Password string `json:"-" gorm:"not null;size:255"`
 	Avatar   string `json:"avatar" gorm:"size:512"`
 	Status   int8   `json:"status" gorm:"default:1"`
+	IsAdmin  bool   `json:"is_admin" gorm:"default:false"`
 }
 
 type RefreshToken struct {

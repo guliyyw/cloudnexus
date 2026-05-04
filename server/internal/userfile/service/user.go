@@ -54,7 +54,7 @@ func (s *UserService) Login(username, password string) (*auth.TokenPair, error) 
 		return nil, apperrors.NewAppError(401, "用户名或密码错误", apperrors.ErrUnauthorized)
 	}
 
-	pair, err := auth.GenerateTokenPair(s.jwtConfig, user.ID, user.Username)
+	pair, err := auth.GenerateTokenPair(s.jwtConfig, user.ID, user.Username, user.IsAdmin)
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "令牌生成失败", err)
 	}
@@ -88,7 +88,7 @@ func (s *UserService) RefreshToken(rawToken string) (*auth.TokenPair, error) {
 		return nil, apperrors.NewAppError(401, "刷新令牌解析失败", apperrors.ErrUnauthorized)
 	}
 
-	pair, err := auth.GenerateTokenPair(s.jwtConfig, claims.UserID, claims.Username)
+	pair, err := auth.GenerateTokenPair(s.jwtConfig, claims.UserID, claims.Username, claims.IsAdmin)
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "令牌生成失败", err)
 	}
@@ -126,6 +126,44 @@ func (s *UserService) UpdateProfile(userID uint64, email, avatar string) (*model
 	}
 	if err := s.repo.UpdateUser(user); err != nil {
 		return nil, apperrors.NewAppError(500, "更新用户失败", err)
+	}
+	return user, nil
+}
+
+func (s *UserService) ListUsers(page, pageSize int) ([]model.User, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 50
+	}
+	return s.repo.FindUsers(page, pageSize)
+}
+
+func (s *UserService) ToggleAdmin(userID uint64) (*model.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
+	}
+	user.IsAdmin = !user.IsAdmin
+	if err := s.repo.SetAdmin(userID, user.IsAdmin); err != nil {
+		return nil, apperrors.NewAppError(500, "更新失败", err)
+	}
+	return user, nil
+}
+
+func (s *UserService) ToggleStatus(userID uint64) (*model.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
+	}
+	newStatus := int8(0)
+	if user.Status == 0 {
+		newStatus = 1
+	}
+	user.Status = newStatus
+	if err := s.repo.SetStatus(userID, newStatus); err != nil {
+		return nil, apperrors.NewAppError(500, "更新失败", err)
 	}
 	return user, nil
 }

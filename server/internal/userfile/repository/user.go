@@ -68,3 +68,21 @@ func (r *UserRepository) DeleteRefreshToken(token string) error {
 func (r *UserRepository) DeleteExpiredTokens() error {
 	return r.db.Where("expires_at < now()", true).Delete(&model.RefreshToken{}).Error
 }
+
+func (r *UserRepository) FindUsers(page, pageSize int) ([]model.User, int64, error) {
+	var users []model.User
+	var total int64
+	query := r.db.Model(&model.User{})
+	query.Count(&total)
+	offset := (page - 1) * pageSize
+	err := query.Order("id ASC").Offset(offset).Limit(pageSize).Find(&users).Error
+	return users, total, err
+}
+
+func (r *UserRepository) SetAdmin(id uint64, isAdmin bool) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("is_admin", isAdmin).Error
+}
+
+func (r *UserRepository) SetStatus(id uint64, status int8) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("status", status).Error
+}

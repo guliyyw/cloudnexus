@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
@@ -97,6 +98,51 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 		return
 	}
 	user, err := h.svc.UpdateProfile(userID, req.Email, req.Avatar)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(user))
+}
+
+func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+
+	users, total, err := h.svc.ListUsers(page, pageSize)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"items":     users,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	}))
+}
+
+func (h *UserHandler) HandleAdminToggleAdmin(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
+		return
+	}
+	user, err := h.svc.ToggleAdmin(userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(user))
+}
+
+func (h *UserHandler) HandleAdminToggleStatus(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
+		return
+	}
+	user, err := h.svc.ToggleStatus(userID)
 	if err != nil {
 		handleError(c, err)
 		return

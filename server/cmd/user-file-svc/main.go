@@ -106,6 +106,15 @@ func main() {
 			file.POST("/batch-delete", fileH.HandleBatchDelete)
 			file.POST("/batch-download", fileH.HandleBatchDownload)
 		}
+
+		admin := api.Group("/admin")
+		admin.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		admin.Use(middleware.AdminRequired())
+		{
+			admin.GET("/users", userH.HandleAdminListUsers)
+			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
+			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)
+		}
 	}
 
 	r.GET("/healthz", healthCheck)

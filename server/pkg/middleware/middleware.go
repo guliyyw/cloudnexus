@@ -79,6 +79,18 @@ func AuthRequired(secret string) gin.HandlerFunc {
 		}
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		c.Set("is_admin", claims.IsAdmin)
+		c.Next()
+	}
+}
+
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isAdmin := c.GetBool("is_admin")
+		if !isAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": 403, "message": "需要管理员权限"})
+			return
+		}
 		c.Next()
 	}
 }
