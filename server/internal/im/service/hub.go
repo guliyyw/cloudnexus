@@ -18,15 +18,15 @@ const (
 
 type WSMessage struct {
 	Type           string `json:"type"`
-	ID             uint64 `json:"id,omitempty"`
-	ConversationID uint64 `json:"conversation_id,omitempty"`
-	SenderID       uint64 `json:"sender_id,omitempty"`
+	ID             uint64 `json:"id,omitempty,string"`
+	ConversationID uint64 `json:"conversation_id,omitempty,string"`
+	SenderID       uint64 `json:"sender_id,omitempty,string"`
 	Content        string `json:"content,omitempty"`
 	MsgType        string `json:"msg_type,omitempty"`
 	Status         string `json:"status,omitempty"`
-	UserID         uint64 `json:"user_id,omitempty"`
-	LastReadMsgID  uint64 `json:"last_read_msg_id,omitempty"`
-	MsgID          uint64 `json:"msg_id,omitempty"`
+	UserID         uint64 `json:"user_id,omitempty,string"`
+	LastReadMsgID  uint64 `json:"last_read_msg_id,omitempty,string"`
+	MsgID          uint64 `json:"msg_id,omitempty,string"`
 	CreatedAt      string `json:"created_at,omitempty"`
 }
 

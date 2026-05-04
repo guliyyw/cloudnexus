@@ -1,19 +1,19 @@
 import api from './api'
 
 export interface Conversation {
-  id: number
+  id: string
   type: string
   name: string
-  creator_id: number
+  creator_id: string
   last_msg_seq: number
   created_at: string
   updated_at: string
 }
 
 export interface Message {
-  id: number
-  conversation_id: number
-  sender_id: number
+  id: string
+  conversation_id: string
+  sender_id: string
   content: string
   msg_type: string
   seq: number
@@ -25,16 +25,16 @@ export async function getConversations(): Promise<Conversation[]> {
   return res.data.data
 }
 
-export async function createConversation(type: string, memberIds: number[]): Promise<Conversation> {
+export async function createConversation(type: string, memberIds: string[]): Promise<Conversation> {
   const res = await api.post('/im/conversations', { type, member_ids: memberIds })
   return res.data.data
 }
 
-export async function deleteConversation(id: number): Promise<void> {
+export async function deleteConversation(id: string): Promise<void> {
   await api.delete(`/im/conversations/${id}`)
 }
 
-export async function getMessages(convId: number, before?: number, limit = 50): Promise<Message[]> {
+export async function getMessages(convId: string, before?: string, limit = 50): Promise<Message[]> {
   const res = await api.get(`/im/conversations/${convId}/messages`, {
     params: { before: before || undefined, limit },
   })
@@ -44,9 +44,9 @@ export async function getMessages(convId: number, before?: number, limit = 50): 
 // --- Friend APIs ---
 
 export interface FriendRequest {
-  id: number
-  user_id: number
-  friend_id: number
+  id: string
+  user_id: string
+  friend_id: string
   friend_username: string
   status: 'pending' | 'accepted' | 'blocked'
   created_at: string
@@ -63,12 +63,12 @@ export async function listFriendRequests(): Promise<FriendRequest[]> {
   return res.data.data
 }
 
-export async function acceptRequest(id: number): Promise<Conversation> {
+export async function acceptRequest(id: string): Promise<Conversation> {
   const res = await api.put(`/im/friends/requests/${id}/accept`)
   return res.data.data
 }
 
-export async function rejectRequest(id: number): Promise<void> {
+export async function rejectRequest(id: string): Promise<void> {
   await api.put(`/im/friends/requests/${id}/reject`)
 }
 
@@ -77,6 +77,6 @@ export async function listFriends(): Promise<FriendRequest[]> {
   return res.data.data
 }
 
-export async function removeFriend(friendId: number): Promise<void> {
+export async function removeFriend(friendId: string): Promise<void> {
   await api.delete(`/im/friends/${friendId}`)
 }

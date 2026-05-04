@@ -5,7 +5,7 @@ import { useFileStore } from '../stores/fileStore'
 
 interface Props {
   open: boolean
-  targetDirId: number
+  targetDirId: string
   targetDirName: string
   onClose: () => void
 }

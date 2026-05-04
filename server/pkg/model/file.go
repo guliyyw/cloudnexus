@@ -4,10 +4,10 @@ import "time"
 
 type File struct {
 	BaseModel
-	UserID        uint64 `json:"user_id" gorm:"not null;index"`
+	UserID        uint64 `json:"user_id,string" gorm:"not null;index"`
 	Name          string `json:"name" gorm:"not null;size:255"`
 	IsDir         bool   `json:"is_dir" gorm:"default:false"`
-	ParentID      uint64 `json:"parent_id" gorm:"default:0;index"`
+	ParentID      uint64 `json:"parent_id,string" gorm:"default:0;index"`
 	Size          int64  `json:"size" gorm:"default:0"`
 	MimeType      string `json:"mime_type" gorm:"size:128"`
 	StorageKey    string `json:"storage_key" gorm:"size:512"`
@@ -17,9 +17,9 @@ type File struct {
 }
 
 type FileShare struct {
-	ID            uint64     `json:"id" gorm:"primaryKey"`
-	FileID        uint64     `json:"file_id" gorm:"not null"`
-	OwnerID       uint64     `json:"owner_id" gorm:"not null"`
+	ID            uint64     `json:"id,string" gorm:"primaryKey"`
+	FileID        uint64     `json:"file_id,string" gorm:"not null"`
+	OwnerID       uint64     `json:"owner_id,string" gorm:"not null"`
 	ShareCode     string     `json:"share_code" gorm:"uniqueIndex;not null;size:32"`
 	Password      string     `json:"-" gorm:"size:255"`
 	ExpiresAt     *time.Time `json:"expires_at"`

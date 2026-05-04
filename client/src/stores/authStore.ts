@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import api from '../services/api'
 
 interface User {
-  id: number
+  id: string
   username: string
   email: string
   avatar: string

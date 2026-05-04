@@ -12,8 +12,8 @@ type User struct {
 }
 
 type RefreshToken struct {
-	ID        uint64    `json:"id" gorm:"primaryKey"`
-	UserID    uint64    `json:"user_id" gorm:"not null;index"`
+	ID        uint64    `json:"id,string" gorm:"primaryKey"`
+	UserID    uint64    `json:"user_id,string" gorm:"not null;index"`
 	Token     string    `json:"token" gorm:"uniqueIndex;not null;size:512"`
 	ExpiresAt time.Time `json:"expires_at" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at"`

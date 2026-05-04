@@ -52,7 +52,7 @@ func (h *IMHandler) HandleGetConversations(c *gin.Context) {
 type createConvReq struct {
 	Type      string   `json:"type" binding:"required"`
 	Name      string   `json:"name"`
-	MemberIDs []uint64 `json:"member_ids" binding:"required"`
+	MemberIDs []string `json:"member_ids" binding:"required"`
 }
 
 func (h *IMHandler) HandleCreateConversation(c *gin.Context) {
@@ -64,7 +64,12 @@ func (h *IMHandler) HandleCreateConversation(c *gin.Context) {
 	}
 
 	if req.Type == "private" && len(req.MemberIDs) > 0 {
-		conv, err := h.svc.CreatePrivateConversation(userID, req.MemberIDs[0])
+		targetID, err := strconv.ParseUint(req.MemberIDs[0], 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
+			return
+		}
+		conv, err := h.svc.CreatePrivateConversation(userID, targetID)
 		if err != nil {
 			handleError(c, err)
 			return

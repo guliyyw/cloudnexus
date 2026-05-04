@@ -17,7 +17,7 @@ import type { FriendRequest } from '../services/chat'
 
 const { Text } = Typography
 
-function getFriendUserId(f: FriendRequest, myId: number): number {
+function getFriendUserId(f: FriendRequest, myId: string): string {
   return f.user_id === myId ? f.friend_id : f.user_id
 }
 
@@ -70,7 +70,7 @@ export default function ChatPage() {
     setInputText('')
   }
 
-  const handleStartChat = async (friendId: number) => {
+  const handleStartChat = async (friendId: string) => {
     await createConv(friendId)
     setFriendModalVisible(false)
     message.success('会话已打开')

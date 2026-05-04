@@ -1,11 +1,11 @@
 import api from './api'
 
 export interface FileItem {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   name: string
   is_dir: boolean
-  parent_id: number
+  parent_id: string
   size: number
   mime_type: string
   storage_key: string
@@ -22,7 +22,7 @@ export interface FileListResponse {
   page_size: number
 }
 
-export async function getFileList(parentId: number, page: number, pageSize: number): Promise<FileListResponse> {
+export async function getFileList(parentId: string, page: number, pageSize: number): Promise<FileListResponse> {
   const res = await api.get('/file/list', { params: { parent_id: parentId, page, page_size: pageSize } })
   return res.data.data
 }
@@ -34,22 +34,22 @@ export interface BatchUploadResult {
   ok: number
 }
 
-export async function uploadFile(file: File, parentId: number): Promise<FileItem> {
+export async function uploadFile(file: File, parentId: string): Promise<FileItem> {
   const form = new FormData()
   form.append('file', file)
-  form.append('parent_id', String(parentId))
+  form.append('parent_id', parentId)
   const res = await api.post('/file/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   return res.data.data
 }
 
 export async function uploadFiles(
   files: File[],
-  parentId: number,
+  parentId: string,
   onProgress?: (percent: number) => void,
 ): Promise<BatchUploadResult> {
   const form = new FormData()
   files.forEach((f) => form.append('file', f))
-  form.append('parent_id', String(parentId))
+  form.append('parent_id', parentId)
   const res = await api.post('/file/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (e) => {
@@ -61,11 +61,11 @@ export async function uploadFiles(
   return res.data.data
 }
 
-export async function deleteFile(id: number): Promise<void> {
+export async function deleteFile(id: string): Promise<void> {
   await api.delete(`/file/${id}`)
 }
 
-export async function createDirectory(name: string, parentId: number): Promise<FileItem> {
+export async function createDirectory(name: string, parentId: string): Promise<FileItem> {
   const res = await api.post('/file/mkdir', { name, parent_id: parentId })
   return res.data.data
 }
@@ -79,13 +79,13 @@ function getToken(): string {
   try { return localStorage.getItem('access_token') || '' } catch { return '' }
 }
 
-export function getDownloadUrl(id: number): string {
+export function getDownloadUrl(id: string): string {
   const token = getToken()
   const sep = token ? `?token=${token}` : ''
   return `/api/v1/file/download/${id}${sep}`
 }
 
-export function getPreviewUrl(id: number): string {
+export function getPreviewUrl(id: string): string {
   const token = getToken()
   const sep = token ? `?inline=true&token=${token}` : '?inline=true'
   return `/api/v1/file/download/${id}${sep}`

@@ -2,15 +2,15 @@ import { useEffect, useRef } from 'react'
 
 interface WSMessage {
   type: string
-  id?: number
-  conversation_id?: number
-  sender_id?: number
+  id?: string
+  conversation_id?: string
+  sender_id?: string
   content?: string
   msg_type?: string
   status?: string
-  user_id?: number
+  user_id?: string
   created_at?: string
-  msg_id?: number
+  msg_id?: string
 }
 
 type MessageHandler = (msg: WSMessage) => void
@@ -24,7 +24,7 @@ export function useWebSocket(handler: MessageHandler) {
     if (!token) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = import.meta.env.DEV ? 'localhost:8082' : window.location.host
+    const host = window.location.host
     const url = `${protocol}//${host}/ws?token=${token}`
 
     wsRef.current = new WebSocket(url)
@@ -45,10 +45,6 @@ export function useWebSocket(handler: MessageHandler) {
 
     wsRef.current.onclose = () => {
       clearInterval(pingRef.current)
-      // Reconnect after 3s
-      setTimeout(() => {
-        // Clean reconnect would re-invoke the effect
-      }, 3000)
     }
 
     return () => {

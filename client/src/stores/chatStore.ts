@@ -4,16 +4,16 @@ import type { Conversation, Message } from '../services/chat'
 
 interface ChatState {
   conversations: Conversation[]
-  currentConvId: number | null
+  currentConvId: string | null
   messages: Message[]
   loading: boolean
 
   fetchConversations: () => Promise<void>
-  createConv: (targetUserId: number) => Promise<void>
-  selectConv: (id: number) => void
-  fetchMessages: (convId: number, before?: number) => Promise<void>
+  createConv: (targetUserId: string) => Promise<void>
+  selectConv: (id: string) => void
+  fetchMessages: (convId: string, before?: string) => Promise<void>
   addMessage: (msg: Message) => void
-  deleteConversation: (id: number) => Promise<void>
+  deleteConversation: (id: string) => Promise<void>
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -32,19 +32,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  createConv: async (targetUserId: number) => {
+  createConv: async (targetUserId: string) => {
     const conv = await chatApi.createConversation('private', [targetUserId])
     await get().fetchConversations()
     set({ currentConvId: conv.id })
     get().fetchMessages(conv.id)
   },
 
-  selectConv: (id: number) => {
+  selectConv: (id: string) => {
     set({ currentConvId: id, messages: [] })
     get().fetchMessages(id)
   },
 
-  fetchMessages: async (convId: number, before?: number) => {
+  fetchMessages: async (convId: string, before?: string) => {
     const msgs = await chatApi.getMessages(convId, before, 50)
     set((state) => ({
       messages: before ? [...msgs, ...state.messages] : msgs,
@@ -59,7 +59,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
-  deleteConversation: async (id: number) => {
+  deleteConversation: async (id: string) => {
     await chatApi.deleteConversation(id)
     const state = get()
     if (state.currentConvId === id) {

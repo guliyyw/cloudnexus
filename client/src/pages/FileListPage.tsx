@@ -54,9 +54,9 @@ export default function FileListPage() {
   const [mkdirName, setMkdirName] = useState('')
   const [searchValue, setSearchValue] = useState('')
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
-  const [uploadTargetDir, setUploadTargetDir] = useState({ id: 0, name: '根目录' })
+  const [uploadTargetDir, setUploadTargetDir] = useState({ id: '0', name: '根目录' })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
-  const [dropDirId, setDropDirId] = useState<number | null>(null)
+  const [dropDirId, setDropDirId] = useState<string | null>(null)
 
   useEffect(() => { fetchFiles() }, [])
 
@@ -67,7 +67,7 @@ export default function FileListPage() {
     setUploadModalOpen(true)
   }
 
-  const handleDirDragOver = (e: React.DragEvent, dirId: number) => {
+  const handleDirDragOver = (e: React.DragEvent, dirId: string) => {
     e.preventDefault()
     e.stopPropagation()
     e.dataTransfer.dropEffect = 'copy'
@@ -80,7 +80,7 @@ export default function FileListPage() {
     setDropDirId(null)
   }
 
-  const handleDirDrop = (e: React.DragEvent, dirId: number, dirName: string) => {
+  const handleDirDrop = (e: React.DragEvent, dirId: string, dirName: string) => {
     e.preventDefault()
     e.stopPropagation()
     setDropDirId(null)

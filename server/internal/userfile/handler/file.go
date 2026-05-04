@@ -115,7 +115,7 @@ func (h *FileHandler) HandleDelete(c *gin.Context) {
 
 type mkdirReq struct {
 	Name     string `json:"name" binding:"required"`
-	ParentID uint64 `json:"parent_id"`
+	ParentID uint64 `json:"parent_id,string"`
 }
 
 func (h *FileHandler) HandleMkdir(c *gin.Context) {

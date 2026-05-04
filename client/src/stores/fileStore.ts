@@ -7,18 +7,18 @@ interface FileState {
   total: number
   page: number
   pageSize: number
-  currentParentId: number
-  breadcrumb: { id: number; name: string }[]
+  currentParentId: string
+  breadcrumb: { id: string; name: string }[]
   loading: boolean
   searchMode: boolean
   searchKeyword: string
 
-  fetchFiles: (parentId?: number, page?: number) => Promise<void>
-  upload: (files: File[], parentId?: number, onProgress?: (pct: number) => void) => Promise<fileApi.BatchUploadResult>
-  remove: (id: number) => Promise<void>
+  fetchFiles: (parentId?: string, page?: number) => Promise<void>
+  upload: (files: File[], parentId?: string, onProgress?: (pct: number) => void) => Promise<fileApi.BatchUploadResult>
+  remove: (id: string) => Promise<void>
   mkdir: (name: string) => Promise<void>
   search: (keyword: string) => Promise<void>
-  navigateTo: (parentId: number, name: string) => void
+  navigateTo: (parentId: string, name: string) => void
   setPage: (page: number) => void
 }
 
@@ -27,13 +27,13 @@ export const useFileStore = create<FileState>((set, get) => ({
   total: 0,
   page: 1,
   pageSize: 20,
-  currentParentId: 0,
-  breadcrumb: [{ id: 0, name: '根目录' }],
+  currentParentId: '0',
+  breadcrumb: [{ id: '0', name: '根目录' }],
   loading: false,
   searchMode: false,
   searchKeyword: '',
 
-  fetchFiles: async (parentId?: number, page?: number) => {
+  fetchFiles: async (parentId?: string, page?: number) => {
     const state = get()
     const pid = parentId ?? state.currentParentId
     const pg = page ?? 1
@@ -46,7 +46,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     }
   },
 
-  upload: async (files: File[], parentId?: number, onProgress?: (pct: number) => void) => {
+  upload: async (files: File[], parentId?: string, onProgress?: (pct: number) => void) => {
     const state = get()
     const pid = parentId ?? state.currentParentId
     const result = await fileApi.uploadFiles(files, pid, onProgress)
@@ -57,7 +57,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     return result
   },
 
-  remove: async (id: number) => {
+  remove: async (id: string) => {
     await fileApi.deleteFile(id)
     await get().fetchFiles()
   },
@@ -82,7 +82,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     }
   },
 
-  navigateTo: (parentId: number, name: string) => {
+  navigateTo: (parentId: string, name: string) => {
     const state = get()
     const idx = state.breadcrumb.findIndex((b) => b.id === parentId)
     if (idx >= 0) {

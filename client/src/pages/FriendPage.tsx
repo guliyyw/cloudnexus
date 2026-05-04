@@ -53,12 +53,12 @@ export default function FriendPage() {
     }
   }
 
-  const handleAccept = async (id: number) => {
+  const handleAccept = async (id: string) => {
     await acceptRequest(id)
     message.success('已接受好友请求')
   }
 
-  const handleReject = async (id: number) => {
+  const handleReject = async (id: string) => {
     await rejectRequest(id)
     message.success('已拒绝')
   }
@@ -74,12 +74,12 @@ export default function FriendPage() {
     }
   }
 
-  const handleRemoveFriend = async (friendId: number) => {
+  const handleRemoveFriend = async (friendId: string) => {
     await removeFriend(friendId)
     message.success('已删除好友')
   }
 
-  const getFriendDisplayId = (f: FriendRequest): number => {
+  const getFriendDisplayId = (f: FriendRequest): string => {
     return f.user_id === user!.id ? f.friend_id : f.user_id
   }
 
