@@ -1,17 +1,17 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Table, Button, Upload, Modal, Input, Breadcrumb, Popconfirm,
+  Table, Button, Modal, Input, Breadcrumb, Popconfirm,
   Space, message, Tag, Typography, Tooltip,
 } from 'antd'
 import {
   FolderAddOutlined, SearchOutlined,
   DeleteOutlined, DownloadOutlined, FolderOutlined,
-  FileOutlined, HomeOutlined, ReloadOutlined,
+  FileOutlined, HomeOutlined, ReloadOutlined, UploadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined,
-  InboxOutlined, CloudUploadOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
+import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
@@ -47,18 +47,47 @@ function formatSize(bytes: number): string {
 export default function FileListPage() {
   const {
     files, total, page, pageSize, breadcrumb, loading, searchMode, searchKeyword,
-    fetchFiles, upload, remove, mkdir, search, navigateTo, setPage,
+    fetchFiles, remove, mkdir, search, navigateTo, setPage, currentParentId,
   } = useFileStore()
 
   const [mkdirVisible, setMkdirVisible] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
   const [searchValue, setSearchValue] = useState('')
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadTargetDir, setUploadTargetDir] = useState({ id: 0, name: '根目录' })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
-  const uploadRef = useRef<any>(null)
+  const [dropDirId, setDropDirId] = useState<number | null>(null)
 
   useEffect(() => { fetchFiles() }, [])
+
+  // Open upload modal, optionally targeting a specific directory
+  const openUploadModal = (dirId = currentParentId, dirName?: string) => {
+    const name = dirName || breadcrumb.find((b) => b.id === dirId)?.name || '根目录'
+    setUploadTargetDir({ id: dirId, name })
+    setUploadModalOpen(true)
+  }
+
+  const handleDirDragOver = (e: React.DragEvent, dirId: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropDirId(dirId)
+  }
+
+  const handleDirDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropDirId(null)
+  }
+
+  const handleDirDrop = (e: React.DragEvent, dirId: number, dirName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDropDirId(null)
+    if (e.dataTransfer.files.length > 0) {
+      openUploadModal(dirId, dirName)
+    }
+  }
 
   const columns: ColumnsType<FileItem> = [
     {
@@ -67,7 +96,20 @@ export default function FileListPage() {
         <Space>
           {getFileIcon(record.mime_type, record.is_dir)}
           {record.is_dir ? (
-            <a onClick={() => navigateTo(record.id, record.name)}>{name}</a>
+            <a
+              onClick={() => navigateTo(record.id, record.name)}
+              onDragOver={(e) => handleDirDragOver(e, record.id)}
+              onDragLeave={handleDirDragLeave}
+              onDrop={(e) => handleDirDrop(e, record.id, record.name)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 4,
+                background: dropDirId === record.id ? '#e6f4ff' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+              }}
+            >
+              {name}
+            </a>
           ) : isPreviewable(record.mime_type) ? (
             <a onClick={() => setPreviewFile(record)}>{name}</a>
           ) : (
@@ -92,6 +134,12 @@ export default function FileListPage() {
       title: '操作', key: 'actions', width: 120,
       render: (_: any, record: FileItem) => (
         <Space>
+          {record.is_dir && (
+            <Tooltip title="上传到此处">
+              <Button type="link" size="small" icon={<UploadOutlined />}
+                onClick={() => openUploadModal(record.id, record.name)} />
+            </Tooltip>
+          )}
           {!record.is_dir && isPreviewable(record.mime_type) && (
             <Tooltip title="预览">
               <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setPreviewFile(record)} />
@@ -114,53 +162,15 @@ export default function FileListPage() {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <Space>
-          <Upload.Dragger
-            ref={uploadRef}
-            multiple
-            showUploadList={true}
-            fileList={selectedFiles.map((f, i) => ({
-              uid: `${i}-${f.name}`,
-              name: f.name,
-              size: f.size,
-              status: 'done' as const,
-            }))}
-            beforeUpload={(file) => {
-              setSelectedFiles((prev) => [...prev, file])
-              return false
-            }}
-            onRemove={(f) => {
-              setSelectedFiles((prev) => prev.filter((_, i) => `${i}-${prev[i].name}` !== f.uid))
-            }}
-            style={{ marginBottom: 8 }}
-          >
-            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-            <p className="ant-upload-text">点击或拖拽文件到此区域</p>
-            <p className="ant-upload-hint">支持单个或批量上传</p>
-          </Upload.Dragger>
-          {selectedFiles.length > 0 && (
-            <Button
-              type="primary"
-              icon={<CloudUploadOutlined />}
-              loading={uploading}
-              onClick={async () => {
-                setUploading(true)
-                try {
-                  await upload(selectedFiles)
-                  setSelectedFiles([])
-                  message.success(`上传完成`)
-                } catch {
-                  message.error('上传失败')
-                } finally {
-                  setUploading(false)
-                }
-              }}
-              block
-            >
-              上传 ({selectedFiles.length})
-            </Button>
-          )}
+          <Button type="primary" icon={<UploadOutlined />}
+            onClick={() => openUploadModal()}>
+            上传文件
+          </Button>
           <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
           <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
+          <Text type="secondary" style={{ marginLeft: 8 }}>
+            拖拽文件到目录名即可上传到该目录
+          </Text>
         </Space>
         <Space>
           <Input.Search
@@ -204,6 +214,18 @@ export default function FileListPage() {
           showSizeChanger: false,
         }}
         size="middle"
+        onRow={(record) => {
+          if (!record.is_dir) return {}
+          return {
+            onDragOver: (e) => handleDirDragOver(e, record.id),
+            onDragLeave: handleDirDragLeave,
+            onDrop: (e) => handleDirDrop(e, record.id, record.name),
+            style: {
+              background: dropDirId === record.id ? '#e6f4ff' : undefined,
+              outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+            },
+          }
+        }}
       />
 
       <Modal
@@ -221,6 +243,13 @@ export default function FileListPage() {
       >
         <Input placeholder="目录名称" value={mkdirName} onChange={(e) => setMkdirName(e.target.value)} />
       </Modal>
+
+      <UploadModal
+        open={uploadModalOpen}
+        targetDirId={uploadTargetDir.id}
+        targetDirName={uploadTargetDir.name}
+        onClose={() => setUploadModalOpen(false)}
+      />
 
       <PreviewModal
         file={previewFile}

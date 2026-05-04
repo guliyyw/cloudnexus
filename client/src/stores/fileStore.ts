@@ -14,7 +14,7 @@ interface FileState {
   searchKeyword: string
 
   fetchFiles: (parentId?: number, page?: number) => Promise<void>
-  upload: (files: File[]) => Promise<void>
+  upload: (files: File[], parentId?: number, onProgress?: (pct: number) => void) => Promise<fileApi.BatchUploadResult>
   remove: (id: number) => Promise<void>
   mkdir: (name: string) => Promise<void>
   search: (keyword: string) => Promise<void>
@@ -46,13 +46,15 @@ export const useFileStore = create<FileState>((set, get) => ({
     }
   },
 
-  upload: async (files: File[]) => {
+  upload: async (files: File[], parentId?: number, onProgress?: (pct: number) => void) => {
     const state = get()
-    const result = await fileApi.uploadFiles(files, state.currentParentId)
+    const pid = parentId ?? state.currentParentId
+    const result = await fileApi.uploadFiles(files, pid, onProgress)
     if (result.errors.length > 0) {
       console.warn('部分文件上传失败:', result.errors)
     }
     await get().fetchFiles()
+    return result
   },
 
   remove: async (id: number) => {
