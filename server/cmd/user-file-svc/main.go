@@ -145,6 +145,7 @@ func main() {
 			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
 			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)
 			admin.GET("/logs", systemH.HandleLogs)
+			admin.GET("/logs/services", systemH.HandleLogServices)
 			admin.GET("/logs/files", systemH.HandleLogFiles)
 			admin.GET("/logs/download", systemH.HandleLogDownload)
 			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)

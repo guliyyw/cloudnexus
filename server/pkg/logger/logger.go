@@ -1,10 +1,13 @@
 package logger
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,6 +112,8 @@ type LogEntry struct {
 	Message   string    `json:"message"`
 	Caller    string    `json:"caller,omitempty"`
 	Service   string    `json:"service,omitempty"`
+	Method    string    `json:"method,omitempty"`
+	Path      string    `json:"path,omitempty"`
 	RequestID string    `json:"request_id,omitempty"`
 	UserID    string    `json:"user_id,omitempty"`
 	Stack     string    `json:"stack,omitempty"`
@@ -160,7 +165,6 @@ func (c *ringBufCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		Stack:     entry.Stack,
 	}
 
-	// Extract request_id and user_id from structured fields
 	for _, f := range fields {
 		switch f.Key {
 		case "request_id":
@@ -169,6 +173,10 @@ func (c *ringBufCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 			if f.Integer >= 0 {
 				le.UserID = fmt.Sprintf("%d", f.Integer)
 			}
+		case "method":
+			le.Method = f.String
+		case "path":
+			le.Path = f.String
 		}
 	}
 
@@ -181,7 +189,7 @@ func (c *ringBufCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 func (c *ringBufCore) Sync() error { return nil }
 
-func QueryLogs(level string, limit int) []LogEntry {
+func QueryLogs(level, requestID, userID string, limit int) []LogEntry {
 	ringMu.Lock()
 	defer ringMu.Unlock()
 
@@ -193,6 +201,12 @@ func QueryLogs(level string, limit int) []LogEntry {
 			continue
 		}
 		if level != "" && level != e.Level {
+			continue
+		}
+		if requestID != "" && requestID != e.RequestID {
+			continue
+		}
+		if userID != "" && userID != e.UserID {
 			continue
 		}
 		result = append(result, e)
@@ -357,4 +371,81 @@ func GetLogFilePath(date, service string) string {
 		return ""
 	}
 	return filepath.Join(logDir, date, service+".log")
+}
+
+// ReadLogFile reads up to `limit` most recent log entries from the daily log file
+// for the given service and date, returning entries in reverse chronological order.
+func ReadLogFile(service, date string, limit int) []LogEntry {
+	if logDir == "" || service == "" {
+		return []LogEntry{}
+	}
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+
+	filePath := filepath.Join(logDir, date, service+".log")
+	f, err := os.Open(filePath)
+	if err != nil {
+		return []LogEntry{}
+	}
+	defer f.Close()
+
+	var allLines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for sc.Scan() {
+		allLines = append(allLines, sc.Text())
+	}
+
+	// Take last `limit` lines only
+	if len(allLines) > limit {
+		allLines = allLines[len(allLines)-limit:]
+	}
+
+	result := make([]LogEntry, 0, limit)
+	for i := len(allLines) - 1; i >= 0; i-- {
+		var entry LogEntry
+		if err := json.Unmarshal([]byte(allLines[i]), &entry); err == nil {
+			result = append(result, entry)
+			if len(result) >= limit {
+				break
+			}
+		}
+	}
+	return result
+}
+
+// ListLogServices returns distinct service names found in today's log directory.
+func ListLogServices() []string {
+	if logDir == "" {
+		return []string{}
+	}
+	today := time.Now().Format("2006-01-02")
+	dir := filepath.Join(logDir, today)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{}
+	}
+	seen := make(map[string]bool)
+	uniq := make([]string, 0)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		svc := strings.TrimSuffix(name, ".log")
+		if idx := strings.LastIndex(svc, "."); idx != -1 {
+			// Strip numbered suffix like ".1" from split files
+			base := svc[:idx]
+			if _, err := fmt.Sscanf(svc[idx:], ".%d", new(int)); err == nil {
+				svc = base
+			}
+		}
+		if !seen[svc] {
+			seen[svc] = true
+			uniq = append(uniq, svc)
+		}
+	}
+	sort.Strings(uniq)
+	return uniq
 }

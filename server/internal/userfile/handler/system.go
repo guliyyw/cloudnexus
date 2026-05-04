@@ -82,12 +82,28 @@ func (h *SystemHandler) HandleMetrics(c *gin.Context) {
 
 func (h *SystemHandler) HandleLogs(c *gin.Context) {
 	level := c.DefaultQuery("level", "")
+	requestID := c.DefaultQuery("request_id", "")
+	userID := c.DefaultQuery("user_id", "")
+	service := c.DefaultQuery("service", "")
 	limit := 200
-	logs := logger.QueryLogs(level, limit)
+
+	var logs []logger.LogEntry
+	if service != "" {
+		date := c.DefaultQuery("date", "")
+		logs = logger.ReadLogFile(service, date, limit)
+	} else {
+		logs = logger.QueryLogs(level, requestID, userID, limit)
+	}
 	if logs == nil {
 		logs = []logger.LogEntry{}
 	}
 	c.JSON(200, response.OKWithData(gin.H{"logs": logs, "total": len(logs)}))
+}
+
+// HandleLogServices returns available service names from log files.
+func (h *SystemHandler) HandleLogServices(c *gin.Context) {
+	services := logger.ListLogServices()
+	c.JSON(200, response.OKWithData(gin.H{"services": services}))
 }
 
 // HandleLogFiles returns a list of available log date directories with sizes.
