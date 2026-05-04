@@ -186,10 +186,9 @@ func (h *FileHandler) HandleBatchDownload(c *gin.Context) {
 	pr, pw := io.Pipe()
 	go func() {
 		zw := zip.NewWriter(pw)
-		defer zw.Close()
-		defer pw.Close()
-
 		seen := make(map[string]int)
+		var copyErr error
+
 		for _, id := range ids {
 			stream, file, err := h.svc.Download(userID, id)
 			if err != nil {
@@ -210,8 +209,19 @@ func (h *FileHandler) HandleBatchDownload(c *gin.Context) {
 				continue
 			}
 
-			io.Copy(fw, stream)
+			if _, err := io.Copy(fw, stream); err != nil {
+				copyErr = err
+			}
 			stream.Close()
+		}
+
+		if err := zw.Close(); err != nil && copyErr == nil {
+			copyErr = err
+		}
+		if copyErr != nil {
+			pw.CloseWithError(copyErr)
+		} else {
+			pw.Close()
 		}
 	}()
 
