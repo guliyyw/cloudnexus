@@ -1,6 +1,6 @@
 # CloudNexus API 接口文档
 
-> 版本：v0.6.0 | 更新：2026-05-04
+> 版本：v0.7.0 | 更新：2026-05-04
 
 ## 通用约定
 
@@ -256,6 +256,44 @@
   "message": "deleted"
 }
 ```
+
+#### POST /api/v1/file/batch-delete
+
+批量删除文件 (需认证)。
+
+**请求体：**
+```json
+{
+  "ids": ["100", "101", "102"]
+}
+```
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "deleted": 3,
+    "errors": []
+  }
+}
+```
+
+#### POST /api/v1/file/batch-download
+
+批量下载文件，打包为 ZIP (需认证)。
+
+**请求体：**
+```json
+{
+  "ids": ["100", "101"]
+}
+```
+
+**响应 (200)：** 返回 `application/zip` 文件流，`Content-Disposition: attachment; filename="files-20260504.zip"`。
+
+> 注意：下载多个大文件时服务端流式打包，不使用内存缓冲，避免 OOM。
 
 #### POST /api/v1/file/mkdir
 
@@ -700,6 +738,160 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 
 ---
 
+## 四、管理后台 (需管理员权限)
+
+> 所有管理后台接口需要管理员角色，由 `AdminRequired` 中间件校验。
+> 管理员通过 `users` 表中 `role` 字段标识（`user` / `admin`）。
+
+### 4.1 系统状态
+
+#### GET /api/v1/admin/stats
+
+获取系统运行状态概览 (需管理员)。
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "services": {
+      "user-file-svc": "healthy",
+      "im-svc": "healthy",
+      "docker-svc": "healthy"
+    },
+    "online_users": 5,
+    "total_users": 32,
+    "total_files": 128,
+    "total_conversations": 15,
+    "db_connections": 8,
+    "redis_latency_ms": 2,
+    "uptime_seconds": 86400
+  }
+}
+```
+
+#### GET /api/v1/admin/stats/history
+
+获取历史统计指标 (需管理员)。
+
+**查询参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| from | string | 起始时间 (ISO 8601) |
+| to | string | 结束时间 (ISO 8601) |
+| interval | string | 聚合间隔，默认 1h |
+
+### 4.2 服务日志
+
+#### GET /api/v1/admin/logs
+
+查看服务日志 (需管理员)。
+
+**查询参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| service | string | 服务名：user-file-svc / im-svc / docker-svc |
+| level | string | 日志级别过滤：debug / info / warn / error |
+| keyword | string | 关键词搜索 |
+| from | string | 起始时间 (ISO 8601) |
+| to | string | 结束时间 (ISO 8601) |
+| page | int | 页码，默认 1 |
+| page_size | int | 每页数量，默认 50，最大 200 |
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "ts": "2026-05-04T17:00:00.000Z",
+        "level": "error",
+        "service": "im-svc",
+        "msg": "websocket write failed",
+        "request_id": "uuid-xxx",
+        "user_id": "2051225055077076992"
+      }
+    ],
+    "total": 42,
+    "page": 1,
+    "page_size": 50
+  }
+}
+```
+
+#### GET /api/v1/admin/logs/export
+
+导出日志 (需管理员)。参数同查询，返回文本流。
+
+### 4.3 用户管理
+
+#### GET /api/v1/admin/users
+
+列出所有用户 (需管理员)。
+
+**查询参数：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| page | int | 页码 |
+| page_size | int | 每页数量 |
+| status | int | 状态过滤：1=正常, 0=禁用 |
+| keyword | string | 用户名/邮箱搜索 |
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "id": "2051225055077076992",
+        "username": "testuser1",
+        "email": "test1@test.com",
+        "status": 1,
+        "role": "user",
+        "created_at": "2026-05-04T09:12:00Z",
+        "last_login_at": "2026-05-04T17:00:00Z"
+      }
+    ],
+    "total": 32,
+    "page": 1,
+    "page_size": 50
+  }
+}
+```
+
+#### PUT /api/v1/admin/users/:id/status
+
+启用/禁用用户 (需管理员)。
+
+**请求体：**
+```json
+{
+  "status": 0
+}
+```
+
+#### PUT /api/v1/admin/users/:id/role
+
+修改用户角色 (需管理员)。
+
+**请求体：**
+```json
+{
+  "role": "admin"
+}
+```
+
+---
+
 ## 健康检查
 
 所有服务提供统一健康检查端点：
@@ -716,6 +908,7 @@ GET /healthz → 200 OK
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v0.7.0 | 2026-05-04 | 新增文件批量删除/下载 API、管理后台 API（系统状态/日志/用户管理） |
 | v0.6.0 | 2026-05-04 | 全容器化部署 (Go 服务 + 前端 Docker 化)，仅 nginx 80 端口对外 |
 | v0.5.0 | 2026-05-04 | ID 类型安全 (Go json:,string + TS number→string)、Nginx Docker 统一入口 |
 | v0.3.0 | 2026-05-04 | JWT TTL 延长至8小时、批量上传/预览/会话删除/好友系统前后端联调完成 |
