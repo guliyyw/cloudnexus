@@ -100,12 +100,16 @@ export default function FileListPage() {
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
-        const result = await batchRemove(selectedRowKeys)
-        setSelectedRowKeys([])
-        if (result.errors.length > 0) {
-          message.warning(`部分删除失败: ${result.errors.join(', ')}`)
-        } else {
-          message.success(`已删除 ${result.deleted} 个文件`)
+        try {
+          const result = await batchRemove(selectedRowKeys)
+          setSelectedRowKeys([])
+          if (result.errors.length > 0) {
+            message.warning(`部分删除失败: ${result.errors.join(', ')}`)
+          } else {
+            message.success(`已删除 ${result.deleted} 个文件`)
+          }
+        } catch {
+          message.error('批量删除失败，请重试')
         }
       },
     })
