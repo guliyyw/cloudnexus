@@ -24,15 +24,21 @@ export const useFriendStore = create<FriendState>((set, get) => ({
     set({ loading: true })
     try {
       const friends = await chatApi.listFriends()
-      set({ friends })
+      set({ friends: Array.isArray(friends) ? friends : [] })
+    } catch {
+      set({ friends: [] })
     } finally {
       set({ loading: false })
     }
   },
 
   fetchPendingRequests: async () => {
-    const requests = await chatApi.listFriendRequests()
-    set({ pendingRequests: requests })
+    try {
+      const requests = await chatApi.listFriendRequests()
+      set({ pendingRequests: Array.isArray(requests) ? requests : [] })
+    } catch {
+      set({ pendingRequests: [] })
+    }
   },
 
   sendRequest: async (friendName: string) => {

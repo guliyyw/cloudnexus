@@ -181,7 +181,7 @@ export default function ChatPage() {
       <Card
         title={currentConv ? (currentConv.name || `会话 ${currentConv.id}`) : '选择一个会话'}
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-        bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0 }}
+        styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 } }}
       >
         {currentConvId ? (
           <>
