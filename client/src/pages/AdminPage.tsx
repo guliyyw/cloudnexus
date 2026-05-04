@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin } from 'antd'
-import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined } from '@ant-design/icons'
+import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin, Progress } from 'antd'
+import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import * as adminApi from '../services/admin'
-import type { AdminUser, SystemMetrics, LogEntry } from '../services/admin'
+import type { AdminUser, SystemMetrics, LogEntry, ResourceMetrics } from '../services/admin'
 
 const { Text } = Typography
 
@@ -115,13 +115,20 @@ function UserManagement() {
 
 function SystemStatus() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
+  const [resMetrics, setResMetrics] = useState<ResourceMetrics | null>(null)
   const [loading, setLoading] = useState(false)
 
   const fetchMetrics = useCallback(async () => {
     setLoading(true)
     try {
-      const m = await adminApi.getMetrics()
+      const [m, rm] = await Promise.all([
+        adminApi.getMetrics(),
+        adminApi.getResourceMetrics(),
+      ])
       setMetrics(m)
+      setResMetrics(rm)
+    } catch {
+      // resource metrics may not be available
     } finally {
       setLoading(false)
     }
@@ -140,6 +147,13 @@ function SystemStatus() {
     if (m > 0) parts.push(`${m}m`)
     parts.push(`${s}s`)
     return parts.join(' ')
+  }
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes < 0) return '—'
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB/s`
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB/s`
+    return `${bytes} B/s`
   }
 
   return (
@@ -166,12 +180,49 @@ function SystemStatus() {
             </Col>
           </Row>
 
-          <Descriptions bordered size="small" column={2}>
+          <Descriptions bordered size="small" column={2} style={{ marginBottom: 24 }}>
             <Descriptions.Item label="Go 版本">{metrics.go_version}</Descriptions.Item>
             <Descriptions.Item label="CPU 核心">{metrics.num_cpu}</Descriptions.Item>
             <Descriptions.Item label="堆系统内存">{metrics.heap_sys_mb} MB</Descriptions.Item>
             <Descriptions.Item label="栈内存">{metrics.stack_inuse_kb} KB</Descriptions.Item>
           </Descriptions>
+        </>
+      )}
+
+      {resMetrics && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <Text strong style={{ fontSize: 14 }}><CloudServerOutlined /> 服务器资源</Text>
+          </div>
+
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={6}>
+              <Card size="small">
+                <Statistic title="CPU 使用率" value={resMetrics.cpu_percent} suffix="%" precision={1} />
+                <Progress percent={resMetrics.cpu_percent} size="small" status={resMetrics.cpu_percent > 80 ? 'exception' : 'normal'} showInfo={false} />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small">
+                <Statistic title="内存" value={resMetrics.mem_percent} suffix="%" precision={1} />
+                <Progress percent={resMetrics.mem_percent} size="small" status={resMetrics.mem_percent > 80 ? 'exception' : 'normal'} showInfo={false} />
+                <Text type="secondary" style={{ fontSize: 11 }}>{resMetrics.mem_used_mb} / {resMetrics.mem_total_mb} MB</Text>
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small">
+                <Statistic title={`磁盘 ${resMetrics.disk_path}`} value={resMetrics.disk_percent} suffix="%" precision={1} />
+                <Progress percent={resMetrics.disk_percent} size="small" status={resMetrics.disk_percent > 80 ? 'exception' : 'normal'} showInfo={false} />
+                <Text type="secondary" style={{ fontSize: 11 }}>{resMetrics.disk_used_mb} / {resMetrics.disk_total_mb} MB</Text>
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small">
+                <Statistic title="网络 接收" value={formatBytes(resMetrics.net_bytes_recv)} />
+                <Text type="secondary" style={{ fontSize: 11 }}>发送: {formatBytes(resMetrics.net_bytes_sent)}</Text>
+              </Card>
+            </Col>
+          </Row>
         </>
       )}
     </Spin>

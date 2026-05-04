@@ -28,6 +28,21 @@ export interface SystemMetrics {
   num_cpu: number
 }
 
+export interface ResourceMetrics {
+  cpu_percent: number
+  mem_total_mb: number
+  mem_used_mb: number
+  mem_percent: number
+  disk_total_mb: number
+  disk_used_mb: number
+  disk_percent: number
+  disk_path: string
+  net_bytes_recv: number
+  net_bytes_sent: number
+  net_packets_recv: number
+  net_packets_sent: number
+}
+
 export interface LogEntry {
   timestamp: string
   level: string
@@ -57,5 +72,10 @@ export async function getMetrics(): Promise<SystemMetrics> {
 
 export async function getLogs(level?: string): Promise<{ logs: LogEntry[]; total: number }> {
   const res = await api.get('/admin/logs', { params: { level } })
+  return res.data.data
+}
+
+export async function getResourceMetrics(): Promise<ResourceMetrics> {
+  const res = await api.get('/admin/metrics/resources')
   return res.data.data
 }

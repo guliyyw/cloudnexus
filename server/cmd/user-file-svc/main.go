@@ -138,11 +138,13 @@ func main() {
 			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
 			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)
 			admin.GET("/logs", systemH.HandleLogs)
+			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)
 		}
 	}
 
 	r.GET("/healthz", systemH.HandleHealthz)
 	r.GET("/metrics", systemH.HandleMetrics)
+	r.GET("/metrics/resources", systemH.HandleResourceMetrics)
 
 	logger.Log.Info("user-file-svc starting", zap.Int("port", cfg.Server.Port))
 	if err := r.Run(":8081"); err != nil {
