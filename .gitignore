@@ -33,3 +33,6 @@ server/tmp/
 
 # Docker volumes
 deploy/data/
+
+# Screenshots
+screenshots/

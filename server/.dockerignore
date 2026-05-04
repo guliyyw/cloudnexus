@@ -1,0 +1,10 @@
+*.exe
+*.exe~
+*.test
+*.out
+bin/
+tmp/
+.git/
+.gitignore
+.vscode/
+.idea/
