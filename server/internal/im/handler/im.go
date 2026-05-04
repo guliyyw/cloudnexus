@@ -78,7 +78,104 @@ func (h *IMHandler) HandleCreateConversation(c *gin.Context) {
 		return
 	}
 
+	if req.Type == "group" {
+		memberIDs := make([]uint64, 0, len(req.MemberIDs))
+		for _, s := range req.MemberIDs {
+			id, err := strconv.ParseUint(s, 10, 64)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID: "+s))
+				return
+			}
+			memberIDs = append(memberIDs, id)
+		}
+		conv, err := h.svc.CreateGroupConversation(userID, req.Name, memberIDs)
+		if err != nil {
+			handleError(c, err)
+			return
+		}
+		c.JSON(http.StatusCreated, response.OKWithData(conv))
+		return
+	}
+
 	c.JSON(http.StatusBadRequest, response.Error(400, "不支持的会话类型"))
+}
+
+// --- Group handlers ---
+
+func (h *IMHandler) HandleGetGroupMembers(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	members, err := h.svc.GetGroupMembers(convID, userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(members))
+}
+
+type addMemberReq struct {
+	UserID string `json:"user_id" binding:"required"`
+}
+
+func (h *IMHandler) HandleAddGroupMember(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	var req addMemberReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	targetID, err := strconv.ParseUint(req.UserID, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户ID"))
+		return
+	}
+	if err := h.svc.AddGroupMember(userID, convID, targetID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("已添加"))
+}
+
+func (h *IMHandler) HandleRemoveGroupMember(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	targetID, err := strconv.ParseUint(c.Param("uid"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户ID"))
+		return
+	}
+	if err := h.svc.RemoveGroupMember(userID, convID, targetID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("已移除"))
+}
+
+func (h *IMHandler) HandleLeaveGroup(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	if err := h.svc.LeaveGroup(userID, convID); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("已退出群聊"))
 }
 
 // --- Friend handlers ---

@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   List, Input, Button, Card, Typography, Avatar,
-  message, Modal, Popconfirm, Space,
+  message, Modal, Popconfirm, Space, Checkbox, Divider,
 } from 'antd'
 import {
   SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
-  TeamOutlined,
+  TeamOutlined, UsergroupAddOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
@@ -25,13 +25,16 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const {
     conversations, currentConvId, messages, loading,
-    fetchConversations, createConv, selectConv, addMessage, deleteConversation,
+    fetchConversations, createConv, createGroup, selectConv, addMessage, deleteConversation,
   } = useChatStore()
   const { user } = useAuthStore()
   const { friends, fetchFriends } = useFriendStore()
 
   const [inputText, setInputText] = useState('')
   const [friendModalVisible, setFriendModalVisible] = useState(false)
+  const [groupModalVisible, setGroupModalVisible] = useState(false)
+  const [groupName, setGroupName] = useState('')
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,6 +79,22 @@ export default function ChatPage() {
     message.success('会话已打开')
   }
 
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      message.warning('请输入群名称')
+      return
+    }
+    if (selectedFriends.length === 0) {
+      message.warning('请至少选择一位好友')
+      return
+    }
+    await createGroup(groupName.trim(), selectedFriends)
+    setGroupModalVisible(false)
+    setGroupName('')
+    setSelectedFriends([])
+    message.success('群聊已创建')
+  }
+
   const currentConv = conversations.find((c) => c.id === currentConvId)
 
   return (
@@ -86,6 +105,8 @@ export default function ChatPage() {
         style={{ width: 280, display: 'flex', flexDirection: 'column' }}
         extra={
           <Space size={4}>
+            <Button type="text" icon={<UsergroupAddOutlined />} title="创建群聊"
+              onClick={() => setGroupModalVisible(true)} />
             <Button type="text" icon={<TeamOutlined />} title="好友管理"
               onClick={() => navigate('/friends')} />
             <Button type="text" icon={<PlusOutlined />}
@@ -108,7 +129,7 @@ export default function ChatPage() {
               onClick={() => selectConv(conv.id)}
             >
               <List.Item.Meta
-                avatar={<Avatar icon={<UserOutlined />} />}
+                avatar={<Avatar icon={conv.type === 'group' ? <TeamOutlined /> : <UserOutlined />} />}
                 title={conv.name || `会话 ${conv.id}`}
                 description={<Text type="secondary" ellipsis>{conv.type === 'private' ? '私聊' : '群聊'}</Text>}
               />
@@ -144,16 +165,26 @@ export default function ChatPage() {
             <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
               {messages.map((msg: Message) => (
                 <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: msg.sender_id === user?.id ? 'flex-end' : 'flex-start' }}>
-                  <Text type="secondary" style={{ fontSize: 12, marginBottom: 4 }}>
-                    {msg.sender_id === user?.id ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
-                  </Text>
-                  <div style={{
-                    maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
-                    background: '#e6f4ff',
-                    wordBreak: 'break-word',
-                  }}>
-                    {msg.content}
-                  </div>
+                  {msg.msg_type === 'system' ? (
+                    <div style={{ textAlign: 'center', width: '100%', marginBottom: 8 }}>
+                      <Text type="secondary" style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 12px', borderRadius: 8 }}>
+                        {msg.content}
+                      </Text>
+                    </div>
+                  ) : (
+                    <>
+                      <Text type="secondary" style={{ fontSize: 12, marginBottom: 4 }}>
+                        {msg.sender_id === user?.id ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
+                      </Text>
+                      <div style={{
+                        maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
+                        background: '#e6f4ff',
+                        wordBreak: 'break-word',
+                      }}>
+                        {msg.content}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               <div ref={messagesEndRef} />
@@ -210,6 +241,51 @@ export default function ChatPage() {
             )}
           />
         )}
+      </Modal>
+
+      {/* Group Creation Modal */}
+      <Modal
+        title="创建群聊"
+        open={groupModalVisible}
+        onCancel={() => { setGroupModalVisible(false); setGroupName(''); setSelectedFriends([]) }}
+        onOk={handleCreateGroup}
+        okText="创建"
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Input
+            placeholder="群名称"
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+          />
+          <Divider style={{ margin: 0 }} />
+          <Text strong>选择成员</Text>
+          {friends.length === 0 ? (
+            <Text type="secondary">暂无好友，请先添加好友</Text>
+          ) : (
+            <Checkbox.Group
+              style={{ width: '100%' }}
+              value={selectedFriends}
+              onChange={(values) => setSelectedFriends(values as string[])}
+            >
+              <List
+                dataSource={friends}
+                renderItem={(f) => {
+                  const fid = getFriendUserId(f, user!.id)
+                  return (
+                    <List.Item style={{ padding: '4px 0' }}>
+                      <Checkbox value={fid}>
+                        <Space>
+                          <Avatar icon={<UserOutlined />} size="small" />
+                          {f.friend_username || fid}
+                        </Space>
+                      </Checkbox>
+                    </List.Item>
+                  )
+                }}
+              />
+            </Checkbox.Group>
+          )}
+        </Space>
       </Modal>
     </div>
   )

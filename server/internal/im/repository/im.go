@@ -161,6 +161,12 @@ func (r *IMRepository) RemoveFriend(userID, friendID uint64) error {
 	).Where("status = 'accepted'").Delete(&model.Friend{}).Error
 }
 
+func (r *IMRepository) GetActiveMembers(convID uint64) ([]model.ConversationMember, error) {
+	var members []model.ConversationMember
+	err := r.db.Where("conversation_id = ? AND deleted_at IS NULL", convID).Find(&members).Error
+	return members, err
+}
+
 func (r *IMRepository) FindUserByUsername(username string) (*model.User, error) {
 	var user model.User
 	err := r.db.Where("username = ?", username).First(&user).Error

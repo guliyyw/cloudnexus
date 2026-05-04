@@ -25,9 +25,35 @@ export async function getConversations(): Promise<Conversation[]> {
   return res.data.data
 }
 
-export async function createConversation(type: string, memberIds: string[]): Promise<Conversation> {
-  const res = await api.post('/im/conversations', { type, member_ids: memberIds })
+export interface GroupMember {
+  id: string
+  conversation_id: string
+  user_id: string
+  role: string
+  last_read_seq: number
+  joined_at: string
+}
+
+export async function createConversation(type: string, memberIds: string[], name?: string): Promise<Conversation> {
+  const res = await api.post('/im/conversations', { type, member_ids: memberIds, name })
   return res.data.data
+}
+
+export async function getGroupMembers(convId: string): Promise<GroupMember[]> {
+  const res = await api.get(`/im/conversations/${convId}/members`)
+  return res.data.data
+}
+
+export async function addGroupMember(convId: string, userId: string): Promise<void> {
+  await api.post(`/im/conversations/${convId}/members`, { user_id: userId })
+}
+
+export async function removeGroupMember(convId: string, userId: string): Promise<void> {
+  await api.delete(`/im/conversations/${convId}/members/${userId}`)
+}
+
+export async function leaveGroup(convId: string): Promise<void> {
+  await api.post(`/im/conversations/${convId}/leave`)
 }
 
 export async function deleteConversation(id: string): Promise<void> {

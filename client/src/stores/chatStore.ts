@@ -10,6 +10,7 @@ interface ChatState {
 
   fetchConversations: () => Promise<void>
   createConv: (targetUserId: string) => Promise<void>
+  createGroup: (name: string, memberIds: string[]) => Promise<void>
   selectConv: (id: string) => void
   fetchMessages: (convId: string, before?: string) => Promise<void>
   addMessage: (msg: Message) => void
@@ -34,6 +35,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   createConv: async (targetUserId: string) => {
     const conv = await chatApi.createConversation('private', [targetUserId])
+    await get().fetchConversations()
+    set({ currentConvId: conv.id })
+    get().fetchMessages(conv.id)
+  },
+
+  createGroup: async (name: string, memberIds: string[]) => {
+    const conv = await chatApi.createConversation('group', memberIds, name)
     await get().fetchConversations()
     set({ currentConvId: conv.id })
     get().fetchMessages(conv.id)

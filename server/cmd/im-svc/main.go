@@ -79,6 +79,10 @@ func main() {
 			im.POST("/conversations", imH.HandleCreateConversation)
 			im.GET("/conversations/:id/messages", imH.HandleGetMessages)
 			im.DELETE("/conversations/:id", imH.HandleDeleteConversation)
+			im.GET("/conversations/:id/members", imH.HandleGetGroupMembers)
+			im.POST("/conversations/:id/members", imH.HandleAddGroupMember)
+			im.DELETE("/conversations/:id/members/:uid", imH.HandleRemoveGroupMember)
+			im.POST("/conversations/:id/leave", imH.HandleLeaveGroup)
 
 			friends := im.Group("/friends")
 			{

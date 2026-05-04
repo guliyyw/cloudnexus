@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/internal/im/repository"
@@ -165,6 +167,160 @@ func (s *IMService) GetMessages(conversationID, userID uint64, before uint64, li
 		limit = 50
 	}
 	return s.repo.FindMessages(conversationID, before, limit)
+}
+
+// --- Group chat methods ---
+
+func (s *IMService) CreateGroupConversation(creatorID uint64, name string, memberIDs []uint64) (*model.Conversation, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, apperrors.NewAppError(400, "群名称不能为空", apperrors.ErrBadRequest)
+	}
+
+	if len(memberIDs) == 0 {
+		return nil, apperrors.NewAppError(400, "请至少添加一位成员", apperrors.ErrBadRequest)
+	}
+
+	conv := &model.Conversation{
+		Type:      "group",
+		Name:      name,
+		CreatorID: creatorID,
+	}
+	if err := s.repo.CreateConversation(conv); err != nil {
+		return nil, apperrors.NewAppError(500, "创建群聊失败", err)
+	}
+
+	// Add creator as owner
+	s.repo.AddMember(&model.ConversationMember{
+		ConversationID: conv.ID,
+		UserID:         creatorID,
+		Role:           "owner",
+		JoinedAt:       time.Now(),
+	})
+
+	// Add other members
+	for _, uid := range memberIDs {
+		if uid == creatorID {
+			continue
+		}
+		s.repo.AddMember(&model.ConversationMember{
+			ConversationID: conv.ID,
+			UserID:         uid,
+			Role:           "member",
+			JoinedAt:       time.Now(),
+		})
+	}
+
+	// Send system message
+	s.sendSystemMessage(conv.ID, conv.LastMsgSeq+1, fmt.Sprintf("%s 创建了群聊", "群主"))
+	conv.LastMsgSeq++
+	s.repo.CreateConversation(conv) // update seq (hack: gorm save)
+
+	return conv, nil
+}
+
+func (s *IMService) GetGroupMembers(convID uint64, userID uint64) ([]model.ConversationMember, error) {
+	conv, err := s.repo.FindConversationByID(convID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "会话不存在", apperrors.ErrNotFound)
+	}
+	if conv.Type != "group" {
+		return nil, apperrors.NewAppError(400, "非群聊会话", apperrors.ErrBadRequest)
+	}
+
+	members, err := s.repo.GetActiveMembers(convID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "获取成员失败", err)
+	}
+
+	return members, nil
+}
+
+func (s *IMService) AddGroupMember(operatorID uint64, convID uint64, userID uint64) error {
+	members, err := s.repo.GetActiveMembers(convID)
+	if err != nil {
+		return apperrors.NewAppError(500, "查询成员失败", err)
+	}
+
+	// Check operator is member
+	isMember := false
+	for _, m := range members {
+		if m.UserID == operatorID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return apperrors.NewAppError(403, "你不是群成员", apperrors.ErrForbidden)
+	}
+
+	// Check user not already in group
+	for _, m := range members {
+		if m.UserID == userID {
+			return apperrors.NewAppError(409, "用户已在群中", apperrors.ErrConflict)
+		}
+	}
+
+	s.repo.AddMember(&model.ConversationMember{
+		ConversationID: convID,
+		UserID:         userID,
+		Role:           "member",
+		JoinedAt:       time.Now(),
+	})
+
+	return nil
+}
+
+func (s *IMService) RemoveGroupMember(operatorID uint64, convID uint64, targetID uint64) error {
+	members, err := s.repo.GetActiveMembers(convID)
+	if err != nil {
+		return apperrors.NewAppError(500, "查询成员失败", err)
+	}
+
+	// Check operator is member
+	isMember := false
+	for _, m := range members {
+		if m.UserID == operatorID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return apperrors.NewAppError(403, "你不是群成员", apperrors.ErrForbidden)
+	}
+
+	// Cannot remove yourself (use leave instead)
+	if operatorID == targetID {
+		return apperrors.NewAppError(400, "请使用退出群聊", apperrors.ErrBadRequest)
+	}
+
+	targetInGroup := false
+	for _, m := range members {
+		if m.UserID == targetID {
+			targetInGroup = true
+			break
+		}
+	}
+	if !targetInGroup {
+		return apperrors.NewAppError(404, "用户不在群中", apperrors.ErrNotFound)
+	}
+
+	return s.repo.DeleteConversationForUser(convID, targetID)
+}
+
+func (s *IMService) LeaveGroup(userID uint64, convID uint64) error {
+	return s.repo.DeleteConversationForUser(convID, userID)
+}
+
+func (s *IMService) sendSystemMessage(convID uint64, seq int64, content string) {
+	msg := &model.Message{
+		ConversationID: convID,
+		SenderID:       0, // system
+		Content:        content,
+		MsgType:        "system",
+		Seq:            seq,
+		CreatedAt:      time.Now(),
+	}
+	s.repo.CreateMessage(msg)
 }
 
 func (s *IMService) handleWSMessage(msg *WSMessage) {
