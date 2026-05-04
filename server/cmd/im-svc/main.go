@@ -31,10 +31,16 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	if err := logger.Init(logger.Config{Level: cfg.Log.Level, Format: cfg.Log.Format}); err != nil {
+	if err := logger.Init(logger.Config{
+		Level:   cfg.Log.Level,
+		Format:  cfg.Log.Format,
+		Service: "im-svc",
+		LogDir:  "/app/logs",
+	}); err != nil {
 		log.Fatalf("初始化日志失败: %v", err)
 	}
 	defer logger.Sync()
+	logger.StartLogCleanup()
 
 	snowflake.Init(2)
 

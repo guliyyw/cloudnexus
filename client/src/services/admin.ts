@@ -48,6 +48,7 @@ export interface LogEntry {
   level: string
   message: string
   caller: string
+  service: string
 }
 
 export async function getUsers(page: number, pageSize: number): Promise<AdminUserListResponse> {
@@ -77,5 +78,38 @@ export async function getLogs(level?: string): Promise<{ logs: LogEntry[]; total
 
 export async function getResourceMetrics(): Promise<ResourceMetrics> {
   const res = await api.get('/admin/metrics/resources')
+  return res.data.data
+}
+
+export interface LogFileInfo {
+  date: string
+  size: number
+}
+
+export async function getLogFiles(): Promise<LogFileInfo[]> {
+  const res = await api.get('/admin/logs/files')
+  return res.data.data.files
+}
+
+export function getLogDownloadUrl(date: string): string {
+  const token = localStorage.getItem('access_token') || ''
+  return `/api/v1/admin/logs/download?date=${date}&token=${token}`
+}
+
+export interface MetricSnapshot {
+  timestamp: string
+  uptime_seconds: number
+  goroutines: number
+  heap_alloc_mb: number
+  cpu_percent: number
+  mem_percent: number
+}
+
+export interface MetricsHistoryResponse {
+  snapshots: MetricSnapshot[]
+}
+
+export async function getMetricsHistory(n?: number): Promise<MetricsHistoryResponse> {
+  const res = await api.get('/admin/metrics/history', { params: { n } })
   return res.data.data
 }

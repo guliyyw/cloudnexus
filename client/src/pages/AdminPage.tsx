@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin, Progress } from 'antd'
-import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons'
+import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined, AreaChartOutlined, DownloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import * as adminApi from '../services/admin'
-import type { AdminUser, SystemMetrics, LogEntry, ResourceMetrics } from '../services/admin'
+import type { AdminUser, SystemMetrics, LogEntry, ResourceMetrics, MetricSnapshot } from '../services/admin'
 
 const { Text } = Typography
 
@@ -118,9 +119,9 @@ function SystemStatus() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
   const [resMetrics, setResMetrics] = useState<ResourceMetrics | null>(null)
   const [loading, setLoading] = useState(false)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchMetrics = useCallback(async () => {
-    setLoading(true)
     try {
       const [m, rm] = await Promise.all([
         adminApi.getMetrics(),
@@ -135,7 +136,12 @@ function SystemStatus() {
     }
   }, [])
 
-  useEffect(() => { fetchMetrics() }, [fetchMetrics])
+  useEffect(() => {
+    setLoading(true)
+    fetchMetrics()
+    intervalRef.current = setInterval(fetchMetrics, 5000)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [fetchMetrics])
 
   const formatUptime = (seconds: number) => {
     const d = Math.floor(seconds / 86400)
@@ -230,10 +236,93 @@ function SystemStatus() {
   )
 }
 
+function HistoricalMetrics() {
+  const [snapshots, setSnapshots] = useState<MetricSnapshot[]>([])
+  const [loading, setLoading] = useState(false)
+  const intRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await adminApi.getMetricsHistory(60)
+      setSnapshots(res.snapshots || [])
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchHistory()
+    intRef.current = setInterval(fetchHistory, 10000)
+    return () => { if (intRef.current) clearInterval(intRef.current) }
+  }, [fetchHistory])
+
+  const chartData = snapshots.map((s) => ({
+    ...s,
+    time: new Date(s.timestamp).toLocaleTimeString(),
+  }))
+
+  return (
+    <Spin spinning={loading}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+        <Text strong style={{ fontSize: 16 }}>历史指标 (最近 10 分钟)</Text>
+        <Button icon={<ReloadOutlined />} onClick={fetchHistory}>刷新</Button>
+      </div>
+
+      <Card title="CPU 使用率 (%)" size="small" style={{ marginBottom: 16 }}>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" fontSize={11} />
+            <YAxis domain={[0, 100]} fontSize={11} />
+            <Tooltip />
+            <Line type="monotone" dataKey="cpu_percent" stroke="#1677ff" dot={false} strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Row gutter={16}>
+        <Col span={12}>
+          <Card title="内存使用率 (%)" size="small">
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" fontSize={11} />
+                <YAxis domain={[0, 100]} fontSize={11} />
+                <Tooltip />
+                <Line type="monotone" dataKey="mem_percent" stroke="#52c41a" dot={false} strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card title="Goroutines / 堆内存 (MB)" size="small">
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="time" fontSize={11} />
+                <YAxis yAxisId="left" fontSize={11} />
+                <YAxis yAxisId="right" orientation="right" fontSize={11} />
+                <Tooltip />
+                <Legend />
+                <Line yAxisId="left" type="monotone" dataKey="goroutines" stroke="#faad14" dot={false} strokeWidth={2} name="Goroutines" />
+                <Line yAxisId="right" type="monotone" dataKey="heap_alloc_mb" stroke="#722ed1" dot={false} strokeWidth={2} name="堆内存(MB)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+      </Row>
+    </Spin>
+  )
+}
+
 function LogViewer() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [levelFilter, setLevelFilter] = useState<string>('')
+  const intRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
@@ -245,7 +334,11 @@ function LogViewer() {
     }
   }, [levelFilter])
 
-  useEffect(() => { fetchLogs() }, [fetchLogs])
+  useEffect(() => {
+    fetchLogs()
+    intRef.current = setInterval(fetchLogs, 3000)
+    return () => { if (intRef.current) clearInterval(intRef.current) }
+  }, [fetchLogs])
 
   const levelColor: Record<string, string> = {
     debug: 'default',
@@ -253,6 +346,8 @@ function LogViewer() {
     warn: 'orange',
     error: 'red',
   }
+
+  const logDownloadUrl = adminApi.getLogDownloadUrl(new Date().toISOString().slice(0, 10))
 
   return (
     <div>
@@ -281,6 +376,7 @@ function LogViewer() {
             onClick={() => setLevelFilter('error')}
           >ERROR</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchLogs}>刷新</Button>
+          <Button icon={<DownloadOutlined />} size="small" href={logDownloadUrl}>下载日志</Button>
         </Space>
       </div>
 
@@ -293,6 +389,8 @@ function LogViewer() {
             <span style={{ color: '#569cd6' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
             {' '}
             <Tag color={levelColor[entry.level] || 'default'} style={{ fontSize: 11, lineHeight: '16px' }}>{entry.level.toUpperCase()}</Tag>
+            {' '}
+            {entry.service && <Tag style={{ fontSize: 11, lineHeight: '16px' }}>{entry.service}</Tag>}
             {' '}
             <span style={{ color: '#888', fontSize: 12 }}>{entry.caller}</span>
             {' '}
@@ -309,6 +407,7 @@ export default function AdminPage() {
   const tabItems = [
     { key: 'users', label: <span><UserOutlined />用户管理</span>, children: <UserManagement /> },
     { key: 'status', label: <span><DashboardOutlined />系统状态</span>, children: <SystemStatus /> },
+    { key: 'history', label: <span><AreaChartOutlined />历史指标</span>, children: <HistoricalMetrics /> },
     { key: 'logs', label: <span><FileTextOutlined />服务器日志</span>, children: <LogViewer /> },
   ]
 

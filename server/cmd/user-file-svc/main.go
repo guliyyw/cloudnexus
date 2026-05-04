@@ -32,10 +32,16 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	if err := logger.Init(logger.Config{Level: cfg.Log.Level, Format: cfg.Log.Format}); err != nil {
+	if err := logger.Init(logger.Config{
+		Level:   cfg.Log.Level,
+		Format:  cfg.Log.Format,
+		Service: "user-file-svc",
+		LogDir:  "/app/logs",
+	}); err != nil {
 		log.Fatalf("初始化日志失败: %v", err)
 	}
 	defer logger.Sync()
+	logger.StartLogCleanup()
 
 	snowflake.Init(1)
 
@@ -74,6 +80,7 @@ func main() {
 	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
 	fileH := handler.NewFileHandler(fileSvc)
 	systemH := handler.NewSystemHandler(db, minioClient)
+	go systemH.StartMetricsCollector()
 
 	shareRepo := repository.NewShareRepository(db)
 	shareSvc := service.NewShareService(shareRepo, fileRepo)
@@ -138,7 +145,10 @@ func main() {
 			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
 			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)
 			admin.GET("/logs", systemH.HandleLogs)
+			admin.GET("/logs/files", systemH.HandleLogFiles)
+			admin.GET("/logs/download", systemH.HandleLogDownload)
 			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)
+			admin.GET("/metrics/history", systemH.HandleMetricsHistory)
 		}
 	}
 

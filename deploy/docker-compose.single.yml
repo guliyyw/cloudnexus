@@ -53,6 +53,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
+      - logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +75,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
+      - logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,3 +124,4 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  logs:
