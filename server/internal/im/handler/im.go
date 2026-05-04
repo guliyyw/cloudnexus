@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudnexus/server/internal/im/service"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,11 @@ func (h *IMHandler) HandleWebSocket(c *gin.Context) {
 	h.hub.Register(userID, conn)
 }
 
+type conversationInfo struct {
+	model.Conversation
+	Unread int64 `json:"unread"`
+}
+
 func (h *IMHandler) HandleGetConversations(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	convs, err := h.svc.GetConversations(userID)
@@ -46,7 +52,15 @@ func (h *IMHandler) HandleGetConversations(c *gin.Context) {
 		handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.OKWithData(convs))
+	unreadMap := h.svc.GetUnreadCounts(userID)
+	result := make([]conversationInfo, len(convs))
+	for i, conv := range convs {
+		result[i] = conversationInfo{
+			Conversation: conv,
+			Unread:       unreadMap[conv.ID],
+		}
+	}
+	c.JSON(http.StatusOK, response.OKWithData(result))
 }
 
 type createConvReq struct {

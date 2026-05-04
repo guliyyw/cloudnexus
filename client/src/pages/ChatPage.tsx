@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   List, Input, Button, Card, Typography, Avatar,
-  message, Modal, Popconfirm, Space, Checkbox, Divider,
+  message, Modal, Popconfirm, Space, Checkbox, Divider, Badge,
 } from 'antd'
 import {
   SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
@@ -59,8 +59,24 @@ export default function ChatPage() {
         seq: 0,
         created_at: wsMsg.created_at || new Date().toISOString(),
       })
+    } else if (wsMsg.type === 'read_receipt' && wsMsg.conversation_id === currentConvId) {
+      // Another user read messages in current conversation - re-fetch to update read state
+      // Lightweight: just acknowledge, full read indicators would need message-level tracking
     }
   })
+
+  // Send read receipt when viewing messages
+  useEffect(() => {
+    if (!currentConvId || messages.length === 0) return
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg.seq > 0) {
+      sendMessage({
+        type: 'read_receipt',
+        conversation_id: currentConvId,
+        last_read_msg_id: String(lastMsg.seq),
+      })
+    }
+  }, [currentConvId, messages.length])
 
   const handleSend = () => {
     if (!inputText.trim() || !currentConvId) return
@@ -129,7 +145,11 @@ export default function ChatPage() {
               onClick={() => selectConv(conv.id)}
             >
               <List.Item.Meta
-                avatar={<Avatar icon={conv.type === 'group' ? <TeamOutlined /> : <UserOutlined />} />}
+                avatar={
+                  <Badge count={conv.unread} size="small" offset={[-4, 4]}>
+                    <Avatar icon={conv.type === 'group' ? <TeamOutlined /> : <UserOutlined />} />
+                  </Badge>
+                }
                 title={conv.name || `会话 ${conv.id}`}
                 description={<Text type="secondary" ellipsis>{conv.type === 'private' ? '私聊' : '群聊'}</Text>}
               />

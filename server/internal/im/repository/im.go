@@ -55,6 +55,13 @@ func (r *IMRepository) CreateMessage(msg *model.Message) error {
 	return r.db.Create(msg).Error
 }
 
+func (r *IMRepository) UpdateConversationSeq(convID uint64, seq int64) error {
+	return r.db.Model(&model.Conversation{}).Where("id = ?", convID).Updates(map[string]interface{}{
+		"last_msg_seq": seq,
+		"updated_at":   gorm.Expr("now()"),
+	}).Error
+}
+
 func (r *IMRepository) FindMessages(conversationID uint64, before uint64, limit int) ([]model.Message, error) {
 	var msgs []model.Message
 	query := r.db.Where("conversation_id = ?", conversationID)
@@ -174,6 +181,36 @@ func (r *IMRepository) FindUserByUsername(username string) (*model.User, error) 
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *IMRepository) GetUnreadCount(convID uint64, userID uint64) int64 {
+	var member model.ConversationMember
+	if err := r.db.Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", convID, userID).First(&member).Error; err != nil {
+		return 0
+	}
+	var lastSeq int64
+	r.db.Model(&model.Conversation{}).Where("id = ?", convID).Select("last_msg_seq").Scan(&lastSeq)
+	c := lastSeq - member.LastReadSeq
+	if c < 0 {
+		return 0
+	}
+	return c
+}
+
+func (r *IMRepository) GetUnreadCounts(userID uint64) map[uint64]int64 {
+	var members []model.ConversationMember
+	r.db.Where("user_id = ? AND deleted_at IS NULL", userID).Find(&members)
+	counts := make(map[uint64]int64)
+	for _, m := range members {
+		var lastSeq int64
+		r.db.Model(&model.Conversation{}).Where("id = ?", m.ConversationID).Select("last_msg_seq").Scan(&lastSeq)
+		c := lastSeq - m.LastReadSeq
+		if c < 0 {
+			c = 0
+		}
+		counts[m.ConversationID] = c
+	}
+	return counts
 }
 
 func (r *IMRepository) GetPrivateConvName(conversationID, currentUserID uint64) (string, error) {

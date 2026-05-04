@@ -11,6 +11,7 @@ interface WSMessage {
   user_id?: string
   created_at?: string
   msg_id?: string
+  last_read_msg_id?: string
 }
 
 type MessageHandler = (msg: WSMessage) => void

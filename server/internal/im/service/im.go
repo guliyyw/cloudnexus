@@ -38,7 +38,6 @@ func (s *IMService) GetConversations(userID uint64) ([]model.Conversation, error
 }
 
 func (s *IMService) CreatePrivateConversation(creatorID, targetID uint64) (*model.Conversation, error) {
-	// 检查目标用户是否存在
 	if _, err := s.repo.FindUserByID(targetID); err != nil {
 		return nil, apperrors.NewAppError(404, "目标用户不存在", apperrors.ErrNotFound)
 	}
@@ -90,7 +89,6 @@ func (s *IMService) SendFriendRequest(fromUserID uint64, toUsername string) (*mo
 			return nil, apperrors.NewAppError(409, "已经是好友", apperrors.ErrConflict)
 		case "pending":
 			if existing.FriendID == fromUserID {
-				// The other user already sent us a request, auto-accept it
 				s.repo.AcceptFriendRequest(existing.ID, fromUserID)
 				s.CreatePrivateConversation(fromUserID, target.ID)
 				existing.Status = "accepted"
@@ -114,7 +112,6 @@ func (s *IMService) AcceptFriendRequest(requestID, userID uint64) (*model.Conver
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "获取请求信息失败", err)
 	}
-	// Auto-create private conversation
 	return s.CreatePrivateConversation(userID, req.UserID)
 }
 
@@ -189,7 +186,6 @@ func (s *IMService) CreateGroupConversation(creatorID uint64, name string, membe
 		return nil, apperrors.NewAppError(500, "创建群聊失败", err)
 	}
 
-	// Add creator as owner
 	s.repo.AddMember(&model.ConversationMember{
 		ConversationID: conv.ID,
 		UserID:         creatorID,
@@ -197,7 +193,6 @@ func (s *IMService) CreateGroupConversation(creatorID uint64, name string, membe
 		JoinedAt:       time.Now(),
 	})
 
-	// Add other members
 	for _, uid := range memberIDs {
 		if uid == creatorID {
 			continue
@@ -210,10 +205,9 @@ func (s *IMService) CreateGroupConversation(creatorID uint64, name string, membe
 		})
 	}
 
-	// Send system message
 	s.sendSystemMessage(conv.ID, conv.LastMsgSeq+1, fmt.Sprintf("%s 创建了群聊", "群主"))
 	conv.LastMsgSeq++
-	s.repo.CreateConversation(conv) // update seq (hack: gorm save)
+	s.repo.CreateConversation(conv)
 
 	return conv, nil
 }
@@ -241,7 +235,6 @@ func (s *IMService) AddGroupMember(operatorID uint64, convID uint64, userID uint
 		return apperrors.NewAppError(500, "查询成员失败", err)
 	}
 
-	// Check operator is member
 	isMember := false
 	for _, m := range members {
 		if m.UserID == operatorID {
@@ -253,7 +246,6 @@ func (s *IMService) AddGroupMember(operatorID uint64, convID uint64, userID uint
 		return apperrors.NewAppError(403, "你不是群成员", apperrors.ErrForbidden)
 	}
 
-	// Check user not already in group
 	for _, m := range members {
 		if m.UserID == userID {
 			return apperrors.NewAppError(409, "用户已在群中", apperrors.ErrConflict)
@@ -276,7 +268,6 @@ func (s *IMService) RemoveGroupMember(operatorID uint64, convID uint64, targetID
 		return apperrors.NewAppError(500, "查询成员失败", err)
 	}
 
-	// Check operator is member
 	isMember := false
 	for _, m := range members {
 		if m.UserID == operatorID {
@@ -288,7 +279,6 @@ func (s *IMService) RemoveGroupMember(operatorID uint64, convID uint64, targetID
 		return apperrors.NewAppError(403, "你不是群成员", apperrors.ErrForbidden)
 	}
 
-	// Cannot remove yourself (use leave instead)
 	if operatorID == targetID {
 		return apperrors.NewAppError(400, "请使用退出群聊", apperrors.ErrBadRequest)
 	}
@@ -314,7 +304,7 @@ func (s *IMService) LeaveGroup(userID uint64, convID uint64) error {
 func (s *IMService) sendSystemMessage(convID uint64, seq int64, content string) {
 	msg := &model.Message{
 		ConversationID: convID,
-		SenderID:       0, // system
+		SenderID:       0,
 		Content:        content,
 		MsgType:        "system",
 		Seq:            seq,
@@ -330,8 +320,31 @@ func (s *IMService) handleWSMessage(msg *WSMessage) {
 	case "ping":
 		s.hub.SendToUser(msg.SenderID, WSMessage{Type: "pong"})
 	case "read_receipt":
-		s.repo.UpdateLastReadSeq(msg.ConversationID, msg.SenderID, msg.LastReadMsgID)
+		s.handleReadReceipt(msg)
 	}
+}
+
+func (s *IMService) handleReadReceipt(msg *WSMessage) {
+	s.repo.UpdateLastReadSeq(msg.ConversationID, msg.SenderID, msg.LastReadMsgID)
+
+	members, err := s.repo.GetMembers(msg.ConversationID)
+	if err != nil {
+		return
+	}
+	for _, member := range members {
+		if member.UserID != msg.SenderID {
+			s.hub.SendToUser(member.UserID, WSMessage{
+				Type:           "read_receipt",
+				ConversationID: msg.ConversationID,
+				SenderID:       msg.SenderID,
+				LastReadMsgID:  msg.LastReadMsgID,
+			})
+		}
+	}
+}
+
+func (s *IMService) GetUnreadCounts(userID uint64) map[uint64]int64 {
+	return s.repo.GetUnreadCounts(userID)
 }
 
 func (s *IMService) handleChatMessage(msg *WSMessage) {
@@ -369,9 +382,7 @@ func (s *IMService) handleChatMessage(msg *WSMessage) {
 		return
 	}
 
-	// Update conversation
-	conv.LastMsgSeq = newMsg.Seq
-	conv.UpdatedAt = time.Now()
+	s.repo.UpdateConversationSeq(msg.ConversationID, newMsg.Seq)
 
 	outMsg := WSMessage{
 		Type:           "message",
@@ -383,20 +394,18 @@ func (s *IMService) handleChatMessage(msg *WSMessage) {
 		CreatedAt:      newMsg.CreatedAt.Format(time.RFC3339),
 	}
 
-	// Send to all members of the conversation
 	for _, member := range members {
 		s.hub.SendToUser(member.UserID, outMsg)
 	}
 
-	// Ack to sender
 	ackData, _ := json.Marshal(WSMessage{
-		Type:  "ack",
-		MsgID: newMsg.ID,
+		Type:   "ack",
+		MsgID:  newMsg.ID,
 		Status: "delivered",
 	})
 	s.hub.SendToUser(msg.SenderID, WSMessage{
-		Type:  "ack",
-		MsgID: newMsg.ID,
+		Type:   "ack",
+		MsgID:  newMsg.ID,
 		Status: "delivered",
 	})
 	_ = ackData

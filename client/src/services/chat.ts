@@ -6,6 +6,7 @@ export interface Conversation {
   name: string
   creator_id: string
   last_msg_seq: number
+  unread: number
   created_at: string
   updated_at: string
 }
