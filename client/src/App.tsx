@@ -9,6 +9,7 @@ import FileListPage from './pages/FileListPage'
 import ChatPage from './pages/ChatPage'
 import FriendPage from './pages/FriendPage'
 import DockerPage from './pages/DockerPage'
+import AdminPage from './pages/AdminPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/friends" element={<FriendPage />} />
             <Route path="/docker" element={<DockerPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />
         </Routes>

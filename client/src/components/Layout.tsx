@@ -6,6 +6,7 @@ import {
   MessageOutlined,
   TeamOutlined,
   ContainerOutlined,
+  SettingOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -30,6 +31,7 @@ export default function AppLayout() {
     { key: '/chat', icon: <MessageOutlined />, label: '即时通讯' },
     { key: '/friends', icon: <TeamOutlined />, label: '好友' },
     { key: '/docker', icon: <ContainerOutlined />, label: 'Docker 管理' },
+    ...(user?.is_admin ? [{ key: '/admin', icon: <SettingOutlined />, label: '管理后台' }] : []),
   ]
 
   const selectedKey = '/' + location.pathname.split('/')[1]
