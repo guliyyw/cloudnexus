@@ -34,7 +34,7 @@ func (r *IMRepository) FindPrivateConversation(user1, user2 uint64) (*model.Conv
 	var conv model.Conversation
 	subQuery := r.db.Table("conversation_members").
 		Select("conversation_id").
-		Where("user_id IN (?, ?)", user1, user2).
+		Where("user_id IN (?, ?) AND deleted_at IS NULL", user1, user2).
 		Group("conversation_id").
 		Having("COUNT(DISTINCT user_id) = 2")
 	err := r.db.Where("type = 'private' AND id IN (?)", subQuery).First(&conv).Error
