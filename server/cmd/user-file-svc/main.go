@@ -73,6 +73,7 @@ func main() {
 	fileRepo := repository.NewFileRepository(db)
 	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
 	fileH := handler.NewFileHandler(fileSvc)
+	systemH := handler.NewSystemHandler(db, minioClient)
 
 	r := gin.Default()
 	r.Use(middleware.Logger())
@@ -107,6 +108,8 @@ func main() {
 			file.POST("/batch-download", fileH.HandleBatchDownload)
 		}
 
+		api.GET("/metrics", systemH.HandleMetrics)
+
 		admin := api.Group("/admin")
 		admin.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
 		admin.Use(middleware.AdminRequired())
@@ -114,17 +117,15 @@ func main() {
 			admin.GET("/users", userH.HandleAdminListUsers)
 			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
 			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)
+			admin.GET("/logs", systemH.HandleLogs)
 		}
 	}
 
-	r.GET("/healthz", healthCheck)
+	r.GET("/healthz", systemH.HandleHealthz)
+	r.GET("/metrics", systemH.HandleMetrics)
 
 	logger.Log.Info("user-file-svc starting", zap.Int("port", cfg.Server.Port))
 	if err := r.Run(":8081"); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
-}
-
-func healthCheck(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "ok", "service": "user-file-svc"})
 }

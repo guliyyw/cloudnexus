@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
-import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography } from 'antd'
-import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useEffect, useState, useCallback } from 'react'
+import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin } from 'antd'
+import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import * as adminApi from '../services/admin'
-import type { AdminUser } from '../services/admin'
+import type { AdminUser, SystemMetrics, LogEntry } from '../services/admin'
 
 const { Text } = Typography
 
-export default function AdminPage() {
+function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
@@ -111,4 +111,154 @@ export default function AdminPage() {
       />
     </div>
   )
+}
+
+function SystemStatus() {
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const fetchMetrics = useCallback(async () => {
+    setLoading(true)
+    try {
+      const m = await adminApi.getMetrics()
+      setMetrics(m)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchMetrics() }, [fetchMetrics])
+
+  const formatUptime = (seconds: number) => {
+    const d = Math.floor(seconds / 86400)
+    const h = Math.floor((seconds % 86400) / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    const parts = []
+    if (d > 0) parts.push(`${d}d`)
+    if (h > 0) parts.push(`${h}h`)
+    if (m > 0) parts.push(`${m}m`)
+    parts.push(`${s}s`)
+    return parts.join(' ')
+  }
+
+  return (
+    <Spin spinning={loading}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+        <Text strong style={{ fontSize: 16 }}>系统状态</Text>
+        <Button icon={<ReloadOutlined />} onClick={fetchMetrics}>刷新</Button>
+      </div>
+
+      {metrics && (
+        <>
+          <Row gutter={16} style={{ marginBottom: 24 }}>
+            <Col span={6}>
+              <Card><Statistic title="运行时间" value={formatUptime(metrics.uptime_seconds)} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="Goroutines" value={metrics.goroutines} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="堆内存" value={metrics.heap_alloc_mb} suffix="MB" precision={1} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="GC 次数" value={metrics.num_gc} /></Card>
+            </Col>
+          </Row>
+
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="Go 版本">{metrics.go_version}</Descriptions.Item>
+            <Descriptions.Item label="CPU 核心">{metrics.num_cpu}</Descriptions.Item>
+            <Descriptions.Item label="堆系统内存">{metrics.heap_sys_mb} MB</Descriptions.Item>
+            <Descriptions.Item label="栈内存">{metrics.stack_inuse_kb} KB</Descriptions.Item>
+          </Descriptions>
+        </>
+      )}
+    </Spin>
+  )
+}
+
+function LogViewer() {
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [levelFilter, setLevelFilter] = useState<string>('')
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await adminApi.getLogs(levelFilter || undefined)
+      setLogs(res.logs)
+    } finally {
+      setLoading(false)
+    }
+  }, [levelFilter])
+
+  useEffect(() => { fetchLogs() }, [fetchLogs])
+
+  const levelColor: Record<string, string> = {
+    debug: 'default',
+    info: 'blue',
+    warn: 'orange',
+    error: 'red',
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text strong style={{ fontSize: 16 }}>服务器日志</Text>
+        <Space>
+          <Button
+            type={levelFilter === '' ? 'primary' : 'default'}
+            size="small"
+            onClick={() => setLevelFilter('')}
+          >全部</Button>
+          <Button
+            type={levelFilter === 'info' ? 'primary' : 'default'}
+            size="small"
+            onClick={() => setLevelFilter('info')}
+          >INFO</Button>
+          <Button
+            type={levelFilter === 'warn' ? 'primary' : 'default'}
+            size="small"
+            onClick={() => setLevelFilter('warn')}
+          >WARN</Button>
+          <Button
+            type={levelFilter === 'error' ? 'primary' : 'default'}
+            size="small"
+            danger={levelFilter === 'error'}
+            onClick={() => setLevelFilter('error')}
+          >ERROR</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchLogs}>刷新</Button>
+        </Space>
+      </div>
+
+      <div style={{ background: '#1e1e1e', color: '#d4d4d4', borderRadius: 8, padding: 16, maxHeight: 600, overflow: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
+        {logs.length === 0 && !loading && (
+          <div style={{ color: '#888' }}>暂无日志</div>
+        )}
+        {logs.map((entry, i) => (
+          <div key={i} style={{ lineHeight: 1.8, whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#569cd6' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span>
+            {' '}
+            <Tag color={levelColor[entry.level] || 'default'} style={{ fontSize: 11, lineHeight: '16px' }}>{entry.level.toUpperCase()}</Tag>
+            {' '}
+            <span style={{ color: '#888', fontSize: 12 }}>{entry.caller}</span>
+            {' '}
+            <span>{entry.message}</span>
+          </div>
+        ))}
+        {loading && <div style={{ color: '#888' }}>加载中...</div>}
+      </div>
+    </div>
+  )
+}
+
+export default function AdminPage() {
+  const tabItems = [
+    { key: 'users', label: <span><UserOutlined />用户管理</span>, children: <UserManagement /> },
+    { key: 'status', label: <span><DashboardOutlined />系统状态</span>, children: <SystemStatus /> },
+    { key: 'logs', label: <span><FileTextOutlined />服务器日志</span>, children: <LogViewer /> },
+  ]
+
+  return <Tabs defaultActiveKey="users" items={tabItems} size="large" />
 }
