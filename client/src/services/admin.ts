@@ -49,6 +49,8 @@ export interface LogEntry {
   message: string
   caller: string
   service: string
+  method: string
+  path: string
   request_id: string
   user_id: string
   stack: string
@@ -74,9 +76,21 @@ export async function getMetrics(): Promise<SystemMetrics> {
   return res.data.data
 }
 
-export async function getLogs(level?: string): Promise<{ logs: LogEntry[]; total: number }> {
-  const res = await api.get('/admin/logs', { params: { level } })
+export async function getLogs(params?: { level?: string; requestId?: string; userId?: string; service?: string }): Promise<{ logs: LogEntry[]; total: number }> {
+  const res = await api.get('/admin/logs', {
+    params: {
+      level: params?.level || undefined,
+      request_id: params?.requestId || undefined,
+      user_id: params?.userId || undefined,
+      service: params?.service || undefined,
+    },
+  })
   return res.data.data
+}
+
+export async function getLogServices(): Promise<string[]> {
+  const res = await api.get('/admin/logs/services')
+  return res.data.data.services
 }
 
 export async function getResourceMetrics(): Promise<ResourceMetrics> {
