@@ -4,6 +4,7 @@ import { Layout as AntLayout, Menu, Button, theme } from 'antd'
 import {
   CloudOutlined,
   MessageOutlined,
+  TeamOutlined,
   ContainerOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -27,6 +28,7 @@ export default function AppLayout() {
   const menuItems = [
     { key: '/files', icon: <CloudOutlined />, label: '文件管理' },
     { key: '/chat', icon: <MessageOutlined />, label: '即时通讯' },
+    { key: '/friends', icon: <TeamOutlined />, label: '好友' },
     { key: '/docker', icon: <ContainerOutlined />, label: 'Docker 管理' },
   ]
 

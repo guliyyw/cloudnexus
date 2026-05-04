@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import FileListPage from './pages/FileListPage'
 import ChatPage from './pages/ChatPage'
+import FriendPage from './pages/FriendPage'
 import DockerPage from './pages/DockerPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default function App() {
           >
             <Route path="/files" element={<FileListPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/friends" element={<FriendPage />} />
             <Route path="/docker" element={<DockerPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />
