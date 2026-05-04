@@ -100,6 +100,7 @@ function UserManagement() {
         dataSource={users}
         rowKey="id"
         loading={loading}
+        scroll={{ y: 'calc(100vh - 480px)' }}
         pagination={{
           current: page,
           pageSize,
