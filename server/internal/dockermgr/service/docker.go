@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -144,6 +145,158 @@ func (s *DockerService) GetLogs(id, tail string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return resp.Body, nil
+}
+
+// --- Image management ---
+
+type ImageInfo struct {
+	ID      string   `json:"id"`
+	Tags    []string `json:"tags"`
+	Size    int64    `json:"size"`
+	Created string   `json:"created"`
+}
+
+type dockerImage struct {
+	ID      string   `json:"Id"`
+	RepoTags []string `json:"RepoTags"`
+	Size    int64    `json:"Size"`
+	Created int64    `json:"Created"`
+}
+
+func (s *DockerService) ListImages() ([]ImageInfo, error) {
+	url := fmt.Sprintf("%s/images/json", s.baseURL)
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("获取镜像列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var raw []dockerImage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	result := make([]ImageInfo, 0, len(raw))
+	for _, img := range raw {
+		id := img.ID
+		if strings.HasPrefix(id, "sha256:") {
+			id = id[7:19]
+		}
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		tags := img.RepoTags
+		if tags == nil {
+			tags = []string{"<none>:<none>"}
+		}
+		result = append(result, ImageInfo{
+			ID:      id,
+			Tags:    tags,
+			Size:    img.Size,
+			Created: time.Unix(img.Created, 0).Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+func (s *DockerService) PullImage(image string) error {
+	url := fmt.Sprintf("%s/images/create?fromImage=%s", s.baseURL, image)
+	req, _ := http.NewRequest("POST", url, nil)
+	req.Header.Set("X-Registry-Auth", "{}")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("拉取镜像失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("拉取镜像失败: %s", string(body))
+	}
+	// Drain the stream (Docker returns JSON lines during pull)
+	io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+func (s *DockerService) RemoveImage(image string, force bool) error {
+	url := fmt.Sprintf("%s/images/%s?force=%v", s.baseURL, image, force)
+	req, _ := http.NewRequest("DELETE", url, nil)
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("删除镜像失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("删除镜像失败: %s", string(body))
+	}
+	return nil
+}
+
+// --- Container stats ---
+
+type ContainerStats struct {
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryUsage   int64   `json:"memory_usage"`
+	MemoryLimit   int64   `json:"memory_limit"`
+	MemoryPercent float64 `json:"memory_percent"`
+}
+
+type dockerStats struct {
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage int64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage int64 `json:"system_cpu_usage"`
+		OnlineCPUs     int   `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage int64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage int64 `json:"system_cpu_usage"`
+	} `json:"precpu_stats"`
+	MemoryStats struct {
+		Usage int64 `json:"usage"`
+		Limit int64 `json:"limit"`
+	} `json:"memory_stats"`
+}
+
+func (s *DockerService) GetStats(id string) (*ContainerStats, error) {
+	url := fmt.Sprintf("%s/containers/%s/stats?stream=false", s.baseURL, id)
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("获取容器状态失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取容器状态失败: %s", string(body))
+	}
+
+	var raw dockerStats
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	cpuDelta := float64(raw.CPUStats.CPUUsage.TotalUsage - raw.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(raw.CPUStats.SystemCPUUsage - raw.PreCPUStats.SystemCPUUsage)
+	cpuPercent := 0.0
+	if systemDelta > 0 && cpuDelta > 0 {
+		cpuPercent = (cpuDelta / systemDelta) * float64(raw.CPUStats.OnlineCPUs) * 100
+	}
+
+	memPercent := 0.0
+	if raw.MemoryStats.Limit > 0 {
+		memPercent = float64(raw.MemoryStats.Usage) / float64(raw.MemoryStats.Limit) * 100
+	}
+
+	return &ContainerStats{
+		CPUPercent:    math.Round(cpuPercent*100) / 100,
+		MemoryUsage:   raw.MemoryStats.Usage,
+		MemoryLimit:   raw.MemoryStats.Limit,
+		MemoryPercent: math.Round(memPercent*100) / 100,
+	}, nil
 }
 
 func (s *DockerService) CreateContainer(image, name string) (string, error) {

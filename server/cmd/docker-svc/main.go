@@ -64,6 +64,13 @@ func main() {
 				containers.POST("/:id/restart", dockerH.HandleRestartContainer)
 				containers.DELETE("/:id", dockerH.HandleRemoveContainer)
 				containers.GET("/:id/logs", dockerH.HandleGetLogs)
+				containers.GET("/:id/stats", dockerH.HandleGetStats)
+			}
+			images := docker.Group("/images")
+			{
+				images.GET("", dockerH.HandleListImages)
+				images.POST("/pull", dockerH.HandlePullImage)
+				images.DELETE("/:image", dockerH.HandleRemoveImage)
 			}
 		}
 	}

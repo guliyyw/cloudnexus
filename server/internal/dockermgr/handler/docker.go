@@ -97,3 +97,53 @@ func (h *DockerHandler) HandleGetLogs(c *gin.Context) {
 	c.Header("Content-Type", "text/plain; charset=utf-8")
 	io.Copy(c.Writer, reader)
 }
+
+// --- Image management ---
+
+func (h *DockerHandler) HandleListImages(c *gin.Context) {
+	images, err := h.svc.ListImages()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "获取镜像列表失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(images))
+}
+
+type pullImageReq struct {
+	Image string `json:"image" binding:"required"`
+}
+
+func (h *DockerHandler) HandlePullImage(c *gin.Context) {
+	var req pullImageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
+		return
+	}
+	if err := h.svc.PullImage(req.Image); err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "拉取镜像失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("image pulled"))
+}
+
+func (h *DockerHandler) HandleRemoveImage(c *gin.Context) {
+	image := c.Param("image")
+	force, _ := strconv.ParseBool(c.DefaultQuery("force", "false"))
+	if err := h.svc.RemoveImage(image, force); err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "删除镜像失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("image removed"))
+}
+
+// --- Container stats ---
+
+func (h *DockerHandler) HandleGetStats(c *gin.Context) {
+	id := c.Param("id")
+	stats, err := h.svc.GetStats(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.Error(500, "获取状态失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(stats))
+}
