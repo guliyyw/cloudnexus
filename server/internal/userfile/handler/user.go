@@ -105,6 +105,25 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, response.OKWithData(user))
 }
 
+type changePasswordReq struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=128"`
+}
+
+func (h *UserHandler) HandleChangePassword(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req changePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
+		return
+	}
+	if err := h.svc.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("密码已修改"))
+}
+
 func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))

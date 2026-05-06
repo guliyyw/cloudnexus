@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
 
@@ -91,7 +92,11 @@ export default function AppLayout() {
             onClick={() => setCollapsed(!collapsed)}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ color: '#6b6b6b' }}>{user?.username}</span>
+            <Button type="text" icon={<UserOutlined />}
+              onClick={() => navigate('/settings')}
+              style={{ color: '#6b6b6b' }}>
+              {user?.username}
+            </Button>
             <Button type="text" icon={<LogoutOutlined />} onClick={() => { logout(); navigate('/login') }} style={{ color: '#8c8c8c' }}>
               退出
             </Button>

@@ -103,6 +103,7 @@ func main() {
 			{
 				protected.GET("/profile", userH.HandleGetProfile)
 				protected.PUT("/profile", userH.HandleUpdateProfile)
+				protected.PUT("/password", userH.HandleChangePassword)
 			}
 		}
 

@@ -130,6 +130,22 @@ func (s *UserService) UpdateProfile(userID uint64, email, avatar string) (*model
 	return user, nil
 }
 
+func (s *UserService) ChangePassword(userID uint64, oldPassword, newPassword string) error {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
+	}
+	if !crypto.CheckPassword(oldPassword, user.Password) {
+		return apperrors.NewAppError(400, "原密码错误", apperrors.ErrBadRequest)
+	}
+	hashed, err := crypto.HashPassword(newPassword)
+	if err != nil {
+		return apperrors.NewAppError(500, "密码加密失败", err)
+	}
+	user.Password = hashed
+	return s.repo.UpdateUser(user)
+}
+
 func (s *UserService) ListUsers(page, pageSize int) ([]model.User, int64, error) {
 	if page < 1 {
 		page = 1
