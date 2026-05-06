@@ -55,7 +55,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectConv: (id: string) => {
-    set({ currentConvId: id, messages: [], members: [] })
+    set((state) => ({
+      currentConvId: id,
+      messages: [],
+      members: [],
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, unread: 0 } : c
+      ),
+    }))
     get().fetchMessages(id)
     const conv = get().conversations.find((c) => c.id === id)
     if (conv?.type === 'group') {
@@ -72,6 +79,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addMessage: (msg: Message) => {
     set((state) => {
+      if (msg.conversation_id !== state.currentConvId) return state
       const exists = state.messages.some((m) => m.id === msg.id)
       if (exists) return state
       return { messages: [...state.messages, msg] }

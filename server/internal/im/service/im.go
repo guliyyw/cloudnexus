@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -409,4 +410,139 @@ func (s *IMService) handleChatMessage(msg *WSMessage) {
 		Status: "delivered",
 	})
 	_ = ackData
+}
+
+func (s *IMService) ExportConversation(userID uint64, conversationID uint64) (*model.ChatExport, error) {
+	conv, err := s.repo.FindConversationByID(conversationID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "会话不存在", apperrors.ErrNotFound)
+	}
+
+	members, err := s.repo.GetActiveMembers(conversationID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询成员失败", err)
+	}
+
+	isMember := false
+	for _, m := range members {
+		if m.UserID == userID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return nil, apperrors.NewAppError(403, "你不是该会话的成员", apperrors.ErrForbidden)
+	}
+
+	msgs, err := s.repo.FindAllMessages(conversationID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询消息失败", err)
+	}
+
+	participants := make([]string, 0, len(members))
+	for _, m := range members {
+		u, err := s.repo.FindUserByID(m.UserID)
+		if err == nil {
+			participants = append(participants, u.Username)
+		}
+	}
+
+	currentUser, _ := s.repo.FindUserByID(userID)
+	exportedBy := ""
+	if currentUser != nil {
+		exportedBy = currentUser.Username
+	}
+
+	convName := conv.Name
+	if conv.Type == "private" && convName == "" {
+		if name, err := s.repo.GetPrivateConvName(conversationID, userID); err == nil {
+			convName = name
+		}
+	}
+
+	lastSeq := int64(0)
+	if len(msgs) > 0 {
+		lastSeq = msgs[len(msgs)-1].Seq
+	}
+
+	checksum := computeChecksum(conversationID, len(msgs), lastSeq)
+
+	return &model.ChatExport{
+		Version:          "1.0",
+		ConversationID:   conversationID,
+		ConversationType: conv.Type,
+		ConversationName: convName,
+		Participants:     participants,
+		ExportedAt:       time.Now(),
+		ExportedBy:       exportedBy,
+		MessageCount:     len(msgs),
+		LastMessageSeq:   lastSeq,
+		Checksum:         checksum,
+		Messages:         msgs,
+	}, nil
+}
+
+func (s *IMService) ImportConversation(userID uint64, export *model.ChatExport) (*model.ImportSummary, error) {
+	expected := computeChecksum(export.ConversationID, export.MessageCount, export.LastMessageSeq)
+	if export.Checksum != expected {
+		return nil, apperrors.NewAppError(400, "校验码不匹配，文件可能已损坏", apperrors.ErrBadRequest)
+	}
+
+	members, err := s.repo.GetActiveMembers(export.ConversationID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询成员失败", err)
+	}
+
+	isMember := false
+	for _, m := range members {
+		if m.UserID == userID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return nil, apperrors.NewAppError(403, "你不是该会话的成员", apperrors.ErrForbidden)
+	}
+
+	ids := make([]uint64, 0, len(export.Messages))
+	for _, m := range export.Messages {
+		ids = append(ids, m.ID)
+	}
+	existing, err := s.repo.FindExistingMessageIDs(ids)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询已有消息失败", err)
+	}
+
+	newMsgs := make([]model.Message, 0)
+	for _, m := range export.Messages {
+		if existing[m.ID] {
+			continue
+		}
+		newMsgs = append(newMsgs, model.Message{
+			ID:             m.ID,
+			ConversationID: m.ConversationID,
+			SenderID:       m.SenderID,
+			Content:        m.Content,
+			MsgType:        m.MsgType,
+			Seq:            m.Seq,
+			CreatedAt:      m.CreatedAt,
+		})
+	}
+
+	if err := s.repo.BatchCreateMessages(newMsgs); err != nil {
+		return nil, apperrors.NewAppError(500, "导入消息失败", err)
+	}
+
+	return &model.ImportSummary{
+		Inserted: len(newMsgs),
+		Skipped:  len(export.Messages) - len(newMsgs),
+		Total:    len(export.Messages),
+		LastSeq:  export.LastMessageSeq,
+	}, nil
+}
+
+func computeChecksum(convID uint64, count int, lastSeq int64) string {
+	input := fmt.Sprintf("%d|%d|%d", convID, count, lastSeq)
+	sum := sha256.Sum256([]byte(input))
+	return fmt.Sprintf("%x", sum)
 }

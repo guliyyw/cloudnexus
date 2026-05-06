@@ -120,3 +120,51 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreview> {
   const res = await api.post('/im/link-preview', { url })
   return res.data.data
 }
+
+// --- Chat Export / Import ---
+
+export interface ExportMessage {
+  id: string
+  conversation_id: string
+  sender_id: string
+  sender_name: string
+  content: string
+  msg_type: string
+  seq: number
+  created_at: string
+}
+
+export interface ChatExport {
+  version: string
+  conversation_id: string
+  conversation_type: string
+  conversation_name: string
+  participants: string[]
+  exported_at: string
+  exported_by: string
+  message_count: number
+  last_message_seq: number
+  checksum: string
+  messages: ExportMessage[]
+}
+
+export interface ImportSummary {
+  inserted: number
+  skipped: number
+  total: number
+  last_seq: number
+}
+
+export async function exportConversation(id: string): Promise<ChatExport> {
+  const res = await api.get(`/im/conversations/${id}/export`)
+  return res.data
+}
+
+export async function importConversation(file: File): Promise<ImportSummary> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post('/im/conversations/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data.data
+}

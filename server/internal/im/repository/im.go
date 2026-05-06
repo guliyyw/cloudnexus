@@ -223,3 +223,36 @@ func (r *IMRepository) GetPrivateConvName(conversationID, currentUserID uint64) 
 		Scan(&username).Error
 	return username, err
 }
+
+func (r *IMRepository) FindAllMessages(conversationID uint64) ([]model.ExportMessage, error) {
+	var msgs []model.ExportMessage
+	err := r.db.Table("messages").
+		Select("messages.id, messages.conversation_id, messages.sender_id, users.username AS sender_name, messages.content, messages.msg_type, messages.seq, messages.created_at").
+		Joins("LEFT JOIN users ON users.id = messages.sender_id").
+		Where("messages.conversation_id = ?", conversationID).
+		Order("messages.seq ASC").
+		Find(&msgs).Error
+	return msgs, err
+}
+
+func (r *IMRepository) BatchCreateMessages(msgs []model.Message) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	return r.db.Create(&msgs).Error
+}
+
+func (r *IMRepository) FindExistingMessageIDs(ids []uint64) (map[uint64]bool, error) {
+	if len(ids) == 0 {
+		return make(map[uint64]bool), nil
+	}
+	var existing []uint64
+	if err := r.db.Table("messages").Where("id IN ?", ids).Pluck("id", &existing).Error; err != nil {
+		return nil, err
+	}
+	set := make(map[uint64]bool, len(existing))
+	for _, id := range existing {
+		set[id] = true
+	}
+	return set, nil
+}

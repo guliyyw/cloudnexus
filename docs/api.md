@@ -523,6 +523,70 @@ msg_type 可选值: `text` / `image` / `video` / `file` / `system`
 
 退出群聊 (需认证)。
 
+#### GET /api/v1/im/conversations/:id/export
+
+导出会话全部消息为 JSON 文件 (需认证)。返回 JSON 文件下载，包含校验码。
+
+**响应 (200)：** 返回 `application/json` 文件流，`Content-Disposition: attachment; filename=chat_{id}_{timestamp}.json`。
+
+**JSON 结构：**
+```json
+{
+  "version": "1.0",
+  "conversation_id": "2051176674648662016",
+  "conversation_type": "private",
+  "conversation_name": "alice",
+  "participants": ["alice", "testuser"],
+  "exported_at": "2026-05-06T06:39:49Z",
+  "exported_by": "testuser",
+  "message_count": 2,
+  "last_message_seq": 1,
+  "checksum": "f6cb9772...",
+  "messages": [
+    {
+      "id": "2051220917752700928",
+      "conversation_id": "2051176674648662016",
+      "sender_id": "2051175871523328000",
+      "sender_name": "testuser",
+      "content": "Hello!",
+      "msg_type": "text",
+      "seq": 1,
+      "created_at": "2026-05-04T08:42:12.196Z"
+    }
+  ]
+}
+```
+
+校验码 = SHA256(`conversation_id|message_count|last_seq`)
+
+#### POST /api/v1/im/conversations/import
+
+导入聊天记录 JSON 文件 (需认证, multipart/form-data)。校验码验证后，按 ID 去重批量写入。
+
+**表单字段：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| file | File | 导出的 JSON 文件 |
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "inserted": 5,
+    "skipped": 2,
+    "total": 7,
+    "last_seq": 7
+  }
+}
+```
+
+若校验码不匹配返回 400 错误。
+
+> 注意：路由 `/import` 在 `/:id/export` 之前注册，避免 "import" 被解析为 conversation ID。
+
 #### POST /api/v1/im/link-preview
 
 获取链接预览元数据 (需认证)。
@@ -1028,6 +1092,7 @@ GET /healthz → 200 OK
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v1.0.0 | 2026-05-06 | 聊天记录备份/恢复 (导出 JSON + SHA256 校验码 + 导入去重) |
 | v1.0.0 | 2026-05-06 | Phase 2.5 完成：图片/视频消息、链接预览卡片、跨节点 IM Redis Pub/Sub、数据库迁移系统 |
 | v0.9.0 | 2026-05-06 | Docker 镜像管理/容器监控 API、用户设置 API、文件移动/复制 API、分享链接 API |
 | v0.8.0 | 2026-05-05 | 文件移动/复制、分享管理、暖色主题 |

@@ -95,6 +95,16 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 - file：从云盘文件选择器选取 → 发送文件卡片
 - text：支持 URL 自动检测 → 后端抓取 OG 元数据 → 链接卡片展示
 
+### 4.4 聊天记录备份与恢复
+
+```
+导出: 客户端 → im-svc → PostgreSQL (JOIN messages + users) → JSON 文件 (含 SHA256 校验码)
+                       → 自动上传到云盘 聊天记录/{私聊|群聊}/
+导入: 客户端选择 JSON → im-svc → 校验码验证 → 按 ID 去重 → 批量写入 messages 表
+```
+
+校验码 = SHA256(`conversation_id|message_count|last_seq`)，确保导出文件完整性，防止数据损坏或篡改。
+
 ### 4.3 Docker 操作
 
 ```
@@ -183,6 +193,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 管理后台 | ✅ 已实现：用户管理 + 系统状态 + 日志查看 |
 | 日志系统 | ✅ 已实现：zap 三路输出 + 管理后台实时查询 |
 | 跨节点 IM | ✅ 已实现：Redis Pub/Sub (im:broadcast) 跨节点消息中继 |
+| 聊天记录备份 | ✅ 已实现：导出为 JSON (SHA256 校验码) + 自动存云盘 + 导入去重 |
 | 监控告警 | /metrics 端点预留 Prometheus 格式，可集成 Grafana 告警 |
 
 ## 9. 相关文档

@@ -8,7 +8,7 @@ import {
   TeamOutlined, UsergroupAddOutlined, CrownOutlined,
   UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
   PaperClipOutlined, DownloadOutlined, EyeOutlined,
-  PictureOutlined, LinkOutlined,
+  PictureOutlined, LinkOutlined, UploadOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
@@ -18,8 +18,8 @@ import { useNavigate } from 'react-router-dom'
 import type { Message, GroupMember } from '../services/chat'
 import type { FriendRequest } from '../services/chat'
 import FilePickerModal from '../components/FilePickerModal'
-import { getDownloadUrl, getPreviewUrl, uploadFile } from '../services/file'
-import { fetchLinkPreview } from '../services/chat'
+import { getDownloadUrl, getPreviewUrl, uploadFile, getFileList, createDirectory } from '../services/file'
+import { fetchLinkPreview, exportConversation, importConversation } from '../services/chat'
 import { isPreviewable } from '../utils/preview'
 import { formatFileSize } from '../utils/format'
 import type { FileItem } from '../services/file'
@@ -50,6 +50,11 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
+  const [importModalVisible, setImportModalVisible] = useState(false)
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped: number; total: number } | null>(null)
+  const importFileRef = useRef<HTMLInputElement>(null)
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [linkPreviews, setLinkPreviews] = useState<Record<string, { url: string; title: string; description: string; image: string; site_name: string }>>({})
   const fetchedMsgIds = useRef<Set<string>>(new Set())
 
@@ -236,6 +241,66 @@ export default function ChatPage() {
     }
   }
 
+  const ensureChatBackupDir = async (subDirName: string): Promise<string> => {
+    const rootList = await getFileList('0', 1, 100)
+    let chatDir = rootList.items.find((f) => f.is_dir && f.name === '聊天记录')
+    if (!chatDir) {
+      chatDir = await createDirectory('聊天记录', '0')
+    }
+    const subList = await getFileList(chatDir.id, 1, 100)
+    let subDir = subList.items.find((f) => f.is_dir && f.name === subDirName)
+    if (!subDir) {
+      subDir = await createDirectory(subDirName, chatDir.id)
+    }
+    return subDir.id
+  }
+
+  const handleExport = async () => {
+    if (!currentConvId || !currentConv) return
+    setExporting(true)
+    try {
+      const data = await exportConversation(currentConvId)
+      const jsonStr = JSON.stringify(data, null, 2)
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      // Browser download
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const convName = data.conversation_name || currentConvId
+      a.download = `${convName}_${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      // Upload to cloud
+      try {
+        const subDir = currentConv.type === 'group' ? '群聊' : '私聊'
+        const parentId = await ensureChatBackupDir(subDir)
+        const file = new File([blob], a.download, { type: 'application/json' })
+        await uploadFile(file, parentId)
+        message.success('已导出并保存到云盘')
+      } catch {
+        message.success('已导出到本地')
+      }
+    } catch {
+      message.error('导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleImport = async (file: File) => {
+    if (!currentConvId) return
+    setImporting(true)
+    try {
+      const summary = await importConversation(file)
+      setImportResult(summary)
+      setImportModalVisible(true)
+    } catch {
+      message.error('导入失败，请检查文件格式和校验码')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleLeaveGroup = async () => {
     if (!currentConvId) return
     Modal.confirm({
@@ -327,6 +392,18 @@ export default function ChatPage() {
         title={currentConv ? (currentConv.name || `会话 ${currentConv.id}`) : '选择一个会话'}
         style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}
         styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' } }}
+        extra={
+          currentConvId ? (
+            <Space size={4}>
+              <Button type="text" size="small" icon={<DownloadOutlined />}
+                title="导出聊天记录" loading={exporting}
+                onClick={handleExport} />
+              <Button type="text" size="small" icon={<UploadOutlined />}
+                title="导入聊天记录" loading={importing}
+                onClick={() => importFileRef.current?.click()} />
+            </Space>
+          ) : undefined
+        }
       >
         {currentConvId ? (
           <>
@@ -652,6 +729,41 @@ export default function ChatPage() {
         onOk={handleSendFile}
         onCancel={() => setFilePickerVisible(false)}
       />
+
+      {/* Hidden file input for import */}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) handleImport(file)
+          e.target.value = ''
+        }}
+      />
+
+      {/* Import Result Modal */}
+      <Modal
+        title="导入结果"
+        open={importModalVisible}
+        onCancel={() => { setImportModalVisible(false); setImportResult(null) }}
+        footer={<Button type="primary" onClick={() => { setImportModalVisible(false); setImportResult(null) }}>确定</Button>}
+      >
+        {importResult && (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <p style={{ fontSize: 16 }}>总计 {importResult.total} 条消息</p>
+            <p style={{ color: '#52c41a', fontSize: 16 }}>
+              成功导入 {importResult.inserted} 条
+            </p>
+            {importResult.skipped > 0 && (
+              <p style={{ color: '#8c8c8c', fontSize: 14 }}>
+                跳过 {importResult.skipped} 条 (已存在)
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* Add Member Modal */}
       <Modal

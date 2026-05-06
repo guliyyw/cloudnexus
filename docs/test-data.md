@@ -152,6 +152,25 @@ curl -X POST http://localhost/api/v1/im/link-preview \
   -d '{"url":"https://github.com"}'
 ```
 
+### 聊天记录备份/恢复
+
+```bash
+# 导出会话消息 (JSON 文件下载)
+curl -o chat_export.json "http://localhost/api/v1/im/conversations/{id}/export" \
+  -H "Authorization: Bearer {token}"
+
+# 导入聊天记录 (multipart/form-data)
+curl -X POST http://localhost/api/v1/im/conversations/import \
+  -H "Authorization: Bearer {token}" \
+  -F "file=@chat_export.json"
+
+# 校验码测试：修改 JSON 文件中的 checksum 后导入应失败
+```
+
+前端操作：
+1. 进入聊天页面 → 选择一个会话 → 点击导出按钮 (↓) → 自动下载 JSON 并保存到云盘 `聊天记录/{私聊|群聊}/`
+2. 点击导入按钮 (↑) → 选择 JSON 文件 → 显示导入结果 (新增/跳过/总计)
+
 ### 图片消息
 
 在聊天页面中：

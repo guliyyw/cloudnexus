@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -385,6 +387,53 @@ func (h *IMHandler) HandleLinkPreview(c *gin.Context) {
 		URL: req.URL, Title: title, Description: desc,
 		Image: image, SiteName: site,
 	}))
+}
+
+func (h *IMHandler) HandleExportConversation(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	export, err := h.svc.ExportConversation(userID, convID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	jsonData, _ := json.MarshalIndent(export, "", "  ")
+	filename := fmt.Sprintf("chat_%d_%s.json", convID, time.Now().Format("20060102_150405"))
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Data(http.StatusOK, "application/json", jsonData)
+}
+
+func (h *IMHandler) HandleImportConversation(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请上传文件"))
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "读取文件失败"))
+		return
+	}
+
+	var export model.ChatExport
+	if err := json.Unmarshal(data, &export); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "JSON 格式错误"))
+		return
+	}
+
+	summary, err := h.svc.ImportConversation(userID, &export)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(summary))
 }
 
 func handleError(c *gin.Context, err error) {

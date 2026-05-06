@@ -99,6 +99,8 @@ func main() {
 		im := api.Group("/im")
 		{
 			im.GET("/conversations", imH.HandleGetConversations)
+				im.POST("/conversations/import", imH.HandleImportConversation)
+				im.GET("/conversations/:id/export", imH.HandleExportConversation)
 			im.POST("/conversations", imH.HandleCreateConversation)
 			im.GET("/conversations/:id/messages", imH.HandleGetMessages)
 			im.DELETE("/conversations/:id", imH.HandleDeleteConversation)
