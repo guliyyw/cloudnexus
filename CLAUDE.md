@@ -31,6 +31,7 @@ server/
     logger/                 Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
     migration/              版本化 SQL 迁移 (schema_migrations 追踪表)
     snowflake/              Twitter Snowflake ID 生成器
+    system/                健康检查构建器 + 节点注册与心跳
   config/
     config.single.yaml     单机配置 (DSN, Redis, MinIO, JWT)
     config.cluster.yaml    集群配置
@@ -170,8 +171,10 @@ Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry po
 - `/api/v1/docker/*` → docker-svc:8083
 - `/api/*` → user-file-svc:8081
 - `/ws` → im-svc:8082 (WebSocket upgrade)
+- `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc}` for per-service probing
 - `/` → Serves `client/dist/` static files with SPA `try_files` fallback
 
+Config is at `deploy/nginx/nginx.conf` and is volume-mounted (restart, not rebuild, to apply changes).
 The frontend connects to `window.location.host` for both API calls and WebSocket. Vite proxy config is retained as an alternative for devs who prefer not to run nginx.
 
 ### Docker multi-stage build
@@ -214,6 +217,34 @@ Public routes (no auth, no layout chrome): `/login`, `/register`, `/s/:code`
 Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/shares`, `/chat`, `/friends`, `/docker`, `/admin`
 Catch-all redirects to `/files`
 
+### Docker permission model
+docker-svc uses container labels for ownership (no PostgreSQL needed):
+- **Create**: adds labels `cloudnexus.creator=<user_id>` and `cloudnexus.creator_name=<username>` to every container
+- **List**: non-admin → filters by `?filters={"label":["cloudnexus.creator=<userID>"]}` (server-side Docker API filter). Admin → returns all containers unfiltered.
+- **Actions** (start/stop/restart/remove/logs/stats): call `checkOwnership(id, userID, isAdmin)` which inspects the container's labels. Admin bypasses, others must match `cloudnexus.creator` label.
+- Handler helpers: `getUserID(c)`, `isAdmin(c)`, `getUsername(c)` extract values from Gin context
+
+### Health check endpoints
+All three services return a uniform detailed `/healthz` JSON:
+```json
+{"status":"ok","service":"im-svc","uptime":"2m6s","go_version":"go1.26.2","goroutines":10,"memory_mb":3,"components":{"database":"ok","redis":"ok"}}
+```
+Shared builder: `pkg/system/health.go` → `HealthzHandler(serviceName, ...ComponentCheck)` runs checks in parallel.
+
+Per-service checks:
+- **user-file-svc**: database (PostgreSQL ping), minio (ListBuckets)
+- **im-svc**: database (PostgreSQL ping), redis (Ping)
+- **docker-svc**: docker (GET /_ping on Docker Engine API)
+
+Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/user-file-svc`, `/healthz/im-svc`, `/healthz/docker-svc` for per-service probing.
+
+### Node registration & heartbeat
+`pkg/system/nodereg.go` — `NodeRegistrar` manages lifecycle in `docker_nodes` table:
+- `Start()`: upserts node row (name/host/port/status=healthy) via `ON CONFLICT`, then goroutine updates `last_heartbeat` every 10s
+- `Stop()`: marks node `status=offline`, closes stop channel
+- Wired in `user-file-svc/main.go` with `NODE_NAME` and `NODE_HOST` env vars (defaults to OS hostname and localhost)
+- Database model: `pkg/model/docker.go` — `DockerNode{BaseModel, Name, Host, Port, TLSCert, TLSKey, CACert, Status, LastHeartbeat}`
+
 ## Testing
 
 No test files exist yet. Infrastructure tests require running Docker services. API can be tested manually via curl — see `docs/test-data.md` for test account credentials and command examples.
@@ -225,6 +256,8 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 - **Docker build context**: The build context is `../server` (relative to `deploy/`). All Go source changes invalidate the layer cache, so incremental builds recompile.
 - **GORM AutoMigrate**: Each service's `main.go` calls AutoMigrate for its models. Adding a field to a model struct will auto-add the column on restart.
 - **Config changes**: Services must be restarted to pick up config changes (e.g., JWT TTL)
-- **docker-svc**: Does NOT connect to PostgreSQL or initialize Snowflake (no database models). DockerNode model is defined for future cluster features.
+- **docker-svc**: Does NOT connect to PostgreSQL or initialize Snowflake (no database models). Uses Docker container labels for ownership tracking.
 - **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.
 - **WebSocket stale closures**: `useWebSocket` uses `handlerRef` pattern. Always use the ref to access current React state inside WebSocket callbacks — never close over state directly in `useEffect([], [])`.
+- **Nginx config is volume-mounted**: Changes to `deploy/nginx/nginx.conf` only need `docker compose restart nginx`, not a full rebuild.
+- **Node registration**: Only user-file-svc registers nodes (has DB + admin module). im-svc and docker-svc do not participate in node registration.
