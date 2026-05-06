@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, theme } from 'antd'
+import { Layout as AntLayout, Menu, Button, theme, Grid } from 'antd'
 import {
   ShareAltOutlined,
   CloudOutlined,
@@ -16,16 +16,20 @@ import {
 import { useAuthStore } from '../stores/authStore'
 
 const { Header, Sider, Content } = AntLayout
+const { useBreakpoint } = Grid
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { logout, user, fetchProfile } = useAuthStore()
+  const screens = useBreakpoint()
+  const isMobile = !screens.md
 
   useEffect(() => {
     if (!user) fetchProfile()
   }, [])
+  useEffect(() => { setCollapsed(!!isMobile) }, [isMobile])
   const { token: themeToken } = theme.useToken()
 
   const menuItems = [
@@ -38,6 +42,7 @@ export default function AppLayout() {
   ]
 
   const selectedKey = '/' + location.pathname.split('/')[1]
+  const siderWidth = collapsed ? 80 : 220
 
   const siderStyle: React.CSSProperties = {
     overflow: 'auto',
@@ -46,12 +51,21 @@ export default function AppLayout() {
     left: 0,
     top: 0,
     bottom: 0,
+    zIndex: 10,
     background: '#fff',
     borderRight: '1px solid #f0eeeb',
   }
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
+      {isMobile && !collapsed && (
+        <div
+          onClick={() => setCollapsed(true)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 9,
+          }}
+        />
+      )}
       <Sider
         trigger={null}
         collapsible
@@ -68,7 +82,7 @@ export default function AppLayout() {
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => { navigate(key); if (isMobile) setCollapsed(true) }}
           style={{
             background: 'transparent',
             borderInlineEnd: 'none',
@@ -76,9 +90,9 @@ export default function AppLayout() {
           }}
         />
       </Sider>
-      <AntLayout style={{ marginLeft: collapsed ? 80 : 220, transition: 'margin-left 0.2s' }}>
+      <AntLayout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
         <Header style={{
-          padding: '0 24px',
+          padding: isMobile ? '0 12px' : '0 24px',
           background: '#fafaf8',
           display: 'flex',
           alignItems: 'center',
@@ -91,20 +105,24 @@ export default function AppLayout() {
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Button type="text" icon={<UserOutlined />}
-              onClick={() => navigate('/settings')}
-              style={{ color: '#6b6b6b' }}>
-              {user?.username}
-            </Button>
-            <Button type="text" icon={<LogoutOutlined />} onClick={() => { logout(); navigate('/login') }} style={{ color: '#8c8c8c' }}>
-              退出
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 16 }}>
+            {!isMobile && (
+              <Button type="text" icon={<UserOutlined />}
+                onClick={() => navigate('/settings')}
+                style={{ color: '#6b6b6b' }}>
+                {user?.username}
+              </Button>
+            )}
+            <Button type="text" icon={<LogoutOutlined />}
+              onClick={() => { logout(); navigate('/login') }}
+              style={{ color: '#8c8c8c' }}>
+              {!isMobile && '退出'}
             </Button>
           </div>
         </Header>
         <Content style={{
-          margin: 20,
-          padding: 24,
+          margin: isMobile ? 12 : 20,
+          padding: isMobile ? 16 : 24,
           background: themeToken.colorBgContainer,
           borderRadius: 12,
           minHeight: 280,
