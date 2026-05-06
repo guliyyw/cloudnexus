@@ -84,10 +84,10 @@ function UserManagement() {
           <Card><Statistic title="用户总数" value={total} prefix={<UserOutlined />} /></Card>
         </Col>
         <Col span={8}>
-          <Card><Statistic title="活跃用户" value={activeUsers} valueStyle={{ color: '#3f8600' }} prefix={<CheckCircleOutlined />} /></Card>
+          <Card><Statistic title="活跃用户" value={activeUsers} valueStyle={{ color: '#52c41a' }} prefix={<CheckCircleOutlined />} /></Card>
         </Col>
         <Col span={8}>
-          <Card><Statistic title="管理员" value={adminUsers} valueStyle={{ color: '#cf1322' }} prefix={<UserOutlined />} /></Card>
+          <Card><Statistic title="管理员" value={adminUsers} valueStyle={{ color: '#e8964a' }} prefix={<UserOutlined />} /></Card>
         </Col>
       </Row>
 
@@ -278,7 +278,7 @@ function HistoricalMetrics() {
             <XAxis dataKey="time" fontSize={11} />
             <YAxis domain={[0, 100]} fontSize={11} />
             <Tooltip />
-            <Line type="monotone" dataKey="cpu_percent" stroke="#1677ff" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="cpu_percent" stroke="#e8964a" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -292,7 +292,7 @@ function HistoricalMetrics() {
                 <XAxis dataKey="time" fontSize={11} />
                 <YAxis domain={[0, 100]} fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="mem_percent" stroke="#52c41a" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="mem_percent" stroke="#d4a06a" dot={false} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </Card>
@@ -307,8 +307,8 @@ function HistoricalMetrics() {
                 <YAxis yAxisId="right" orientation="right" fontSize={11} />
                 <Tooltip />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="goroutines" stroke="#faad14" dot={false} strokeWidth={2} name="Goroutines" />
-                <Line yAxisId="right" type="monotone" dataKey="heap_alloc_mb" stroke="#722ed1" dot={false} strokeWidth={2} name="堆内存(MB)" />
+                <Line yAxisId="left" type="monotone" dataKey="goroutines" stroke="#c49a5c" dot={false} strokeWidth={2} name="Goroutines" />
+                <Line yAxisId="right" type="monotone" dataKey="heap_alloc_mb" stroke="#8c6a4a" dot={false} strokeWidth={2} name="堆内存(MB)" />
               </LineChart>
             </ResponsiveContainer>
           </Card>

@@ -86,7 +86,7 @@ export default function ShareAccessPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f5f5f5' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
       <Card style={{ width: 520 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
@@ -147,7 +147,7 @@ export default function ShareAccessPage() {
                 </Button>
               </Space>
               {showPreview && (
-                <Card size="small" style={{ background: '#fafafa' }}>
+                <Card size="small" style={{ background: '#fafaf8' }}>
                   {renderPreview()}
                 </Card>
               )}

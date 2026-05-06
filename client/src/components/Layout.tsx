@@ -38,37 +38,72 @@ export default function AppLayout() {
 
   const selectedKey = '/' + location.pathname.split('/')[1]
 
+  const siderStyle: React.CSSProperties = {
+    overflow: 'auto',
+    height: '100vh',
+    position: 'fixed',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    background: '#fff',
+    borderRight: '1px solid #f0eeeb',
+  }
+
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed}>
-        <div style={{ height: 48, margin: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: '#fff', fontWeight: 'bold', fontSize: collapsed ? 14 : 18, whiteSpace: 'nowrap' }}>
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={collapsed}
+        width={220}
+        style={siderStyle}
+      >
+        <div style={{ height: 48, margin: '16px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: '#e8964a', fontWeight: 700, fontSize: collapsed ? 16 : 20, whiteSpace: 'nowrap', letterSpacing: -0.5 }}>
             {collapsed ? 'CN' : 'CloudNexus'}
           </span>
         </div>
         <Menu
-          theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{
+            background: 'transparent',
+            borderInlineEnd: 'none',
+            fontSize: 14,
+          }}
         />
       </Sider>
-      <AntLayout>
-        <Header style={{ padding: '0 24px', background: themeToken.colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <AntLayout style={{ marginLeft: collapsed ? 80 : 220, transition: 'margin-left 0.2s' }}>
+        <Header style={{
+          padding: '0 24px',
+          background: '#fafaf8',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          height: 56,
+          borderBottom: '1px solid #f0eeeb',
+        }}>
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span>{user?.username}</span>
-            <Button type="text" icon={<LogoutOutlined />} onClick={() => { logout(); navigate('/login') }}>
+            <span style={{ color: '#6b6b6b' }}>{user?.username}</span>
+            <Button type="text" icon={<LogoutOutlined />} onClick={() => { logout(); navigate('/login') }} style={{ color: '#8c8c8c' }}>
               退出
             </Button>
           </div>
         </Header>
-        <Content style={{ margin: 24, padding: 24, background: themeToken.colorBgContainer, borderRadius: 8 }}>
+        <Content style={{
+          margin: 20,
+          padding: 24,
+          background: themeToken.colorBgContainer,
+          borderRadius: 12,
+          minHeight: 280,
+        }}>
           <Outlet />
         </Content>
       </AntLayout>

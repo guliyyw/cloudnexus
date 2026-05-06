@@ -25,7 +25,7 @@ function getFileIcon(mimeType: string, isDir: boolean) {
   if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />
   if (!mimeType) return <FileOutlined />
   if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: '#52c41a' }} />
-  if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#1677ff' }} />
+  if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#5b8def' }} />
   if (mimeType.startsWith('audio/')) return <SoundOutlined style={{ color: '#722ed1' }} />
   if (mimeType === 'application/pdf') return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
   if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return <FileZipOutlined />
@@ -213,8 +213,8 @@ export default function FileListPage() {
               style={{
                 padding: '4px 8px',
                 borderRadius: 4,
-                background: dropDirId === record.id ? '#e6f4ff' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+                background: dropDirId === record.id ? '#fef3e7' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #e8964a' : undefined,
               }}
             >
               {name}
@@ -300,7 +300,7 @@ export default function FileListPage() {
       </div>
 
       {selectedRowKeys.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, background: '#e6f4ff', borderColor: '#91caff' }}>
+        <Card size="small" style={{ marginBottom: 16, background: '#fef3e7', borderColor: '#f5d5b0' }}>
           <Space>
             <Text strong>已选择 {selectedRowKeys.length} 项</Text>
             <Button type="primary" size="small" icon={<SwapOutlined />}
@@ -375,8 +375,8 @@ export default function FileListPage() {
               onDragLeave: handleDirDragLeave,
               onDrop: (e: React.DragEvent) => handleDirDrop(e, record.id, record.name),
               style: {
-                background: dropDirId === record.id ? '#e6f4ff' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+                background: dropDirId === record.id ? '#fef3e7' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #e8964a' : undefined,
                 cursor: 'grab',
               },
             }

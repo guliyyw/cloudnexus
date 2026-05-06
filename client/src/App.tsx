@@ -19,9 +19,54 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+const theme = {
+  token: {
+    colorPrimary: '#e8964a',
+    colorPrimaryBg: '#fef3e7',
+    colorPrimaryBorder: '#f5d5b0',
+    colorBgLayout: '#fafaf8',
+    colorBgContainer: '#ffffff',
+    colorBgElevated: '#ffffff',
+    colorBorderSecondary: '#f0eeeb',
+    colorText: '#2c2c2c',
+    colorTextSecondary: '#8c8c8c',
+    borderRadius: 10,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadowSecondary: '0 2px 8px rgba(0,0,0,0.06)',
+    controlHeight: 38,
+    colorLink: '#e8964a',
+  },
+  components: {
+    Button: {
+      borderRadius: 8,
+      controlHeight: 38,
+    },
+    Card: {
+      borderRadiusLG: 12,
+      paddingLG: 24,
+    },
+    Table: {
+      borderRadius: 10,
+      headerBg: '#fafaf8',
+      headerColor: '#6b6b6b',
+    },
+    Input: {
+      borderRadius: 8,
+      controlHeight: 38,
+    },
+    Modal: {
+      borderRadiusLG: 14,
+    },
+    Menu: {
+      itemBg: 'transparent',
+      subMenuItemBg: 'transparent',
+    },
+  },
+}
+
 export default function App() {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

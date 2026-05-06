@@ -128,7 +128,7 @@ export default function ShareModal({ file, open, onClose }: Props) {
                   ]}
                 >
                   <List.Item.Meta
-                    avatar={<LinkOutlined style={{ fontSize: 18, color: '#1677ff' }} />}
+                    avatar={<LinkOutlined style={{ fontSize: 18, color: '#e8964a' }} />}
                     title={
                       <Space size={4}>
                         <Text copyable={{ text: fileApi.getShareUrl(s.share_code) }}

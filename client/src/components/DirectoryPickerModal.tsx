@@ -98,7 +98,7 @@ function DirectoryPickerModal({ open, title, confirmText, onOk, onCancel }: Prop
                 style={{ cursor: 'pointer', padding: '8px 12px' }}
                 onClick={() => navigateTo(item.id, item.name)}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = '#f5f5f5'
+                  (e.currentTarget as HTMLElement).style.background = '#fef3e7'
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = ''

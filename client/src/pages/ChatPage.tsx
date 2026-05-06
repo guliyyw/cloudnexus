@@ -175,7 +175,7 @@ export default function ChatPage() {
                 cursor: 'pointer',
                 padding: '8px 12px',
                 borderRadius: 6,
-                background: currentConvId === conv.id ? '#e6f4ff' : undefined,
+                background: currentConvId === conv.id ? '#fef3e7' : undefined,
               }}
               onClick={() => selectConv(conv.id)}
             >
@@ -222,7 +222,7 @@ export default function ChatPage() {
                 <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: msg.sender_id === user?.id ? 'flex-end' : 'flex-start' }}>
                   {msg.msg_type === 'system' ? (
                     <div style={{ textAlign: 'center', width: '100%', marginBottom: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 12px', borderRadius: 8 }}>
+                      <Text type="secondary" style={{ fontSize: 12, background: '#f7f6f5', padding: '2px 12px', borderRadius: 8 }}>
                         {msg.content}
                       </Text>
                     </div>
@@ -233,7 +233,7 @@ export default function ChatPage() {
                       </Text>
                       <div style={{
                         maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
-                        background: '#e6f4ff',
+                        background: '#fef3e7',
                         wordBreak: 'break-word',
                       }}>
                         {msg.content}
@@ -244,7 +244,7 @@ export default function ChatPage() {
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
+            <div style={{ padding: '12px 16px', borderTop: '1px solid #f0eeeb', display: 'flex', gap: 8 }}>
               <Input.TextArea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
@@ -257,7 +257,7 @@ export default function ChatPage() {
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#999' }}>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8c8c8c' }}>
             选择或创建一个会话开始聊天
           </div>
         )}
@@ -293,7 +293,7 @@ export default function ChatPage() {
               </List.Item>
             )}
           />
-          <div style={{ padding: 8, borderTop: '1px solid #f0f0f0' }}>
+          <div style={{ padding: 8, borderTop: '1px solid #f0eeeb' }}>
             <Button type="text" danger icon={<LogoutOutlined />} block onClick={handleLeaveGroup}>
               退出群聊
             </Button>
