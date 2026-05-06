@@ -17,6 +17,7 @@ import (
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/storage"
+	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -85,6 +86,10 @@ func main() {
 	fileH := handler.NewFileHandler(fileSvc)
 	systemH := handler.NewSystemHandler(db, minioClient)
 	go systemH.StartMetricsCollector()
+
+	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), 8081)
+	nodeReg.Start()
+	defer nodeReg.Stop()
 
 	shareRepo := repository.NewShareRepository(db)
 	shareSvc := service.NewShareService(shareRepo, fileRepo)
