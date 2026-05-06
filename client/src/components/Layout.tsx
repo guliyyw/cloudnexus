@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout as AntLayout, Menu, Button, theme } from 'antd'
 import {
+  ShareAltOutlined,
   CloudOutlined,
   MessageOutlined,
   TeamOutlined,
@@ -28,6 +29,7 @@ export default function AppLayout() {
 
   const menuItems = [
     { key: '/files', icon: <CloudOutlined />, label: '文件管理' },
+    { key: '/shares', icon: <ShareAltOutlined />, label: '我的分享' },
     { key: '/chat', icon: <MessageOutlined />, label: '即时通讯' },
     { key: '/friends', icon: <TeamOutlined />, label: '好友' },
     { key: '/docker', icon: <ContainerOutlined />, label: 'Docker 管理' },

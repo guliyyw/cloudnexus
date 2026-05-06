@@ -10,6 +10,7 @@ import ChatPage from './pages/ChatPage'
 import FriendPage from './pages/FriendPage'
 import DockerPage from './pages/DockerPage'
 import AdminPage from './pages/AdminPage'
+import MySharesPage from './pages/MySharesPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -32,6 +33,7 @@ export default function App() {
             }
           >
             <Route path="/files" element={<FileListPage />} />
+            <Route path="/shares" element={<MySharesPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/friends" element={<FriendPage />} />
             <Route path="/docker" element={<DockerPage />} />
