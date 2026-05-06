@@ -1,6 +1,6 @@
 # CloudNexus 开发指南
 
-> 版本：v0.6.0 | 更新：2026-05-04
+> 版本：v0.9.0 | 更新：2026-05-06
 
 ## 1. 环境准备
 
@@ -180,7 +180,7 @@ go fmt ./...
 - 遵循 [Effective Go](https://go.dev/doc/effective_go)
 - 包名小写单数：`handler` 不是 `handlers`
 - 错误处理：使用 `pkg/errors` 中的 `AppError`
-- 日志：使用标准库 `log`
+- 日志：使用 `pkg/logger`（zap 封装，环形缓冲 + 按天分文件 + 30天清理）
 - **ID 类型**：所有 uint64 ID 字段 JSON tag 加 `,string`，避免 JavaScript 精度丢失
 
 ### 4.2 分层架构
