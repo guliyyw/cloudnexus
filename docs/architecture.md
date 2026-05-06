@@ -1,6 +1,6 @@
 # CloudNexus 架构设计
 
-> 版本：v4.1 | 更新：2026-05-04
+> 版本：v1.0.0 | 更新：2026-05-06
 
 ## 1. 项目概述
 
@@ -86,10 +86,14 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 ```
 发送方浏览器 → nginx(:80 /ws) → im-svc(Docker) ──┬──→ PostgreSQL (存储)
-                                                  └──→ Redis Pub/Sub (广播)
-                                                            │
-接收方浏览器 ← nginx(:80 /ws) ← im-svc(Docker) ←──────────┘
+                                                  └──→ Hub 本地推送 → 接收方 (同节点)
+                                                  └──→ Redis Pub/Sub (im:broadcast) → 接收方 (跨节点)
 ```
+
+**消息类型：** text / image / video / file / system
+- image/video：上传到云盘 → 发送 JSON `{file_id, url, ...}` → 内联渲染
+- file：从云盘文件选择器选取 → 发送文件卡片
+- text：支持 URL 自动检测 → 后端抓取 OG 元数据 → 链接卡片展示
 
 ### 4.3 Docker 操作
 
@@ -103,11 +107,13 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 |----|------|
 | 入口 | nginx:alpine (Docker) |
 | 后端 | Go + Gin + GORM |
-| 前端 | React 18 + TypeScript + Vite + Ant Design 5 + Zustand |
+| 前端 | React 18 + TypeScript + Vite + Ant Design 6 + Zustand 5 |
 | 数据库 | PostgreSQL 15 |
 | 缓存/消息 | Redis 7 |
 | 对象存储 | MinIO (S3 兼容) |
-| 日志 | zap (结构化日志) + lumberjack (文件轮转) |
+| 日志 | zap (结构化日志) + 环形缓冲 + 按天分文件 + 30天自动清理 |
+| ID 生成 | Snowflake 算法 (uint64 → JSON string) |
+| 数据库迁移 | 版本化 SQL 迁移 (go:embed) + schema_migrations 追踪 |
 | 容器化 | Docker Compose, 多阶段构建 |
 
 ## 6. 日志与监控
@@ -129,21 +135,21 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 ```
 
 **设计要点：**
-- `request_id` 从 nginx 传入的 `X-Request-Id` 头获取，贯穿全链路追踪
+- `request_id` 从请求生成 (UUID)，贯穿全链路追踪
 - 日志级别通过配置控制（debug/info/warn/error），生产默认 info
-- 日志输出到 stdout（Docker 收集）+ 可选文件轮转 (lumberjack)
-- 敏感信息（密码、token）在日志中自动脱敏
+- 三路输出：stdout (Docker 收集) + 2048 条环形缓冲 (实时查询) + 按天分文件 (10MB 拆分, 30天自动清理)
+- 管理后台可实时查看/过滤/下载日志
 
 ### 6.2 健康检查与监控
 
-**基础端点（已有）：**
+**已有端点：**
 - `GET /healthz` — 存活检查（各服务已实现）
-
-**计划扩展：**
-- `GET /healthz/details` — 详细信息（DB 连接池、Redis 延迟、MinIO 可达性）
-- `GET /metrics` — Prometheus 格式指标（请求数、延迟、错误率、在线 WebSocket 数）
-- `GET /debug/pprof` — Go 性能分析（生产环境可选开启）
-- `GET /api/v1/admin/stats` — 管理后台系统状态 API
+- `GET /api/v1/admin/stats` — 管理后台系统状态 API（用户数、文件数、在线用户等）
+- `GET /system/log/services` — 可查询的日志服务列表
+- `POST /system/log/query` — 环形缓冲实时日志查询
+- `POST /system/log/read` — 文件日志读取
+- `GET /system/log/files` — 日志文件列表
+- `GET /system/log/download` — 日志文件下载
 
 ### 6.3 请求追踪
 
@@ -158,7 +164,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 ## 7. 安全模型
 
 - **认证**：JWT (access token 8h + refresh token 7d)
-- **授权**：服务内权限检查，管理员 vs 普通用户
+- **授权**：JWT 内嵌 `is_admin` 字段，`AdminRequired` 中间件校验管理员权限
 - **传输安全**：HTTPS + WSS (生产环境必须)
 - **存储安全**：密码 bcrypt 哈希，文件可选加密
 - **Docker 安全**：Socket 挂载到 docker-svc 容器，通过 API 权限控制
@@ -174,8 +180,9 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 水平扩容 | 所有服务无状态，增加实例 + 负载均衡即可 |
 | Docker 多主机 | node 参数 + TLS 客户端工厂模式 |
 | K8s 部署 | deploy/k8s/ 目录预留 |
-| 管理后台 | AdminRequired 中间件 + admin API，预留 U7 前端页面 |
-| 日志系统 | 结构化日志中间件 + request_id 注入，预留日志查询/导出 API |
+| 管理后台 | ✅ 已实现：用户管理 + 系统状态 + 日志查看 |
+| 日志系统 | ✅ 已实现：zap 三路输出 + 管理后台实时查询 |
+| 跨节点 IM | ✅ 已实现：Redis Pub/Sub (im:broadcast) 跨节点消息中继 |
 | 监控告警 | /metrics 端点预留 Prometheus 格式，可集成 Grafana 告警 |
 
 ## 9. 相关文档

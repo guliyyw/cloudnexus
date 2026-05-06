@@ -107,3 +107,16 @@ export async function listFriends(): Promise<FriendRequest[]> {
 export async function removeFriend(friendId: string): Promise<void> {
   await api.delete(`/im/friends/${friendId}`)
 }
+
+export interface LinkPreview {
+  url: string
+  title: string
+  description: string
+  image: string
+  site_name: string
+}
+
+export async function fetchLinkPreview(url: string): Promise<LinkPreview> {
+  const res = await api.post('/im/link-preview', { url })
+  return res.data.data
+}

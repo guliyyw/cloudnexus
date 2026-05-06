@@ -57,7 +57,7 @@ export default function AppLayout() {
   }
 
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <AntLayout style={{ height: '100vh', overflow: 'hidden' }}>
       {isMobile && !collapsed && (
         <div
           onClick={() => setCollapsed(true)}
@@ -90,7 +90,13 @@ export default function AppLayout() {
           }}
         />
       </Sider>
-      <AntLayout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
+      <AntLayout style={{
+        marginLeft: siderWidth,
+        transition: 'margin-left 0.2s',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
         <Header style={{
           padding: isMobile ? '0 12px' : '0 24px',
           background: '#fafaf8',
@@ -99,6 +105,7 @@ export default function AppLayout() {
           justifyContent: 'space-between',
           height: 56,
           borderBottom: '1px solid #f0eeeb',
+          flexShrink: 0,
         }}>
           <Button
             type="text"
@@ -125,7 +132,9 @@ export default function AppLayout() {
           padding: isMobile ? 16 : 24,
           background: themeToken.colorBgContainer,
           borderRadius: 12,
-          minHeight: 280,
+          flex: 1,
+          overflow: 'auto',
+          minHeight: 0,
         }}>
           <Outlet />
         </Content>

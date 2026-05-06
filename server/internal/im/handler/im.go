@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"io"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/cloudnexus/server/internal/im/service"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
@@ -298,6 +302,89 @@ func (h *IMHandler) HandleGetMessages(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.OKWithData(msgs))
+}
+
+type linkPreviewReq struct {
+	URL string `json:"url" binding:"required"`
+}
+
+type linkPreviewResp struct {
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Image       string `json:"image"`
+	SiteName    string `json:"site_name"`
+}
+
+var (
+	reTitle       = regexp.MustCompile(`(?i)<title[^>]*>([^<]+)</title>`)
+	reOGTitle     = regexp.MustCompile(`(?i)<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']`)
+	reOGDesc      = regexp.MustCompile(`(?i)<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']`)
+	reOGImage     = regexp.MustCompile(`(?i)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']`)
+	reOGSiteName  = regexp.MustCompile(`(?i)<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']`)
+	reMetaDesc    = regexp.MustCompile(`(?i)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']`)
+)
+
+func extractMeta(html string) (title, desc, image, site string) {
+	if m := reOGTitle.FindStringSubmatch(html); len(m) > 1 {
+		title = m[1]
+	}
+	if title == "" {
+		if m := reTitle.FindStringSubmatch(html); len(m) > 1 {
+			title = strings.TrimSpace(m[1])
+		}
+	}
+	if m := reOGDesc.FindStringSubmatch(html); len(m) > 1 {
+		desc = m[1]
+	}
+	if desc == "" {
+		if m := reMetaDesc.FindStringSubmatch(html); len(m) > 1 {
+			desc = m[1]
+		}
+	}
+	if m := reOGImage.FindStringSubmatch(html); len(m) > 1 {
+		image = m[1]
+	}
+	if m := reOGSiteName.FindStringSubmatch(html); len(m) > 1 {
+		site = m[1]
+	}
+	return
+}
+
+func (h *IMHandler) HandleLinkPreview(c *gin.Context) {
+	var req linkPreviewReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+
+	httpReq, err := http.NewRequest("GET", req.URL, nil)
+	if err != nil {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
+		return
+	}
+	httpReq.Header.Set("User-Agent", "CloudNexus-LinkPreview/1.0")
+	httpReq.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024)) // 512KB max
+	if err != nil {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
+		return
+	}
+
+	title, desc, image, site := extractMeta(string(body))
+	c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{
+		URL: req.URL, Title: title, Description: desc,
+		Image: image, SiteName: site,
+	}))
 }
 
 func handleError(c *gin.Context, err error) {

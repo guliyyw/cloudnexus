@@ -8,6 +8,7 @@ import {
   TeamOutlined, UsergroupAddOutlined, CrownOutlined,
   UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
   PaperClipOutlined, DownloadOutlined, EyeOutlined,
+  PictureOutlined, LinkOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
@@ -17,7 +18,8 @@ import { useNavigate } from 'react-router-dom'
 import type { Message, GroupMember } from '../services/chat'
 import type { FriendRequest } from '../services/chat'
 import FilePickerModal from '../components/FilePickerModal'
-import { getDownloadUrl, getPreviewUrl } from '../services/file'
+import { getDownloadUrl, getPreviewUrl, uploadFile } from '../services/file'
+import { fetchLinkPreview } from '../services/chat'
 import { isPreviewable } from '../utils/preview'
 import { formatFileSize } from '../utils/format'
 import type { FileItem } from '../services/file'
@@ -46,6 +48,35 @@ export default function ChatPage() {
   const [memberModalVisible, setMemberModalVisible] = useState(false)
   const [filePickerVisible, setFilePickerVisible] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const [linkPreviews, setLinkPreviews] = useState<Record<string, { url: string; title: string; description: string; image: string; site_name: string }>>({})
+  const fetchedMsgIds = useRef<Set<string>>(new Set())
+
+  // URL regex for link detection
+  const urlRegex = /https?:\/\/[^\s<]+[^\s<.,;:!?)}\]'"`>]/g
+
+  const detectUrls = (text: string): string[] => {
+    const matches = text.match(urlRegex)
+    return matches ? [...new Set(matches)] : []
+  }
+
+  // Fetch link previews in useEffect (not in render) to avoid infinite loop
+  useEffect(() => {
+    if (messages.length === 0) return
+    messages.forEach((msg) => {
+      if (msg.msg_type !== 'text') return
+      const urls = detectUrls(msg.content)
+      if (urls.length === 0 || fetchedMsgIds.current.has(msg.id)) return
+      fetchedMsgIds.current.add(msg.id)
+      fetchLinkPreview(urls[0]).then((data) => {
+        setLinkPreviews((prev) => ({ ...prev, [msg.id]: { url: urls[0], title: data.title, description: data.description, image: data.image, site_name: data.site_name } }))
+      }).catch(() => {
+        // Cache empty result to avoid re-fetch
+        setLinkPreviews((prev) => ({ ...prev, [msg.id]: { url: urls[0], title: '', description: '', image: '', site_name: '' } }))
+      })
+    })
+  }, [messages])
 
   useEffect(() => {
     fetchConversations()
@@ -54,9 +85,16 @@ export default function ChatPage() {
     }
   }, [user])
 
-  useEffect(() => {
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+    // Delayed second scroll to account for image/video loading
+    const timer = setTimeout(scrollToBottom, 400)
+    return () => clearTimeout(timer)
+  }, [messages.length])
 
   const { sendMessage } = useWebSocket((wsMsg) => {
     if (wsMsg.type === 'message') {
@@ -147,10 +185,51 @@ export default function ChatPage() {
     setFilePickerVisible(false)
   }
 
+  const handleImgUpload = async (file: File) => {
+    if (!currentConvId) return
+    setUploadingImg(true)
+    try {
+      const uploaded = await uploadFile(file, '0')
+      const isVideo = file.type.startsWith('video/')
+      sendMessage({
+        type: 'message',
+        conversation_id: currentConvId,
+        content: JSON.stringify({
+          file_id: uploaded.id,
+          file_name: uploaded.name,
+          file_size: uploaded.size,
+          mime_type: uploaded.mime_type,
+          url: getPreviewUrl(uploaded.id),
+          download_url: getDownloadUrl(uploaded.id),
+        }),
+        msg_type: isVideo ? 'video' : 'image',
+      })
+    } catch {
+      message.error('图片上传失败')
+    } finally {
+      setUploadingImg(false)
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) handleImgUpload(file)
+        return
+      }
+    }
+  }
+
   const parseFileContent = (content: string) => {
     try {
       return JSON.parse(content) as {
         file_id: string; file_name: string; file_size: number; mime_type: string
+        url?: string; download_url?: string
       }
     } catch {
       return null
@@ -182,11 +261,12 @@ export default function ChatPage() {
   })
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 200px)', gap: 16 }}>
+    <div style={{ display: 'flex', height: '100%', gap: 16 }}>
       {/* Conversation List */}
       <Card
         title="会话"
-        style={{ width: 280, display: 'flex', flexDirection: 'column' }}
+        style={{ width: 280, height: '100%', display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { flex: 1, overflow: 'auto', padding: 0 } }}
         extra={
           <Space size={4}>
             <Button type="text" icon={<UsergroupAddOutlined />} title="创建群聊"
@@ -245,20 +325,64 @@ export default function ChatPage() {
       {/* Chat Area */}
       <Card
         title={currentConv ? (currentConv.name || `会话 ${currentConv.id}`) : '选择一个会话'}
-        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-        styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 } }}
+        style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}
+        styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' } }}
       >
         {currentConvId ? (
           <>
             <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-              {messages.map((msg: Message) => (
-                <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: msg.sender_id === user?.id ? 'flex-end' : 'flex-start' }}>
+              {messages.map((msg: Message) => {
+                const isMe = msg.sender_id === user?.id
+                const alignStyle = { alignItems: isMe ? 'flex-end' as const : 'flex-start' as const }
+                const senderLabel = isMe ? '我' : (currentConv?.name || `用户${msg.sender_id}`)
+                const timeStr = new Date(msg.created_at).toLocaleTimeString()
+                const urls = msg.msg_type === 'text' ? detectUrls(msg.content) : []
+                const linkPrev = linkPreviews[msg.id]
+
+                return (
+                <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', ...alignStyle }}>
                   {msg.msg_type === 'system' ? (
                     <div style={{ textAlign: 'center', width: '100%', marginBottom: 8 }}>
                       <Text type="secondary" style={{ fontSize: 12, background: '#f7f6f5', padding: '2px 12px', borderRadius: 8 }}>
                         {msg.content}
                       </Text>
                     </div>
+                  ) : msg.msg_type === 'image' ? (
+                    (() => {
+                      const fc = parseFileContent(msg.content)
+                      const src = fc?.url || getPreviewUrl(fc?.file_id || '')
+                      return (
+                        <div style={{ maxWidth: '70%' }}>
+                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+                            {senderLabel} · {timeStr}
+                          </Text>
+                          <img
+                            src={src}
+                            alt={fc?.file_name || '图片'}
+                            style={{ maxWidth: 320, maxHeight: 320, borderRadius: 12, cursor: 'pointer', objectFit: 'cover' }}
+                            onClick={() => window.open(src, '_blank')}
+                          />
+                        </div>
+                      )
+                    })()
+                  ) : msg.msg_type === 'video' ? (
+                    (() => {
+                      const fc = parseFileContent(msg.content)
+                      const src = fc?.url || getPreviewUrl(fc?.file_id || '')
+                      return (
+                        <div style={{ maxWidth: '70%' }}>
+                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+                            {senderLabel} · {timeStr}
+                          </Text>
+                          <video
+                            src={src}
+                            controls
+                            preload="metadata"
+                            style={{ maxWidth: 320, maxHeight: 320, borderRadius: 12 }}
+                          />
+                        </div>
+                      )
+                    })()
                   ) : msg.msg_type === 'file' ? (
                     (() => {
                       const fc = parseFileContent(msg.content)
@@ -270,11 +394,10 @@ export default function ChatPage() {
                           {msg.content}
                         </div>
                       )
-                      const isMe = msg.sender_id === user?.id
                       return (
                         <div style={{ maxWidth: '70%' }}>
                           <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-                            {isMe ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
+                            {senderLabel} · {timeStr}
                           </Text>
                           <Card
                             size="small"
@@ -304,21 +427,69 @@ export default function ChatPage() {
                       )
                     })()
                   ) : (
-                    <>
-                      <Text type="secondary" style={{ fontSize: 12, marginBottom: 4 }}>
-                        {msg.sender_id === user?.id ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
+                    <div style={{ maxWidth: '70%' }}>
+                      <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+                        {senderLabel} · {timeStr}
                       </Text>
                       <div style={{
-                        maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
-                        background: '#fef3e7',
-                        wordBreak: 'break-word',
+                        padding: '8px 14px', borderRadius: 12,
+                        background: '#fef3e7', wordBreak: 'break-word',
                       }}>
                         {msg.content}
                       </div>
-                    </>
+                      {/* Link Card */}
+                      {linkPrev && (linkPrev.title || linkPrev.image) ? (
+                        <a
+                          href={linkPrev.url || urls[0]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: 'none' }}
+                        >
+                          <Card
+                            size="small"
+                            style={{ marginTop: 6, borderRadius: 10, background: '#fafaf8' }}
+                            styles={{ body: { padding: '10px 12px' } }}
+                          >
+                            <div style={{ display: 'flex', gap: 10 }}>
+                              {linkPrev.image && (
+                                <img
+                                  src={linkPrev.image}
+                                  alt=""
+                                  style={{ width: 60, height: 60, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                                />
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <Text strong style={{ fontSize: 13, display: 'block' }} ellipsis>
+                                  <LinkOutlined style={{ marginRight: 4 }} />
+                                  {linkPrev.title || urls[0]}
+                                </Text>
+                                {linkPrev.description && (
+                                  <Text type="secondary" style={{ fontSize: 11, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
+                                    {linkPrev.description}
+                                  </Text>
+                                )}
+                                {linkPrev.site_name && (
+                                  <Text type="secondary" style={{ fontSize: 10 }}>{linkPrev.site_name}</Text>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        </a>
+                      ) : null}
+                      {/* Simple link fallback when no preview or empty preview */}
+                      {(!linkPrev || !(linkPrev.title || linkPrev.image)) && urls.length > 0 && (
+                        <div style={{ marginTop: 4 }}>
+                          {urls.map((u, i) => (
+                            <a key={i} href={u} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, display: 'block' }}>
+                              <LinkOutlined /> {u.length > 50 ? u.slice(0, 50) + '...' : u}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              ))}
+              )})}
               <div ref={messagesEndRef} />
             </div>
             <div style={{ padding: '12px 16px', borderTop: '1px solid #f0eeeb', display: 'flex', gap: 8 }}>
@@ -326,10 +497,25 @@ export default function ChatPage() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onPressEnter={(e) => { e.preventDefault(); handleSend() }}
-                placeholder="输入消息..."
+                onPaste={handlePaste}
+                placeholder="输入消息... (可直接粘贴图片)"
                 autoSize={{ minRows: 1, maxRows: 4 }}
                 style={{ flex: 1 }}
               />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImgUpload(file)
+                  e.target.value = ''
+                }}
+              />
+              <Button type="text" icon={<PictureOutlined />} title="发送图片/视频"
+                loading={uploadingImg}
+                onClick={() => fileInputRef.current?.click()} />
               <Button type="text" icon={<PaperClipOutlined />} title="发送文件"
                 onClick={() => setFilePickerVisible(true)} />
               <Button type="primary" icon={<SendOutlined />} onClick={handleSend}>发送</Button>

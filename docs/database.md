@@ -1,6 +1,6 @@
 # CloudNexus 数据库设计文档
 
-> 版本：v0.6.0 | 数据库：PostgreSQL 15 | ORM：GORM
+> 版本：v1.0.0 | 数据库：PostgreSQL 15 | ORM：GORM
 
 ## 1. 设计原则
 
@@ -24,9 +24,11 @@
 | email | VARCHAR(255) | UNIQUE, NOT NULL | 邮箱 |
 | password | VARCHAR(255) | NOT NULL | bcrypt 哈希 |
 | avatar | VARCHAR(512) | | 头像 URL |
+| is_admin | BOOLEAN | DEFAULT false | 是否为管理员 |
 | status | SMALLINT | DEFAULT 1 | 1=正常, 0=禁用 |
 | created_at | TIMESTAMPTZ | NOT NULL | 创建时间 |
 | updated_at | TIMESTAMPTZ | NOT NULL | 更新时间 |
+| deleted_at | TIMESTAMPTZ | | 软删除 |
 
 **索引：**
 ```sql
@@ -149,7 +151,7 @@ CREATE INDEX idx_conv_members_conv_id ON conversation_members(conversation_id);
 | conversation_id | BIGINT | NOT NULL | |
 | sender_id | BIGINT | NOT NULL | 发送者 |
 | content | TEXT | NOT NULL | 消息内容 |
-| msg_type | VARCHAR(16) | DEFAULT 'text' | text / image / file / system |
+| msg_type | VARCHAR(16) | DEFAULT 'text' | text / image / video / file / system |
 | seq | BIGINT | NOT NULL | 会话内消息序号 |
 | created_at | TIMESTAMPTZ | NOT NULL | |
 
@@ -161,6 +163,33 @@ CREATE INDEX idx_messages_conv_seq ON messages(conversation_id, seq DESC);
 CREATE INDEX idx_messages_sender_id ON messages(sender_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
 ```
+
+---
+
+### friends — 好友关系表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| user_id | BIGINT | NOT NULL | 请求发起者 |
+| friend_id | BIGINT | NOT NULL | 被请求者 |
+| status | VARCHAR(16) | DEFAULT 'pending' | pending / accepted / blocked |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+
+**唯一约束：** `(user_id, friend_id)`
+
+**索引：**
+```sql
+CREATE UNIQUE INDEX idx_friend_pair ON friends(user_id, friend_id);
+```
+
+### schema_migrations — 数据库迁移追踪表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| name | VARCHAR(255) | PK | 迁移文件名 (如 001_initial_schema) |
+| applied_at | TIMESTAMPTZ | NOT NULL | 执行时间 |
 
 ---
 
@@ -198,8 +227,9 @@ users ──1:N──> file_shares
 users ──< conversation_members >── conversations
 conversations ──1:N──> messages
 users ──1:N──> messages
-docker_nodes (计划中)
-friends (好友关系)
+users ──< friends >── users (好友双向关系)
+docker_nodes (模型已定义，功能待开发)
+schema_migrations (版本化 SQL 迁移追踪)
 ```
 
 ---

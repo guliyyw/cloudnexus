@@ -117,6 +117,8 @@ func main() {
 				friends.GET("/", imH.HandleListFriends)
 				friends.DELETE("/:friend_id", imH.HandleRemoveFriend)
 			}
+
+			im.POST("/link-preview", imH.HandleLinkPreview)
 		}
 	}
 

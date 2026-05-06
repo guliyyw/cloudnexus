@@ -40,7 +40,8 @@ export async function uploadFile(file: File, parentId: string): Promise<FileItem
   form.append('file', file)
   form.append('parent_id', parentId)
   const res = await api.post('/file/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
-  return res.data.data
+  const data = res.data.data
+  return data.files ? data.files[0] : data
 }
 
 export async function uploadFiles(

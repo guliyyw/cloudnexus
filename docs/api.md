@@ -1,6 +1,6 @@
 # CloudNexus API 接口文档
 
-> 版本：v0.7.0 | 更新：2026-05-04
+> 版本：v1.0.0 | 更新：2026-05-06
 
 ## 通用约定
 
@@ -87,7 +87,8 @@
   "data": {
     "access_token": "eyJhbGci...",
     "refresh_token": "eyJhbGci...",
-    "expires_in": 28800
+    "expires_in": 28800,
+    "is_admin": false
   }
 }
 ```
@@ -128,10 +129,10 @@
   "code": 200,
   "message": "ok",
   "data": {
-    "id": 1,
+    "id": "2051225055077076992",
     "username": "alice",
     "email": "alice@example.com",
-    "avatar": "https://static.example.com/avatars/alice.png",
+    "is_admin": false,
     "created_at": "2026-05-03T10:00:00Z"
   }
 }
@@ -153,48 +154,37 @@
 
 #### POST /api/v1/file/upload
 
-上传文件 (需认证, multipart/form-data)。支持单文件和批量上传。
+上传文件 (需认证, multipart/form-data)。支持单文件和批量上传。单文件和批量均返回 `BatchUploadResult` 格式。
 
 **表单字段：**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | file | File (可多次) | 上传的文件，批量上传时多次 append |
-| parent_id | int | 父目录 ID，0 为根目录 |
+| parent_id | string | 父目录 ID，"0" 为根目录 |
 
-**单文件响应 (201)：**
+**响应 (201)：**
 ```json
 {
-  "code": 201,
-  "message": "uploaded",
-  "data": {
-    "id": 100,
-    "name": "report.pdf",
-    "size": 204800,
-    "mime_type": "application/pdf",
-    "parent_id": 0,
-    "created_at": "2026-05-03T10:00:00Z"
-  }
-}
-```
-
-**批量上传响应 (201)：**
-```json
-{
-  "code": 201,
-  "message": "uploaded",
+  "code": 200,
+  "message": "ok",
   "data": {
     "files": [
       {
-        "id": 100,
+        "id": "2051903357815099392",
+        "user_id": "2051901759848189952",
         "name": "report.pdf",
+        "is_dir": false,
+        "parent_id": "0",
         "size": 204800,
-        "mime_type": "application/pdf"
+        "mime_type": "application/pdf",
+        "storage_key": "...",
+        "created_at": "2026-05-03T10:00:00Z"
       }
     ],
-    "errors": ["bigfile.mp4: 文件过大"],
-    "total": 3,
-    "ok": 2
+    "errors": [],
+    "total": 1,
+    "ok": 1
   }
 }
 ```
@@ -307,6 +297,32 @@
 }
 ```
 
+#### POST /api/v1/file/move
+
+移动文件到目标目录 (需认证)。
+
+**请求体：**
+```json
+{
+  "ids": ["100", "101"],
+  "target_parent_id": "200"
+}
+```
+
+#### POST /api/v1/file/copy
+
+复制文件到目标目录 (需认证)。
+
+**请求体：**
+```json
+{
+  "ids": ["100"],
+  "target_parent_id": "300"
+}
+```
+
+目录递归复制时自动复制所有子文件和目录，MinIO 对象同步复制。
+
 #### GET /api/v1/file/search
 
 搜索文件 (需认证)。
@@ -319,7 +335,64 @@
 | page | int | 页码 |
 | page_size | int | 每页数量 |
 
-### 1.4 WebDAV
+### 1.4 文件分享
+
+#### POST /api/v1/share
+
+创建文件分享链接 (需认证)。
+
+**请求体：**
+```json
+{
+  "file_id": "100",
+  "password": "optional-pass",
+  "expires_in": 86400
+}
+```
+
+**响应 (201)：**
+```json
+{
+  "code": 201,
+  "message": "ok",
+  "data": {
+    "id": "...",
+    "file_id": "100",
+    "share_code": "a1b2c3d4e5f6",
+    "has_password": true,
+    "expires_at": "2026-05-07T10:00:00Z"
+  }
+}
+```
+
+#### GET /api/v1/share/:code
+
+公开访问分享链接 (无需认证)。返回文件信息和是否需要密码。
+
+#### POST /api/v1/share/:code/verify
+
+验证分享密码 (无需认证)。
+
+**请求体：**
+```json
+{
+  "password": "optional-pass"
+}
+```
+
+#### GET /api/v1/share/:code/download
+
+下载分享文件 (无需认证)。支持 `?inline=true` 内联预览。
+
+#### GET /api/v1/shares
+
+列出我的分享链接 (需认证)。
+
+#### DELETE /api/v1/share/:code
+
+取消分享 (需认证)。
+
+### 1.5 WebDAV
 
 WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法：
 
@@ -349,16 +422,14 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
   "message": "ok",
   "data": [
     {
-      "id": 1,
+      "id": "2051901589047746560",
       "type": "private",
       "name": "Bob",
-      "last_message": {
-        "content": "好的，明天见",
-        "sender_id": 2,
-        "sent_at": "2026-05-03T09:55:00Z"
-      },
-      "unread_count": 3,
-      "created_at": "2026-05-03T08:00:00Z"
+      "creator_id": "2051225055077076992",
+      "last_msg_seq": 42,
+      "unread": 3,
+      "created_at": "2026-05-03T08:00:00Z",
+      "updated_at": "2026-05-03T09:55:00Z"
     }
   ]
 }
@@ -403,16 +474,19 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
   "message": "ok",
   "data": [
     {
-      "id": 500,
-      "conversation_id": 1,
-      "sender_id": 1,
+      "id": "2051901589047746561",
+      "conversation_id": "2051901589047746560",
+      "sender_id": "2051225055077076992",
       "content": "你好！",
-      "type": "text",
+      "msg_type": "text",
+      "seq": 1,
       "created_at": "2026-05-03T09:00:00Z"
     }
   ]
 }
 ```
+
+msg_type 可选值: `text` / `image` / `video` / `file` / `system`
 
 #### DELETE /api/v1/im/conversations/:id
 
@@ -423,6 +497,55 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 {
   "code": 200,
   "message": "deleted"
+}
+```
+
+#### GET /api/v1/im/conversations/:id/members
+
+获取群聊成员列表 (需认证)。
+
+#### POST /api/v1/im/conversations/:id/members
+
+添加群成员 (需认证，仅群主)。
+
+**请求体：**
+```json
+{
+  "user_id": "123"
+}
+```
+
+#### DELETE /api/v1/im/conversations/:id/members/:uid
+
+移除群成员 (需认证，仅群主)。
+
+#### POST /api/v1/im/conversations/:id/leave
+
+退出群聊 (需认证)。
+
+#### POST /api/v1/im/link-preview
+
+获取链接预览元数据 (需认证)。
+
+**请求体：**
+```json
+{
+  "url": "https://github.com"
+}
+```
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "url": "https://github.com",
+    "title": "GitHub",
+    "description": "Let's build from here",
+    "image": "https://github.githubassets.com/...",
+    "site_name": "GitHub"
+  }
 }
 ```
 
@@ -557,9 +680,9 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 当用户连接在不同节点时，消息通过 Redis Pub/Sub 跨节点路由：
 
 1. 节点 A 收到发送方消息，写入数据库
-2. 节点 A 将消息发布到 Redis 频道 `im:conversation:{id}`
-3. 所有节点订阅该频道
-4. 节点 B 检查本地是否有接收方在线，有则推送
+2. 本地 Hub 检查接收方是否在线，若在线则直接推送
+3. 若接收方不在本地，将消息发布到 Redis 频道 `im:broadcast`
+4. 所有节点订阅该频道，收到消息后推送给本地已连接的接收方
 
 ---
 
@@ -638,6 +761,25 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 |------|------|------|
 | tail | int | 返回最后 N 行，默认 100 |
 | since | string | 起始时间 |
+
+#### GET /api/v1/docker/containers/:id/stats
+
+获取容器资源使用统计 (需认证)。返回 CPU 使用率 (通过两次采样计算 delta)、内存使用/限制。
+
+**响应 (200)：**
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "data": {
+    "cpu_percent": 2.5,
+    "memory_usage": 10485760,
+    "memory_limit": 67108864,
+    "memory_percent": 15.6,
+    "pids": 12
+  }
+}
+```
 
 ### 3.2 镜像管理
 
@@ -785,49 +927,46 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 
 ### 4.2 服务日志
 
-#### GET /api/v1/admin/logs
+日志系统提供环形缓冲 (实时) + 文件日志 (持久化) 双通道查询。
 
-查看服务日志 (需管理员)。
+#### GET /system/log/services
 
-**查询参数：**
+获取可查询的日志服务列表 (需管理员)。
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| service | string | 服务名：user-file-svc / im-svc / docker-svc |
-| level | string | 日志级别过滤：debug / info / warn / error |
-| keyword | string | 关键词搜索 |
-| from | string | 起始时间 (ISO 8601) |
-| to | string | 结束时间 (ISO 8601) |
-| page | int | 页码，默认 1 |
-| page_size | int | 每页数量，默认 50，最大 200 |
+#### POST /system/log/query
 
-**响应 (200)：**
+查询环形缓冲区日志 (需管理员, 实时, 最多 2048 条)。
+
+**请求体：**
 ```json
 {
-  "code": 200,
-  "message": "ok",
-  "data": {
-    "items": [
-      {
-        "id": 1,
-        "ts": "2026-05-04T17:00:00.000Z",
-        "level": "error",
-        "service": "im-svc",
-        "msg": "websocket write failed",
-        "request_id": "uuid-xxx",
-        "user_id": "2051225055077076992"
-      }
-    ],
-    "total": 42,
-    "page": 1,
-    "page_size": 50
-  }
+  "service": "im-svc",
+  "level": "error",
+  "request_id": "uuid-xxx",
+  "user_id": "2051225055077076992"
 }
 ```
 
-#### GET /api/v1/admin/logs/export
+#### POST /system/log/read
 
-导出日志 (需管理员)。参数同查询，返回文本流。
+读取文件日志 (需管理员)。
+
+**请求体：**
+```json
+{
+  "date": "2026-05-06",
+  "service": "user-file-svc",
+  "filename": "user-file-svc.log"
+}
+```
+
+#### GET /system/log/files
+
+列出日志文件 (需管理员)。查询参数: `?service=user-file-svc`
+
+#### GET /system/log/download
+
+下载日志文件 (需管理员)。查询参数: `?service=user-file-svc&date=2026-05-06&filename=user-file-svc.log`
 
 ### 4.3 用户管理
 
@@ -839,10 +978,8 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| page | int | 页码 |
-| page_size | int | 每页数量 |
-| status | int | 状态过滤：1=正常, 0=禁用 |
-| keyword | string | 用户名/邮箱搜索 |
+| page | int | 页码，默认 1 |
+| page_size | int | 每页数量，默认 20 |
 
 **响应 (200)：**
 ```json
@@ -855,40 +992,23 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
         "id": "2051225055077076992",
         "username": "testuser1",
         "email": "test1@test.com",
+        "is_admin": false,
         "status": 1,
-        "role": "user",
-        "created_at": "2026-05-04T09:12:00Z",
-        "last_login_at": "2026-05-04T17:00:00Z"
+        "created_at": "2026-05-04T09:12:00Z"
       }
     ],
-    "total": 32,
-    "page": 1,
-    "page_size": 50
+    "total": 32
   }
 }
 ```
 
+#### PUT /api/v1/admin/users/:id/admin
+
+切换用户管理员状态 (需管理员)。
+
 #### PUT /api/v1/admin/users/:id/status
 
 启用/禁用用户 (需管理员)。
-
-**请求体：**
-```json
-{
-  "status": 0
-}
-```
-
-#### PUT /api/v1/admin/users/:id/role
-
-修改用户角色 (需管理员)。
-
-**请求体：**
-```json
-{
-  "role": "admin"
-}
-```
 
 ---
 
@@ -908,9 +1028,10 @@ GET /healthz → 200 OK
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v1.0.0 | 2026-05-06 | Phase 2.5 完成：图片/视频消息、链接预览卡片、跨节点 IM Redis Pub/Sub、数据库迁移系统 |
+| v0.9.0 | 2026-05-06 | Docker 镜像管理/容器监控 API、用户设置 API、文件移动/复制 API、分享链接 API |
+| v0.8.0 | 2026-05-05 | 文件移动/复制、分享管理、暖色主题 |
 | v0.7.0 | 2026-05-04 | 新增文件批量删除/下载 API、管理后台 API（系统状态/日志/用户管理） |
 | v0.6.0 | 2026-05-04 | 全容器化部署 (Go 服务 + 前端 Docker 化)，仅 nginx 80 端口对外 |
 | v0.5.0 | 2026-05-04 | ID 类型安全 (Go json:,string + TS number→string)、Nginx Docker 统一入口 |
-| v0.3.0 | 2026-05-04 | JWT TTL 延长至8小时、批量上传/预览/会话删除/好友系统前后端联调完成 |
-| v0.2.0 | 2026-05-04 | 新增批量上传、文件预览、会话删除、好友系统接口 |
 | v0.1.0 | 2026-05-03 | 初始版本，定义三个服务全部接口 |

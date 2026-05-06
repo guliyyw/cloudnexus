@@ -6,6 +6,7 @@
 
 | 用户名 | 密码 | 备注 |
 |--------|------|------|
+| admin | admin123 | 管理员账号 |
 | testuser | 123456 | 默认测试账号 |
 | alice | alice123 | |
 | bob | bob123 | |
@@ -140,6 +141,24 @@ curl -X PUT http://localhost/api/v1/im/friends/requests/{id}/accept \
 curl -X DELETE http://localhost/api/v1/im/friends/{friend_id} \
   -H "Authorization: Bearer {token}"
 ```
+
+### 链接预览
+
+```bash
+# 获取链接 OG 元数据
+curl -X POST http://localhost/api/v1/im/link-preview \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://github.com"}'
+```
+
+### 图片消息
+
+在聊天页面中：
+1. 点击输入框旁的图片按钮 → 选择图片/视频文件 → 自动上传并发送
+2. 或直接粘贴剪贴板中的图片到输入框 → 自动上传并发送
+3. 图片消息内联渲染 (最大 320x320)，点击可全屏查看
+4. 视频消息支持播放控件
 
 ### Docker 管理
 

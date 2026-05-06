@@ -1,6 +1,6 @@
 # CloudNexus 开发指南
 
-> 版本：v0.9.0 | 更新：2026-05-06
+> 版本：v1.0.0 | 更新：2026-05-06
 
 ## 1. 环境准备
 
@@ -8,7 +8,7 @@
 
 | 工具 | 版本要求 | 用途 |
 |------|----------|------|
-| Go | 1.22+ | 后端开发 |
+| Go | 1.25+ | 后端开发 |
 | Node.js | 18+ | 前端开发 |
 | Docker | 24+ | 运行所有服务（含后端） |
 | Git | 2.x | 版本控制 |
@@ -65,14 +65,17 @@ cloudnexus/
 │   ├── pkg/                         # 跨服务共享包
 │   │   ├── auth/                    # JWT 令牌生成与校验
 │   │   ├── middleware/              # Gin 中间件 (CORS, 日志, 认证)
-│   │   ├── database/               # PostgreSQL 连接
+│   │   ├── database/               # PostgreSQL 连接 + Snowflake ID 回调
 │   │   ├── cache/                   # Redis 客户端
 │   │   ├── storage/                 # MinIO 对象存储客户端
 │   │   ├── config/                  # YAML 配置加载
 │   │   ├── model/                   # 共享数据模型
 │   │   ├── snowflake/               # Snowflake ID 生成
 │   │   ├── response/               # HTTP 统一响应格式
-│   │   └── errors/                  # 错误码定义
+│   │   ├── errors/                  # 错误码定义 (AppError + 哨兵错误)
+│   │   ├── logger/                  # Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
+│   │   ├── migration/               # 版本化 SQL 迁移 (go:embed + schema_migrations)
+│   │   └── crypto/                  # bcrypt 密码哈希
 │   ├── config/                      # 配置文件
 │   │   ├── config.single.yaml       # 宿主机开发
 │   │   ├── config.docker.yaml       # Docker 部署
