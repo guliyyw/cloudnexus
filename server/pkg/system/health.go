@@ -1,6 +1,7 @@
 package system
 
 import (
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ func HealthzHandler(service string, checks ...ComponentCheck) gin.HandlerFunc {
 		c.JSON(200, gin.H{
 			"status":     "ok",
 			"service":    service,
+			"version":    os.Getenv("SERVICE_VERSION"),
 			"uptime":     time.Since(startTime).String(),
 			"go_version": runtime.Version(),
 			"goroutines": runtime.NumGoroutine(),

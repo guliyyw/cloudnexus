@@ -61,9 +61,15 @@ func main() {
 		&model.ConversationMember{},
 		&model.Message{},
 		&model.Friend{},
+		&model.DockerNode{},
+		&model.NodeOnlineSession{},
 	); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
+
+	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "im-svc", 8082)
+	nodeReg.Start()
+	defer nodeReg.Stop()
 
 	jwtCfg := auth.Config{
 		AccessSecret:  cfg.JWT.AccessSecret,

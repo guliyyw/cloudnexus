@@ -1,0 +1,1 @@
+ALTER TABLE docker_nodes ADD COLUMN IF NOT EXISTS node_type VARCHAR(16) DEFAULT 'service';

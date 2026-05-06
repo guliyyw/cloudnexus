@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -55,7 +56,7 @@ func main() {
 	if err := migration.Up(db); err != nil {
 		logger.Log.Warn("SQL migration skipped", zap.Error(err))
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.DockerNode{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -87,9 +88,27 @@ func main() {
 	systemH := handler.NewSystemHandler(db, minioClient)
 	go systemH.StartMetricsCollector()
 
-	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), 8081)
+	nodeH := handler.NewNodeHandler(db)
+
+	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "user-file-svc", 8081)
 	nodeReg.Start()
 	defer nodeReg.Stop()
+
+	aggregator := system.NewHealthAggregator(db)
+	aggregator.RegisterInfra(system.InfraNode{
+		Name: "postgres", Host: "localhost", Port: 5432,
+		ProbeFn: system.TCPProbe(cfg.DBHost(), 5432),
+	})
+	aggregator.RegisterInfra(system.InfraNode{
+		Name: "redis", Host: "localhost", Port: 6379,
+		ProbeFn: system.TCPProbe(cfg.RedisHost(), 6379),
+	})
+	aggregator.RegisterInfra(system.InfraNode{
+		Name: "minio", Host: "localhost", Port: 9000,
+		ProbeFn: system.HTTPProbe(fmt.Sprintf("http://%s:9000/minio/health/live", cfg.MinIOHost())),
+	})
+	aggregator.Start()
+	defer aggregator.Stop()
 
 	shareRepo := repository.NewShareRepository(db)
 	shareSvc := service.NewShareService(shareRepo, fileRepo)
@@ -162,6 +181,11 @@ func main() {
 			admin.GET("/logs/download", systemH.HandleLogDownload)
 			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)
 			admin.GET("/metrics/history", systemH.HandleMetricsHistory)
+			admin.GET("/nodes", nodeH.HandleListNodes)
+			admin.GET("/nodes/:name", nodeH.HandleGetNode)
+			admin.GET("/nodes/:name/sessions", nodeH.HandleGetNodeSessions)
+			admin.POST("/nodes", nodeH.HandleAddNode)
+			admin.DELETE("/nodes/:name", nodeH.HandleDeleteNode)
 		}
 	}
 

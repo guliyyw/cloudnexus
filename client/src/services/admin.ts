@@ -130,3 +130,64 @@ export async function getMetricsHistory(n?: number): Promise<MetricsHistoryRespo
   const res = await api.get('/admin/metrics/history', { params: { n } })
   return res.data.data
 }
+
+// --- 集群节点 ---
+
+export interface DockerNode {
+  id: string
+  name: string
+  host: string
+  port: number
+  status: string
+  node_type: string
+  service: string
+  first_seen_at: string
+  total_online_seconds: number
+  offline_since: string
+  container_name: string
+  version: string
+  last_heartbeat: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NodeOnlineSession {
+  id: string
+  node_name: string
+  start_time: string
+  end_time: string
+  duration: number
+  container_name: string
+  version: string
+}
+
+export interface NodeFilter {
+  service?: string
+  host?: string
+  type?: string
+  status?: string
+}
+
+export async function getNodes(filter?: NodeFilter): Promise<DockerNode[]> {
+  const params: Record<string, string> = {}
+  if (filter?.service) params.service = filter.service
+  if (filter?.host) params.host = filter.host
+  if (filter?.type) params.type = filter.type
+  if (filter?.status) params.status = filter.status
+  const res = await api.get('/admin/nodes', { params })
+  return res.data.data.nodes
+}
+
+export async function getNodeSessions(name: string): Promise<NodeOnlineSession[]> {
+  const res = await api.get(`/admin/nodes/${name}/sessions`)
+  return res.data.data.sessions
+}
+
+export async function addNode(req: { name: string; host: string; port: number }): Promise<DockerNode> {
+  const res = await api.post('/admin/nodes', req)
+  return res.data.data.node
+}
+
+export async function deleteNode(name: string): Promise<void> {
+  await api.delete(`/admin/nodes/${name}`)
+}

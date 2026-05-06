@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -38,6 +39,33 @@ type AppConfig struct {
 		AccessTTL     int    `yaml:"access_ttl_sec"`
 		RefreshTTL    int    `yaml:"refresh_ttl_sec"`
 	} `yaml:"jwt"`
+}
+
+// Host extracts the hostname from a PostgreSQL DSN.
+func (c *AppConfig) DBHost() string {
+	dsn := c.Database.DSN
+	for _, part := range strings.Fields(dsn) {
+		if strings.HasPrefix(part, "host=") {
+			return part[5:]
+		}
+	}
+	return "localhost"
+}
+
+// RedisHost extracts the hostname from the Redis address.
+func (c *AppConfig) RedisHost() string {
+	if idx := strings.LastIndex(c.Redis.Addr, ":"); idx > 0 {
+		return c.Redis.Addr[:idx]
+	}
+	return c.Redis.Addr
+}
+
+// MinIOHost extracts the hostname from the MinIO endpoint.
+func (c *AppConfig) MinIOHost() string {
+	if idx := strings.LastIndex(c.MinIO.Endpoint, ":"); idx > 0 {
+		return c.MinIO.Endpoint[:idx]
+	}
+	return c.MinIO.Endpoint
 }
 
 func Load(path string) (*AppConfig, error) {

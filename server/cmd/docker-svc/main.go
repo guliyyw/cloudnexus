@@ -9,8 +9,12 @@ import (
 	"github.com/cloudnexus/server/internal/dockermgr/service"
 	"github.com/cloudnexus/server/pkg/auth"
 	"github.com/cloudnexus/server/pkg/config"
+	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
+	"github.com/cloudnexus/server/pkg/migration"
+	"github.com/cloudnexus/server/pkg/model"
+	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +40,25 @@ func main() {
 	dockerSvc, err := service.NewDockerService()
 	if err != nil {
 		logger.Log.Fatal("连接 Docker 失败", zap.Error(err))
+	}
+
+	snowflake.Init(3)
+
+	db, err := database.NewPostgres(database.Config{DSN: cfg.Database.DSN})
+	if err != nil {
+		logger.Log.Warn("连接数据库失败，节点注册不可用", zap.Error(err))
+	}
+
+	if db != nil {
+		if err := migration.Up(db); err != nil {
+			logger.Log.Warn("SQL migration skipped", zap.Error(err))
+		}
+		if err := db.AutoMigrate(&model.DockerNode{}, &model.NodeOnlineSession{}); err != nil {
+			logger.Log.Warn("DockerNode AutoMigrate 失败", zap.Error(err))
+		}
+		nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "docker-svc", 8083)
+		nodeReg.Start()
+		defer nodeReg.Stop()
 	}
 
 	jwtCfg := auth.Config{
