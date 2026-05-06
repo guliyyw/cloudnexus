@@ -371,6 +371,18 @@ func (s *DockerService) GetStats(id string, userID uint64, isAdmin bool) (*Conta
 	}, nil
 }
 
+func (s *DockerService) Ping() error {
+	resp, err := s.httpClient.Get(fmt.Sprintf("%s/_ping", s.baseURL))
+	if err != nil {
+		return fmt.Errorf("docker daemon unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("docker daemon returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (s *DockerService) CreateContainer(image, name string, userID uint64, username string) (string, error) {
 	labels := fmt.Sprintf(`"cloudnexus.creator":"%d","cloudnexus.creator_name":"%s"`, userID, username)
 	body := fmt.Sprintf(`{"Image":"%s","Labels":{%s}}`, image, labels)

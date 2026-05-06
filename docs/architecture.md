@@ -170,12 +170,18 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 | 端点 | user-file-svc | im-svc | docker-svc |
 |------|:---:|:---:|:---:|
-| `GET /healthz` | 详细（DB/MinIO/内存/goroutine/uptime） | 仅 `{"status":"ok"}` | 仅 `{"status":"ok"}` |
+| `GET /healthz` | 详细（DB/MinIO/内存/goroutine/uptime） | 详细（DB/Redis/内存/goroutine/uptime） | 详细（Docker/内存/goroutine/uptime） |
 | `GET /metrics` | 进程级（堆内存/GC/goroutine） | ❌ | ❌ |
 | `GET /metrics/resources` | 主机级（CPU%/内存/磁盘/网络） | ❌ | ❌ |
 | `GET /metrics/history` | 300 点环形缓冲/10s 间隔 | ❌ | ❌ |
 | `GET /api/v1/admin/stats` | 业务统计（用户数/文件数/在线用户等） | ❌ | ❌ |
 | `GET /system/log/*` | 日志服务/查询/读取/下载 | ❌ | ❌ |
+
+**Nginx 健康检查路由：**
+- `GET /healthz` → user-file-svc（聚合入口）
+- `GET /healthz/user-file-svc` → user-file-svc:8081/healthz
+- `GET /healthz/im-svc` → im-svc:8082/healthz
+- `GET /healthz/docker-svc` → docker-svc:8083/healthz
 
 **日志系统端点：**
 - `GET /system/log/services` — 可查询的日志服务列表

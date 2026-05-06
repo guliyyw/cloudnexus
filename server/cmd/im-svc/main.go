@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/cloudnexus/server/pkg/migration"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
+	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -127,14 +129,30 @@ func main() {
 	// WebSocket needs auth via query param
 	r.GET("/ws", middleware.AuthRequired(jwtCfg.AccessSecret), imH.HandleWebSocket)
 
-	r.GET("/healthz", healthCheck)
+	r.GET("/healthz", system.HealthzHandler("im-svc",
+		func() (string, string) {
+			sqlDB, err := db.DB()
+			if err != nil {
+				return "database", "error: " + err.Error()
+			}
+			if err := sqlDB.Ping(); err != nil {
+				return "database", "error: " + err.Error()
+			}
+			return "database", "ok"
+		},
+		func() (string, string) {
+			if rdb == nil {
+				return "redis", "disabled"
+			}
+			if err := rdb.Ping(context.Background()).Err(); err != nil {
+				return "redis", "error: " + err.Error()
+			}
+			return "redis", "ok"
+		},
+	))
 
 	logger.Log.Info("im-svc starting", zap.Int("port", 8082))
 	if err := r.Run(":8082"); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
-}
-
-func healthCheck(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "ok", "service": "im-svc"})
 }

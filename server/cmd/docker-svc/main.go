@@ -11,6 +11,7 @@ import (
 	"github.com/cloudnexus/server/pkg/config"
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
+	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -75,14 +76,17 @@ func main() {
 		}
 	}
 
-	r.GET("/healthz", healthCheck)
+	r.GET("/healthz", system.HealthzHandler("docker-svc",
+		func() (string, string) {
+			if err := dockerSvc.Ping(); err != nil {
+				return "docker", "error: " + err.Error()
+			}
+			return "docker", "ok"
+		},
+	))
 
 	logger.Log.Info("docker-svc starting", zap.Int("port", 8083))
 	if err := r.Run(":8083"); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
-}
-
-func healthCheck(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "ok", "service": "docker-svc"})
 }
