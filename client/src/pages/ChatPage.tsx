@@ -7,6 +7,7 @@ import {
   SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
   TeamOutlined, UsergroupAddOutlined, CrownOutlined,
   UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
+  PaperClipOutlined, DownloadOutlined, EyeOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
@@ -15,6 +16,11 @@ import { useWebSocket } from '../hooks/useWebSocket'
 import { useNavigate } from 'react-router-dom'
 import type { Message, GroupMember } from '../services/chat'
 import type { FriendRequest } from '../services/chat'
+import FilePickerModal from '../components/FilePickerModal'
+import { getDownloadUrl, getPreviewUrl } from '../services/file'
+import { isPreviewable } from '../utils/preview'
+import { formatFileSize } from '../utils/format'
+import type { FileItem } from '../services/file'
 
 const { Text } = Typography
 
@@ -38,6 +44,7 @@ export default function ChatPage() {
   const [groupName, setGroupName] = useState('')
   const [selectedFriends, setSelectedFriends] = useState<string[]>([])
   const [memberModalVisible, setMemberModalVisible] = useState(false)
+  const [filePickerVisible, setFilePickerVisible] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -122,6 +129,32 @@ export default function ChatPage() {
     if (!currentConvId) return
     await removeMember(currentConvId, userId)
     message.success('已移除成员')
+  }
+
+  const handleSendFile = (file: FileItem) => {
+    if (!currentConvId) return
+    sendMessage({
+      type: 'message',
+      conversation_id: currentConvId,
+      content: JSON.stringify({
+        file_id: file.id,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.mime_type,
+      }),
+      msg_type: 'file',
+    })
+    setFilePickerVisible(false)
+  }
+
+  const parseFileContent = (content: string) => {
+    try {
+      return JSON.parse(content) as {
+        file_id: string; file_name: string; file_size: number; mime_type: string
+      }
+    } catch {
+      return null
+    }
   }
 
   const handleLeaveGroup = async () => {
@@ -226,6 +259,50 @@ export default function ChatPage() {
                         {msg.content}
                       </Text>
                     </div>
+                  ) : msg.msg_type === 'file' ? (
+                    (() => {
+                      const fc = parseFileContent(msg.content)
+                      if (!fc) return (
+                        <div style={{
+                          maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
+                          background: '#fef3e7', wordBreak: 'break-word',
+                        }}>
+                          {msg.content}
+                        </div>
+                      )
+                      const isMe = msg.sender_id === user?.id
+                      return (
+                        <div style={{ maxWidth: '70%' }}>
+                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
+                            {isMe ? '我' : (currentConv?.name || `用户${msg.sender_id}`)} · {new Date(msg.created_at).toLocaleTimeString()}
+                          </Text>
+                          <Card
+                            size="small"
+                            style={{ borderRadius: 12, background: '#fef3e7' }}
+                            styles={{ body: { padding: '10px 14px' } }}
+                          >
+                            <Space direction="vertical" size={4}>
+                              <Text strong style={{ fontSize: 13 }}>{fc.file_name}</Text>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                {fc.mime_type || '未知类型'} · {formatFileSize(fc.file_size)}
+                              </Text>
+                              <Space size={4}>
+                                {isPreviewable(fc.mime_type) && (
+                                  <Button type="link" size="small" icon={<EyeOutlined />}
+                                    href={getPreviewUrl(fc.file_id)} target="_blank">
+                                    预览
+                                  </Button>
+                                )}
+                                <Button type="link" size="small" icon={<DownloadOutlined />}
+                                  href={getDownloadUrl(fc.file_id)}>
+                                  下载
+                                </Button>
+                              </Space>
+                            </Space>
+                          </Card>
+                        </div>
+                      )
+                    })()
                   ) : (
                     <>
                       <Text type="secondary" style={{ fontSize: 12, marginBottom: 4 }}>
@@ -253,6 +330,8 @@ export default function ChatPage() {
                 autoSize={{ minRows: 1, maxRows: 4 }}
                 style={{ flex: 1 }}
               />
+              <Button type="text" icon={<PaperClipOutlined />} title="发送文件"
+                onClick={() => setFilePickerVisible(true)} />
               <Button type="primary" icon={<SendOutlined />} onClick={handleSend}>发送</Button>
             </div>
           </>
@@ -380,6 +459,13 @@ export default function ChatPage() {
           )}
         </Space>
       </Modal>
+
+      {/* File Picker Modal */}
+      <FilePickerModal
+        open={filePickerVisible}
+        onOk={handleSendFile}
+        onCancel={() => setFilePickerVisible(false)}
+      />
 
       {/* Add Member Modal */}
       <Modal
