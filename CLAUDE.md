@@ -29,6 +29,7 @@ server/
     errors/                AppError (Code + Message + Err) 与标准哨兵错误
     response/              APIResponse{Code, Message, Data} 统一 JSON 响应
     logger/                 Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
+    migration/              版本化 SQL 迁移 (schema_migrations 追踪表)
     snowflake/              Twitter Snowflake ID 生成器
   config/
     config.single.yaml     单机配置 (DSN, Redis, MinIO, JWT)
@@ -113,6 +114,9 @@ Services like `file.ts` and `chat.ts` import this shared instance. Public endpoi
 - JWT access token TTL: 8 hours (28800s). Refresh token TTL: 7 days.
 - Refresh tokens are SHA256-hashed before storing in `refresh_tokens` table
 
+### Database migrations
+`pkg/migration/` provides versioned SQL migrations with tracking via `schema_migrations` table. Run before GORM AutoMigrate in each service's startup: `migration.Up(db)`. New migration: add `NNN_name.up.sql` and `NNN_name.down.sql` to `pkg/migration/`. The `go:embed` directive bundles SQL files into the binary. Migrations already applied are skipped on subsequent runs.
+
 ### Error handling
 Handlers call `handleError(c, err)` which type-asserts to `*apperrors.AppError` to get the HTTP status code and message. Service methods return `apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)`.
 
@@ -129,6 +133,9 @@ Multipart form with `file` field (repeated for batch). Stored in MinIO, metadata
 
 ### WebSocket (im-svc)
 Hub pattern: `internal/im/service/hub.go` manages `map[uint64]*Client` (one connection per user). Message types: `message`, `ping`/`pong`, `read_receipt`, `presence`, `ack`, `error`. Token passed as `?token=` query param on WebSocket upgrade.
+
+### Cross-Node IM Relay (Redis Pub/Sub)
+When `hub.SendToUser()` cannot find a local WebSocket connection, it publishes to Redis channel `im:broadcast`. Every im-svc node subscribes to this channel and forwards received messages to its local clients. This enables multi-node deployment behind a load balancer. Graceful degradation: if Redis is unreachable, the service starts normally (cross-node relay skipped) and local messaging still works.
 
 ### Conversation membership
 Private conversations have two `ConversationMember` rows. Per-user soft-delete via `deleted_at` on the member row. Private conversation names are derived dynamically from the other member's username (via JOIN on users table).
