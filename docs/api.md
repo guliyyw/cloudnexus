@@ -756,6 +756,8 @@ msg_type 可选值: `text` / `image` / `video` / `file` / `system`
 
 ### 3.1 容器管理
 
+> **权限模型：** 普通用户只能查看和管理自己创建的容器，管理员可查看和管理全部容器。容器创建时通过 Docker Labels 记录创建者 (`cloudnexus.creator` / `cloudnexus.creator_name`)，列表查询时通过 Docker API label filter 过滤，操作时通过 `checkOwnership` 校验标签归属。
+
 #### GET /api/v1/docker/containers
 
 列出容器 (需认证)。

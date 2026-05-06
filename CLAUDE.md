@@ -134,11 +134,30 @@ Multipart form with `file` field (repeated for batch). Stored in MinIO, metadata
 ### WebSocket (im-svc)
 Hub pattern: `internal/im/service/hub.go` manages `map[uint64]*Client` (one connection per user). Message types: `message`, `ping`/`pong`, `read_receipt`, `presence`, `ack`, `error`. Token passed as `?token=` query param on WebSocket upgrade.
 
+**Client hook** (`client/src/hooks/useWebSocket.ts`): uses `handlerRef` pattern — the handler is stored in a `useRef` updated on every render, so the WebSocket `onmessage` callback always sees the latest closures (e.g., current `currentConvId`). Without this, `useEffect([], [])` would capture stale state from the initial mount.
+
 ### Cross-Node IM Relay (Redis Pub/Sub)
 When `hub.SendToUser()` cannot find a local WebSocket connection, it publishes to Redis channel `im:broadcast`. Every im-svc node subscribes to this channel and forwards received messages to its local clients. This enables multi-node deployment behind a load balancer. Graceful degradation: if Redis is unreachable, the service starts normally (cross-node relay skipped) and local messaging still works.
 
 ### Conversation membership
 Private conversations have two `ConversationMember` rows. Per-user soft-delete via `deleted_at` on the member row. Private conversation names are derived dynamically from the other member's username (via JOIN on users table).
+
+### Chat messages — rich content
+Message `msg_type` values: `text`, `image`, `video`, `file`, `system`.
+
+- **Image/video**: uploaded via button (image/*, video/*) or paste (clipboard). Content is JSON `{file_id, file_name, file_size, mime_type, url, download_url}`. Rendered inline (max 320x320), click to full-screen.
+- **File**: selected via `FilePickerModal` (browse cloud drive). Content is JSON `{file_id, file_name, file_size, mime_type}`. Rendered as a card with preview (if image/video/PDF) and download buttons.
+- **Link preview**: on text messages, URL detection triggers `POST /api/v1/im/link-preview` to fetch OG metadata (title, description, image, site_name). Rendered as a link card below the text bubble. Fetched once per message (tracked via `fetchedMsgIds` ref to avoid duplicate requests).
+- **System**: centered gray text for join/leave notifications.
+
+### Chat backup & restore
+- **Export**: `GET /api/v1/im/conversations/:id/export` returns JSON with `ChatExport` model (`pkg/model/im_export.go`). Checksum = `SHA256(conversation_id|message_count|last_seq)`. Frontend downloads JSON + auto-uploads to cloud drive under `聊天记录/{私聊|群聊}/` (auto-creates directories via `ensureChatBackupDir`).
+- **Import**: `POST /api/v1/im/conversations/import` (multipart file upload). Validates checksum, deduplicates by message ID, batch inserts. Returns `ImportSummary{inserted, skipped, total}`. Route `/import` registered BEFORE `/:id/export` to avoid "import" being parsed as an ID.
+- **Import dedup**: `FindExistingMessageIDs` returns `map[uint64]bool` of existing IDs; `BatchCreateMessages` skips duplicates via GORM `Create` (no `OnConflict` needed since new messages have unique IDs).
+
+### Conversation sidebar — last message + real-time unread
+- `GET /api/v1/im/conversations` returns `last_message` and `last_msg_type` (subquery on messages by `MAX(seq)` per conversation). Displayed in sidebar list item description.
+- On WebSocket message: `updateLastMessage` always called (updates sidebar preview for the conversation). If message is for a non-current conversation, `incrementUnread` is also called (real-time badge increment). Both methods update conversations array in Zustand store.
 
 ### ID generation
 All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2. Snowflake must be initialized before database connection.
@@ -208,3 +227,4 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 - **Config changes**: Services must be restarted to pick up config changes (e.g., JWT TTL)
 - **docker-svc**: Does NOT connect to PostgreSQL or initialize Snowflake (no database models). DockerNode model is defined for future cluster features.
 - **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.
+- **WebSocket stale closures**: `useWebSocket` uses `handlerRef` pattern. Always use the ref to access current React state inside WebSocket callbacks — never close over state directly in `useEffect([], [])`.

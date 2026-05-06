@@ -18,9 +18,13 @@ func NewDockerHandler(svc *service.DockerService) *DockerHandler {
 	return &DockerHandler{svc: svc}
 }
 
+func getUserID(c *gin.Context) uint64       { return c.GetUint64("user_id") }
+func isAdmin(c *gin.Context) bool            { return c.GetBool("is_admin") }
+func getUsername(c *gin.Context) string      { return c.GetString("username") }
+
 func (h *DockerHandler) HandleListContainers(c *gin.Context) {
 	all, _ := strconv.ParseBool(c.DefaultQuery("all", "false"))
-	containers, err := h.svc.ListContainers(all)
+	containers, err := h.svc.ListContainers(all, getUserID(c), isAdmin(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "获取容器列表失败: "+err.Error()))
 		return
@@ -39,7 +43,7 @@ func (h *DockerHandler) HandleCreateContainer(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
 		return
 	}
-	id, err := h.svc.CreateContainer(req.Image, req.Name)
+	id, err := h.svc.CreateContainer(req.Image, req.Name, getUserID(c), getUsername(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "创建容器失败: "+err.Error()))
 		return
@@ -49,7 +53,7 @@ func (h *DockerHandler) HandleCreateContainer(c *gin.Context) {
 
 func (h *DockerHandler) HandleStartContainer(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.svc.StartContainer(id); err != nil {
+	if err := h.svc.StartContainer(id, getUserID(c), isAdmin(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "启动失败: "+err.Error()))
 		return
 	}
@@ -58,7 +62,7 @@ func (h *DockerHandler) HandleStartContainer(c *gin.Context) {
 
 func (h *DockerHandler) HandleStopContainer(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.svc.StopContainer(id); err != nil {
+	if err := h.svc.StopContainer(id, getUserID(c), isAdmin(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "停止失败: "+err.Error()))
 		return
 	}
@@ -67,7 +71,7 @@ func (h *DockerHandler) HandleStopContainer(c *gin.Context) {
 
 func (h *DockerHandler) HandleRestartContainer(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.svc.RestartContainer(id); err != nil {
+	if err := h.svc.RestartContainer(id, getUserID(c), isAdmin(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "重启失败: "+err.Error()))
 		return
 	}
@@ -77,7 +81,7 @@ func (h *DockerHandler) HandleRestartContainer(c *gin.Context) {
 func (h *DockerHandler) HandleRemoveContainer(c *gin.Context) {
 	id := c.Param("id")
 	force, _ := strconv.ParseBool(c.DefaultQuery("force", "false"))
-	if err := h.svc.RemoveContainer(id, force); err != nil {
+	if err := h.svc.RemoveContainer(id, force, getUserID(c), isAdmin(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "删除失败: "+err.Error()))
 		return
 	}
@@ -87,7 +91,7 @@ func (h *DockerHandler) HandleRemoveContainer(c *gin.Context) {
 func (h *DockerHandler) HandleGetLogs(c *gin.Context) {
 	id := c.Param("id")
 	tail := c.DefaultQuery("tail", "100")
-	reader, err := h.svc.GetLogs(id, tail)
+	reader, err := h.svc.GetLogs(id, tail, getUserID(c), isAdmin(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "获取日志失败: "+err.Error()))
 		return
@@ -140,7 +144,7 @@ func (h *DockerHandler) HandleRemoveImage(c *gin.Context) {
 
 func (h *DockerHandler) HandleGetStats(c *gin.Context) {
 	id := c.Param("id")
-	stats, err := h.svc.GetStats(id)
+	stats, err := h.svc.GetStats(id, getUserID(c), isAdmin(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.Error(500, "获取状态失败: "+err.Error()))
 		return

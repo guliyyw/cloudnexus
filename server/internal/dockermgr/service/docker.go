@@ -8,8 +8,10 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -76,9 +78,55 @@ type dockerContainer struct {
 	} `json:"Ports"`
 }
 
-func (s *DockerService) ListContainers(all bool) ([]ContainerInfo, error) {
-	url := fmt.Sprintf("%s/containers/json?all=%v", s.baseURL, all)
-	resp, err := s.httpClient.Get(url)
+type ContainerInspect struct {
+	Config struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
+}
+
+func (s *DockerService) InspectContainer(id string) (*ContainerInspect, error) {
+	resp, err := s.httpClient.Get(fmt.Sprintf("%s/containers/%s/json", s.baseURL, id))
+	if err != nil {
+		return nil, fmt.Errorf("inspect container failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("container not found: %s", string(body))
+	}
+	var info ContainerInspect
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+func (s *DockerService) checkOwnership(id string, userID uint64, isAdmin bool) error {
+	if isAdmin {
+		return nil
+	}
+	info, err := s.InspectContainer(id)
+	if err != nil {
+		return err
+	}
+	creatorStr := info.Config.Labels["cloudnexus.creator"]
+	if creatorStr == "" {
+		return fmt.Errorf("容器无所有权信息")
+	}
+	creatorID, err := strconv.ParseUint(creatorStr, 10, 64)
+	if err != nil || creatorID != userID {
+		return fmt.Errorf("无权操作该容器")
+	}
+	return nil
+}
+
+func (s *DockerService) ListContainers(all bool, userID uint64, isAdmin bool) ([]ContainerInfo, error) {
+	apiURL := fmt.Sprintf("%s/containers/json?all=%v", s.baseURL, all)
+	if !isAdmin {
+		labelFilter := fmt.Sprintf(`{"label":["cloudnexus.creator=%d"]}`, userID)
+		apiURL += "&filters=" + url.QueryEscape(labelFilter)
+	}
+	resp, err := s.httpClient.Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("连接 Docker 失败: %w", err)
 	}
@@ -123,11 +171,29 @@ func (s *DockerService) doAction(id, action string) error {
 	return nil
 }
 
-func (s *DockerService) StartContainer(id string) error  { return s.doAction(id, "start") }
-func (s *DockerService) StopContainer(id string) error   { return s.doAction(id, "stop") }
-func (s *DockerService) RestartContainer(id string) error { return s.doAction(id, "restart") }
+func (s *DockerService) StartContainer(id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return err
+	}
+	return s.doAction(id, "start")
+}
+func (s *DockerService) StopContainer(id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return err
+	}
+	return s.doAction(id, "stop")
+}
+func (s *DockerService) RestartContainer(id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return err
+	}
+	return s.doAction(id, "restart")
+}
 
-func (s *DockerService) RemoveContainer(id string, force bool) error {
+func (s *DockerService) RemoveContainer(id string, force bool, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return err
+	}
 	url := fmt.Sprintf("%s/containers/%s?force=%v", s.baseURL, id, force)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	resp, err := s.httpClient.Do(req)
@@ -138,7 +204,10 @@ func (s *DockerService) RemoveContainer(id string, force bool) error {
 	return nil
 }
 
-func (s *DockerService) GetLogs(id, tail string) (io.ReadCloser, error) {
+func (s *DockerService) GetLogs(id, tail string, userID uint64, isAdmin bool) (io.ReadCloser, error) {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return nil, err
+	}
 	url := fmt.Sprintf("%s/containers/%s/logs?stdout=true&stderr=true&tail=%s", s.baseURL, id, tail)
 	resp, err := s.httpClient.Get(url)
 	if err != nil {
@@ -262,7 +331,10 @@ type dockerStats struct {
 	} `json:"memory_stats"`
 }
 
-func (s *DockerService) GetStats(id string) (*ContainerStats, error) {
+func (s *DockerService) GetStats(id string, userID uint64, isAdmin bool) (*ContainerStats, error) {
+	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+		return nil, err
+	}
 	url := fmt.Sprintf("%s/containers/%s/stats?stream=false", s.baseURL, id)
 	resp, err := s.httpClient.Get(url)
 	if err != nil {
@@ -299,8 +371,9 @@ func (s *DockerService) GetStats(id string) (*ContainerStats, error) {
 	}, nil
 }
 
-func (s *DockerService) CreateContainer(image, name string) (string, error) {
-	body := fmt.Sprintf(`{"Image":"%s"}`, image)
+func (s *DockerService) CreateContainer(image, name string, userID uint64, username string) (string, error) {
+	labels := fmt.Sprintf(`"cloudnexus.creator":"%d","cloudnexus.creator_name":"%s"`, userID, username)
+	body := fmt.Sprintf(`{"Image":"%s","Labels":{%s}}`, image, labels)
 	createURL := fmt.Sprintf("%s/containers/create?name=%s", s.baseURL, name)
 	resp, err := s.httpClient.Post(createURL, "application/json", strings.NewReader(body))
 	if err != nil {
