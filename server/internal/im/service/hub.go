@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -107,6 +109,7 @@ type Hub struct {
 	onMessage  chan *WSMessage
 	mu         sync.RWMutex
 	msgHandler func(*WSMessage)
+	redis      *redis.Client
 }
 
 func NewHub(msgHandler func(*WSMessage)) *Hub {
@@ -162,16 +165,77 @@ func (h *Hub) SendToUser(userID uint64, msg interface{}) {
 	h.mu.RLock()
 	client, ok := h.clients[userID]
 	h.mu.RUnlock()
-	if !ok {
+	if ok {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return
+		}
+		select {
+		case client.send <- data:
+		default:
+		}
 		return
 	}
-	data, err := json.Marshal(msg)
+	// User not connected locally — relay to other nodes via Redis.
+	if h.redis != nil {
+		h.publishToRedis(userID, msg)
+	}
+}
+
+const redisChannel = "im:broadcast"
+
+type crossNodeMsg struct {
+	TargetUserID uint64      `json:"target_user_id"`
+	Payload      interface{} `json:"payload"`
+}
+
+func (h *Hub) publishToRedis(userID uint64, msg interface{}) {
+	cnm := crossNodeMsg{TargetUserID: userID, Payload: msg}
+	data, err := json.Marshal(cnm)
 	if err != nil {
 		return
 	}
-	select {
-	case client.send <- data:
-	default:
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := h.redis.Publish(ctx, redisChannel, data).Err(); err != nil {
+		log.Printf("ws: redis publish error: %v", err)
+	}
+}
+
+// EnableRedisRelay starts listening for cross-node messages from Redis
+// and wires the Redis client for publishing when a local user is absent.
+func (h *Hub) EnableRedisRelay(rdb *redis.Client) {
+	h.redis = rdb
+	go h.runRedisRelay()
+}
+
+func (h *Hub) runRedisRelay() {
+	ctx := context.Background()
+	pubsub := h.redis.Subscribe(ctx, redisChannel)
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+	log.Printf("ws: redis relay listening on %s", redisChannel)
+
+	for msg := range ch {
+		var cnm crossNodeMsg
+		if err := json.Unmarshal([]byte(msg.Payload), &cnm); err != nil {
+			continue
+		}
+		h.mu.RLock()
+		client, ok := h.clients[cnm.TargetUserID]
+		h.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		data, err := json.Marshal(cnm.Payload)
+		if err != nil {
+			continue
+		}
+		select {
+		case client.send <- data:
+		default:
+		}
 	}
 }
 

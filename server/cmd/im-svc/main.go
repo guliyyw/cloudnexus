@@ -9,6 +9,7 @@ import (
 	"github.com/cloudnexus/server/internal/im/repository"
 	"github.com/cloudnexus/server/internal/im/service"
 	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/cache"
 	"github.com/cloudnexus/server/pkg/config"
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/logger"
@@ -71,6 +72,18 @@ func main() {
 
 	hub := service.NewHub(nil)
 	go hub.Run()
+
+	rdb, err := cache.NewRedis(cache.Config{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err != nil {
+		logger.Log.Warn("Redis 连接失败，跨节点消息同步将不可用", zap.Error(err))
+	} else {
+		hub.EnableRedisRelay(rdb)
+		logger.Log.Info("Redis 跨节点消息中继已启用")
+	}
 
 	imRepo := repository.NewIMRepository(db)
 	imSvc := service.NewIMService(imRepo, hub)
