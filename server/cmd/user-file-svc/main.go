@@ -117,6 +117,8 @@ func main() {
 			file.GET("/search", fileH.HandleSearch)
 			file.POST("/batch-delete", fileH.HandleBatchDelete)
 			file.POST("/batch-download", fileH.HandleBatchDownload)
+			file.POST("/move", fileH.HandleMove)
+			file.POST("/copy", fileH.HandleCopy)
 			file.POST("/:id/share", shareH.HandleCreateShare)
 			file.GET("/:id/shares", shareH.HandleListSharesByFile)
 		}

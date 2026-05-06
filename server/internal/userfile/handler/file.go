@@ -233,6 +233,41 @@ func (h *FileHandler) HandleBatchDownload(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, -1, "application/zip", pr, nil)
 }
 
+type moveCopyReq struct {
+	ID             uint64 `json:"id,string" binding:"required"`
+	TargetParentID uint64 `json:"target_parent_id,string"`
+}
+
+func (h *FileHandler) HandleMove(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req moveCopyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	file, err := h.svc.Move(userID, req.ID, req.TargetParentID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleCopy(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req moveCopyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	file, err := h.svc.Copy(userID, req.ID, req.TargetParentID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, response.OKWithData(file))
+}
+
 func (h *FileHandler) HandleSearch(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	keyword := c.Query("q")

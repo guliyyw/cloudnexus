@@ -9,11 +9,13 @@ import {
   FileOutlined, HomeOutlined, ReloadOutlined, UploadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined, ShareAltOutlined,
+  SwapOutlined, CopyOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
 import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
 import ShareModal from '../components/ShareModal'
+import DirectoryPickerModal from '../components/DirectoryPickerModal'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
@@ -48,7 +50,7 @@ function formatSize(bytes: number): string {
 export default function FileListPage() {
   const {
     files, total, page, pageSize, breadcrumb, loading, searchMode, searchKeyword,
-    fetchFiles, remove, batchRemove, batchDownload, mkdir, search, navigateTo, setPage, currentParentId,
+    fetchFiles, remove, batchRemove, batchDownload, moveItem, copyItem, mkdir, search, navigateTo, setPage, currentParentId,
   } = useFileStore()
 
   const [mkdirVisible, setMkdirVisible] = useState(false)
@@ -60,6 +62,8 @@ export default function FileListPage() {
   const [shareFile, setShareFile] = useState<FileItem | null>(null)
   const [dropDirId, setDropDirId] = useState<string | null>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [pickerOpen, setPickerOpen] = useState<'move' | 'copy' | null>(null)
+  const [pendingMoveCopyIds, setPendingMoveCopyIds] = useState<string[]>([])
 
   useEffect(() => { fetchFiles() }, [])
 
@@ -87,6 +91,30 @@ export default function FileListPage() {
     e.preventDefault()
     e.stopPropagation()
     setDropDirId(null)
+
+    const moveId = e.dataTransfer.getData('application/cloudnexus-move')
+    if (moveId) {
+      if (moveId === dirId) {
+        message.warning('不能将目录移动到自身')
+        return
+      }
+      Modal.confirm({
+        title: '确认移动',
+        content: `移动到 "${dirName}"？`,
+        okText: '移动',
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            await moveItem(moveId, dirId)
+            message.success('移动成功')
+          } catch {
+            message.error('移动失败')
+          }
+        },
+      })
+      return
+    }
+
     if (e.dataTransfer.files.length > 0) {
       openUploadModal(dirId, dirName)
     }
@@ -130,6 +158,43 @@ export default function FileListPage() {
     } catch {
       message.error('批量下载失败')
     }
+  }
+
+  const handlePickerOk = async (targetDirId: string) => {
+    const ids = pendingMoveCopyIds
+    setPickerOpen(null)
+    setPendingMoveCopyIds([])
+
+    if (ids.length === 0) return
+
+    if (pickerOpen === 'move') {
+      let ok = 0
+      const errs: string[] = []
+      for (const id of ids) {
+        try {
+          await moveItem(id, targetDirId)
+          ok++
+        } catch (e: any) {
+          errs.push(e?.response?.data?.message || '未知错误')
+        }
+      }
+      if (errs.length > 0) message.warning(`部分移动失败: ${errs.join(', ')}`)
+      else message.success(`已移动 ${ok} 项`)
+    } else {
+      let ok = 0
+      const errs: string[] = []
+      for (const id of ids) {
+        try {
+          await copyItem(id, targetDirId)
+          ok++
+        } catch (e: any) {
+          errs.push(e?.response?.data?.message || '未知错误')
+        }
+      }
+      if (errs.length > 0) message.warning(`部分复制失败: ${errs.join(', ')}`)
+      else message.success(`已复制 ${ok} 项`)
+    }
+    setSelectedRowKeys([])
   }
 
   const rowSelection = {
@@ -242,6 +307,20 @@ export default function FileListPage() {
         <Card size="small" style={{ marginBottom: 16, background: '#e6f4ff', borderColor: '#91caff' }}>
           <Space>
             <Text strong>已选择 {selectedRowKeys.length} 项</Text>
+            <Button type="primary" size="small" icon={<SwapOutlined />}
+              onClick={() => {
+                setPendingMoveCopyIds([...selectedRowKeys])
+                setPickerOpen('move')
+              }}>
+              移动到...
+            </Button>
+            <Button size="small" icon={<CopyOutlined />}
+              onClick={() => {
+                setPendingMoveCopyIds([...selectedRowKeys])
+                setPickerOpen('copy')
+              }}>
+              复制到...
+            </Button>
             <Button type="primary" danger size="small" icon={<DeleteOutlined />}
               onClick={handleBatchDelete}>
               批量删除
@@ -286,16 +365,27 @@ export default function FileListPage() {
         }}
         size="middle"
         onRow={(record) => {
-          if (!record.is_dir) return {}
-          return {
-            onDragOver: (e) => handleDirDragOver(e, record.id),
-            onDragLeave: handleDirDragLeave,
-            onDrop: (e) => handleDirDrop(e, record.id, record.name),
-            style: {
-              background: dropDirId === record.id ? '#e6f4ff' : undefined,
-              outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+          const base: any = {
+            draggable: true,
+            onDragStart: (e: React.DragEvent) => {
+              e.dataTransfer.setData('application/cloudnexus-move', record.id)
+              e.dataTransfer.effectAllowed = 'move'
             },
           }
+          if (record.is_dir) {
+            return {
+              ...base,
+              onDragOver: (e: React.DragEvent) => handleDirDragOver(e, record.id),
+              onDragLeave: handleDirDragLeave,
+              onDrop: (e: React.DragEvent) => handleDirDrop(e, record.id, record.name),
+              style: {
+                background: dropDirId === record.id ? '#e6f4ff' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #1677ff' : undefined,
+                cursor: 'grab',
+              },
+            }
+          }
+          return { ...base, style: { cursor: 'grab' } }
         }}
       />
 
@@ -332,6 +422,14 @@ export default function FileListPage() {
         file={shareFile}
         open={!!shareFile}
         onClose={() => setShareFile(null)}
+      />
+
+      <DirectoryPickerModal
+        open={pickerOpen !== null}
+        title={pickerOpen === 'move' ? '移动到...' : '复制到...'}
+        confirmText={pickerOpen === 'move' ? '移动' : '复制'}
+        onOk={handlePickerOk}
+        onCancel={() => { setPickerOpen(null); setPendingMoveCopyIds([]) }}
       />
     </div>
   )

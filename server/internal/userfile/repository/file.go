@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"errors"
+
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
 )
@@ -60,4 +62,31 @@ func (r *FileRepository) BatchSoftDelete(ids []uint64, userID uint64) (int64, er
 		Where("id IN ? AND user_id = ? AND deleted_at IS NULL", ids, userID).
 		Update("deleted_at", gorm.Expr("now()"))
 	return result.RowsAffected, result.Error
+}
+
+func (r *FileRepository) Update(file *model.File) error {
+	return r.db.Save(file).Error
+}
+
+func (r *FileRepository) FindByNameAndParent(userID, parentID uint64, name string) (*model.File, error) {
+	var f model.File
+	err := r.db.Where("user_id = ? AND parent_id = ? AND name = ? AND deleted_at IS NULL", userID, parentID, name).First(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (r *FileRepository) FindAllByParent(userID, parentID uint64) ([]model.File, error) {
+	var files []model.File
+	err := r.db.Where("user_id = ? AND parent_id = ? AND deleted_at IS NULL", userID, parentID).
+		Order("is_dir DESC, name ASC").Find(&files).Error
+	return files, err
+}
+
+func (r *FileRepository) BatchCreate(files []*model.File) error {
+	return r.db.Create(&files).Error
 }

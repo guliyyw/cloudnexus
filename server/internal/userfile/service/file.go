@@ -153,3 +153,161 @@ func (s *FileService) Search(userID uint64, keyword string, page, pageSize int) 
 	}
 	return s.repo.SearchFiles(userID, keyword, page, pageSize)
 }
+
+func (s *FileService) isAncestorOf(userID, sourceID, targetID uint64) (bool, error) {
+	visited := make(map[uint64]bool)
+	current := targetID
+	for current != 0 {
+		if current == sourceID {
+			return true, nil
+		}
+		if visited[current] {
+			return false, nil
+		}
+		visited[current] = true
+		f, err := s.repo.FindByID(current)
+		if err != nil || f == nil {
+			return false, nil
+		}
+		current = f.ParentID
+	}
+	return false, nil
+}
+
+func (s *FileService) Move(userID, fileID, targetParentID uint64) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil || file == nil {
+		return nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
+
+	if targetParentID != 0 {
+		target, err := s.repo.FindByID(targetParentID)
+		if err != nil || target == nil {
+			return nil, apperrors.NewAppError(404, "目标目录不存在", apperrors.ErrNotFound)
+		}
+		if target.UserID != userID {
+			return nil, apperrors.NewAppError(403, "无权访问目标目录", apperrors.ErrForbidden)
+		}
+		if !target.IsDir {
+			return nil, apperrors.NewAppError(400, "目标必须是目录", apperrors.ErrBadRequest)
+		}
+		if file.IsDir {
+			if fileID == targetParentID {
+				return nil, apperrors.NewAppError(400, "不能将目录移动到自身", apperrors.ErrBadRequest)
+			}
+			if isAncestor, _ := s.isAncestorOf(userID, fileID, targetParentID); isAncestor {
+				return nil, apperrors.NewAppError(400, "不能将目录移动到其子目录中", apperrors.ErrBadRequest)
+			}
+		}
+	}
+
+	if file.ParentID != targetParentID {
+		existing, err := s.repo.FindByNameAndParent(userID, targetParentID, file.Name)
+		if err != nil {
+			return nil, apperrors.NewAppError(500, "检查重名失败", err)
+		}
+		if existing != nil && existing.ID != file.ID {
+			return nil, apperrors.NewAppError(409, "目标目录已存在同名文件或目录", apperrors.ErrConflict)
+		}
+	}
+
+	if file.ParentID == targetParentID {
+		return file, nil
+	}
+
+	file.ParentID = targetParentID
+	if err := s.repo.Update(file); err != nil {
+		return nil, apperrors.NewAppError(500, "移动失败", err)
+	}
+	return file, nil
+}
+
+func (s *FileService) Copy(userID, fileID, targetParentID uint64) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil || file == nil {
+		return nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
+
+	if targetParentID != 0 {
+		target, err := s.repo.FindByID(targetParentID)
+		if err != nil || target == nil {
+			return nil, apperrors.NewAppError(404, "目标目录不存在", apperrors.ErrNotFound)
+		}
+		if target.UserID != userID {
+			return nil, apperrors.NewAppError(403, "无权访问目标目录", apperrors.ErrForbidden)
+		}
+		if !target.IsDir {
+			return nil, apperrors.NewAppError(400, "目标必须是目录", apperrors.ErrBadRequest)
+		}
+		if file.IsDir {
+			if isAncestor, _ := s.isAncestorOf(userID, fileID, targetParentID); isAncestor {
+				return nil, apperrors.NewAppError(400, "不能将目录复制到其子目录中", apperrors.ErrBadRequest)
+			}
+		}
+	}
+
+	existing, err := s.repo.FindByNameAndParent(userID, targetParentID, file.Name)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "检查重名失败", err)
+	}
+	if existing != nil {
+		return nil, apperrors.NewAppError(409, "目标目录已存在同名文件或目录", apperrors.ErrConflict)
+	}
+
+	return s.copyRecursive(userID, file, targetParentID)
+}
+
+func (s *FileService) copyRecursive(userID uint64, src *model.File, targetParentID uint64) (*model.File, error) {
+	if !src.IsDir {
+		ext := filepath.Ext(src.Name)
+		newKey := fmt.Sprintf("%d/%d/%d%s", userID, targetParentID, time.Now().UnixNano(), ext)
+		_, err := s.minio.CopyObject(context.Background(),
+			minio.CopyDestOptions{Bucket: s.bucket, Object: newKey},
+			minio.CopySrcOptions{Bucket: s.bucket, Object: src.StorageKey},
+		)
+		if err != nil {
+			return nil, apperrors.NewAppError(500, "复制文件内容失败", err)
+		}
+
+		newFile := &model.File{
+			UserID:     userID,
+			Name:       src.Name,
+			ParentID:   targetParentID,
+			Size:       src.Size,
+			MimeType:   src.MimeType,
+			StorageKey: newKey,
+		}
+		if err := s.repo.Create(newFile); err != nil {
+			s.minio.RemoveObject(context.Background(), s.bucket, newKey, minio.RemoveObjectOptions{})
+			return nil, apperrors.NewAppError(500, "保存副本信息失败", err)
+		}
+		return newFile, nil
+	}
+
+	newDir := &model.File{
+		UserID:   userID,
+		Name:     src.Name,
+		IsDir:    true,
+		ParentID: targetParentID,
+	}
+	if err := s.repo.Create(newDir); err != nil {
+		return nil, apperrors.NewAppError(500, "创建目录副本失败", err)
+	}
+
+	children, err := s.repo.FindAllByParent(userID, src.ID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "读取子目录失败", err)
+	}
+	for _, child := range children {
+		if _, err := s.copyRecursive(userID, &child, newDir.ID); err != nil {
+			return nil, err
+		}
+	}
+	return newDir, nil
+}

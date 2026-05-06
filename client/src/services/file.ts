@@ -97,6 +97,16 @@ export async function batchDownloadFiles(ids: string[]): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
+export async function moveFile(id: string, targetParentId: string): Promise<FileItem> {
+  const res = await api.post('/file/move', { id, target_parent_id: targetParentId })
+  return res.data.data
+}
+
+export async function copyFile(id: string, targetParentId: string): Promise<FileItem> {
+  const res = await api.post('/file/copy', { id, target_parent_id: targetParentId })
+  return res.data.data
+}
+
 function getToken(): string {
   try { return localStorage.getItem('access_token') || '' } catch { return '' }
 }
