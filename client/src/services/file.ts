@@ -1,3 +1,4 @@
+import axios from 'axios'
 import api from './api'
 
 export interface FileItem {
@@ -134,6 +135,7 @@ export interface ShareInfo {
   created_at: string
   file_name: string
   file_size: number
+  mime_type: string
   has_password: boolean
 }
 
@@ -156,6 +158,29 @@ export async function deleteShare(shareId: string): Promise<void> {
   await api.delete(`/shares/${shareId}`)
 }
 
+export async function getShareByCode(code: string): Promise<ShareInfo> {
+  const res = await axios.get(`/api/v1/share/${code}`)
+  return res.data.data
+}
+
+export async function verifySharePassword(code: string, password: string): Promise<void> {
+  await axios.post(`/api/v1/share/${code}/verify`, { password })
+}
+
 export function getShareUrl(code: string): string {
-  return `${window.location.origin}/api/v1/share/${code}/download`
+  return `${window.location.origin}/s/${code}`
+}
+
+export function getShareDownloadUrl(code: string, password?: string): string {
+  const params = new URLSearchParams()
+  if (password) params.set('password', password)
+  const qs = params.toString()
+  return `/api/v1/share/${code}/download${qs ? '?' + qs : ''}`
+}
+
+export function getSharePreviewUrl(code: string, password?: string): string {
+  const params = new URLSearchParams()
+  params.set('inline', 'true')
+  if (password) params.set('password', password)
+  return `/api/v1/share/${code}/download?${params.toString()}`
 }

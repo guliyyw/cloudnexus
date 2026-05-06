@@ -100,7 +100,11 @@ func (h *ShareHandler) HandleDownloadShare(c *gin.Context) {
 
 	h.svc.RecordDownload(info.ID)
 
-	c.Header("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	disposition := "attachment"
+	if c.Query("inline") == "true" {
+		disposition = "inline"
+	}
+	c.Header("Content-Disposition", disposition+"; filename=\""+file.Name+"\"")
 	c.DataFromReader(http.StatusOK, file.Size, file.MimeType, stream, nil)
 }
 

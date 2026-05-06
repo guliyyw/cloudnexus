@@ -16,14 +16,10 @@ import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
 import ShareModal from '../components/ShareModal'
 import DirectoryPickerModal from '../components/DirectoryPickerModal'
+import { isPreviewable } from '../utils/preview'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
-
-function isPreviewable(mime: string): boolean {
-  return mime?.startsWith('image/') || mime?.startsWith('video/') ||
-         mime?.startsWith('audio/') || mime === 'application/pdf'
-}
 
 function getFileIcon(mimeType: string, isDir: boolean) {
   if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />

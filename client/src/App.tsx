@@ -11,6 +11,7 @@ import FriendPage from './pages/FriendPage'
 import DockerPage from './pages/DockerPage'
 import AdminPage from './pages/AdminPage'
 import MySharesPage from './pages/MySharesPage'
+import ShareAccessPage from './pages/ShareAccessPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -25,6 +26,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/s/:code" element={<ShareAccessPage />} />
           <Route
             element={
               <ProtectedRoute>

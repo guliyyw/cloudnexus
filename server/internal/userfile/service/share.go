@@ -38,6 +38,7 @@ type ShareInfo struct {
 	model.FileShare
 	FileName    string `json:"file_name"`
 	FileSize    int64  `json:"file_size"`
+	MimeType    string `json:"mime_type"`
 	HasPassword bool   `json:"has_password"`
 }
 
@@ -85,6 +86,7 @@ func (s *ShareService) CreateShare(userID uint64, fileID uint64, req CreateShare
 		FileShare:   *share,
 		FileName:    f.Name,
 		FileSize:    f.Size,
+		MimeType:    f.MimeType,
 		HasPassword: share.Password != "",
 	}, nil
 }
@@ -111,6 +113,7 @@ func (s *ShareService) GetShareByCode(code string) (*ShareInfo, error) {
 		FileShare:   *share,
 		FileName:    f.Name,
 		FileSize:    f.Size,
+		MimeType:    f.MimeType,
 		HasPassword: share.Password != "",
 	}, nil
 }
@@ -159,6 +162,7 @@ func (s *ShareService) ListSharesByFile(userID uint64, fileID uint64) ([]ShareIn
 			FileShare:   sh,
 			FileName:    f.Name,
 			FileSize:    f.Size,
+			MimeType:    f.MimeType,
 			HasPassword: sh.Password != "",
 		}
 	}
@@ -176,14 +180,17 @@ func (s *ShareService) ListMyShares(userID uint64) ([]ShareInfo, error) {
 		f, err := s.fileRepo.FindByID(sh.FileID)
 		name := "(已删除)"
 		size := int64(0)
+		mimeType := ""
 		if err == nil {
 			name = f.Name
 			size = f.Size
+			mimeType = f.MimeType
 		}
 		result = append(result, ShareInfo{
 			FileShare:   sh,
 			FileName:    name,
 			FileSize:    size,
+			MimeType:    mimeType,
 			HasPassword: sh.Password != "",
 		})
 	}
