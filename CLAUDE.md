@@ -28,11 +28,13 @@ server/
     crypto/                bcrypt 密码哈希
     errors/                AppError (Code + Message + Err) 与标准哨兵错误
     response/              APIResponse{Code, Message, Data} 统一 JSON 响应
+    logger/                 Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
+    snowflake/              Twitter Snowflake ID 生成器
   config/
     config.single.yaml     单机配置 (DSN, Redis, MinIO, JWT)
     config.cluster.yaml    集群配置
 deploy/                    Docker Compose (PostgreSQL + Redis + MinIO)
-docs/                      api.md, database.md, deployment.md, development.md, progress.md, test-data.md
+docs/                      api.md, architecture.md, database.md, deployment.md, development.md, progress.md, test-data.md
 ```
 
 ## Build & Run
@@ -98,6 +100,13 @@ The frontend dev server proxies /api requests to the correct backend service bas
 
 New IM or Docker endpoints automatically route correctly. New user-file endpoints on `/api/v1/...` also work.
 
+### Frontend API client
+`client/src/services/api.ts` creates a shared axios instance (`/api/v1` base, 30s timeout). Two interceptors:
+- **Request**: attaches `Bearer {access_token}` from localStorage to every request
+- **Response**: on 401, automatically tries `POST /api/v1/user/refresh` with the stored refresh token. On success, updates both tokens in localStorage and retries the original request once. On failure, clears tokens and redirects to `/login`.
+
+Services like `file.ts` and `chat.ts` import this shared instance. Public endpoints (share access) use a raw `axios` call without the interceptor, since they don't require auth.
+
 ### Auth flow
 - Auth middleware extracts Bearer token from `Authorization` header, or from `?token=` query param (for WebSocket connections)
 - Sets `user_id` (uint64) and `username` in Gin context via `c.Set(...)`
@@ -106,6 +115,14 @@ New IM or Docker endpoints automatically route correctly. New user-file endpoint
 
 ### Error handling
 Handlers call `handleError(c, err)` which type-asserts to `*apperrors.AppError` to get the HTTP status code and message. Service methods return `apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)`.
+
+### Logging
+Custom `pkg/logger/` wraps `go.uber.org/zap` with three sinks:
+- **Stdout**: console or JSON format (configurable per service)
+- **Ring buffer**: 2048-entry in-memory circular buffer, queried via admin API with filters (`level`, `request_id`, `user_id`). Powers the live log viewer in AdminPage.
+- **Daily file**: writes to `{LogDir}/{YYYY-MM-DD}/{service}.log`, 10 MB max per file (auto-split with numeric suffix `.log.1`, `.log.2`...), auto-deletes directories older than 30 days.
+
+`logger.FromContext(c *gin.Context)` returns a request-scoped logger with `request_id` and `user_id` fields when available. Admin endpoints: `GET /system/log/services`, `POST /system/log/query` (ring buffer), `POST /system/log/read` (file), `GET /system/log/files`, `GET /system/log/download`.
 
 ### File upload & preview
 Multipart form with `file` field (repeated for batch). Stored in MinIO, metadata in `files` table. Download supports `?inline=true` for browser preview (images, video, audio, PDF) vs `attachment` for download. Preview URLs must include `?token=` query param since browser `<img>`/`<video>`/`<iframe>` tags don't send Authorization headers.
