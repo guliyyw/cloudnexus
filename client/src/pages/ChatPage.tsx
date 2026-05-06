@@ -35,7 +35,7 @@ export default function ChatPage() {
   const {
     conversations, currentConvId, messages, members, loading,
     fetchConversations, createConv, createGroup, selectConv, addMessage, deleteConversation,
-    addMember, removeMember, leaveGroup,
+    addMember, removeMember, leaveGroup, incrementUnread, updateLastMessage,
   } = useChatStore()
   const { user } = useAuthStore()
   const { friends, fetchFriends } = useFriendStore()
@@ -103,15 +103,21 @@ export default function ChatPage() {
 
   const { sendMessage } = useWebSocket((wsMsg) => {
     if (wsMsg.type === 'message') {
-      addMessage({
-        id: wsMsg.id!,
-        conversation_id: wsMsg.conversation_id!,
-        sender_id: wsMsg.sender_id!,
-        content: wsMsg.content!,
-        msg_type: wsMsg.msg_type || 'text',
-        seq: 0,
-        created_at: wsMsg.created_at || new Date().toISOString(),
-      })
+      const msgConvId = wsMsg.conversation_id!
+      updateLastMessage(msgConvId, wsMsg.content!, wsMsg.msg_type || 'text')
+      if (msgConvId === currentConvId) {
+        addMessage({
+          id: wsMsg.id!,
+          conversation_id: msgConvId,
+          sender_id: wsMsg.sender_id!,
+          content: wsMsg.content!,
+          msg_type: wsMsg.msg_type || 'text',
+          seq: 0,
+          created_at: wsMsg.created_at || new Date().toISOString(),
+        })
+      } else {
+        incrementUnread(msgConvId)
+      }
     } else if (wsMsg.type === 'read_receipt' && wsMsg.conversation_id === currentConvId) {
     }
   })
@@ -364,7 +370,7 @@ export default function ChatPage() {
                   </Badge>
                 }
                 title={conv.name || `会话 ${conv.id}`}
-                description={<Text type="secondary" ellipsis>{conv.type === 'private' ? '私聊' : '群聊'}</Text>}
+                description={<Text type="secondary" ellipsis>{conv.last_message || (conv.type === 'private' ? '私聊' : '群聊')}</Text>}
               />
               <Popconfirm
                 title="确定删除该会话？"

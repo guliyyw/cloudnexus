@@ -242,6 +242,33 @@ func (r *IMRepository) BatchCreateMessages(msgs []model.Message) error {
 	return r.db.Create(&msgs).Error
 }
 
+type LastMessageInfo struct {
+	ConversationID uint64
+	Content        string
+	MsgType        string
+}
+
+func (r *IMRepository) GetLastMessages(userID uint64) map[uint64]LastMessageInfo {
+	var results []LastMessageInfo
+	r.db.Raw(`
+		SELECT m.conversation_id, m.content, m.msg_type
+		FROM messages m
+		INNER JOIN (
+			SELECT conversation_id, MAX(seq) as max_seq
+			FROM messages
+			WHERE conversation_id IN (
+				SELECT conversation_id FROM conversation_members WHERE user_id = ? AND deleted_at IS NULL
+			)
+			GROUP BY conversation_id
+		) latest ON m.conversation_id = latest.conversation_id AND m.seq = latest.max_seq
+	`, userID).Scan(&results)
+	m := make(map[uint64]LastMessageInfo, len(results))
+	for _, r := range results {
+		m[r.ConversationID] = r
+	}
+	return m
+}
+
 func (r *IMRepository) FindExistingMessageIDs(ids []uint64) (map[uint64]bool, error) {
 	if len(ids) == 0 {
 		return make(map[uint64]bool), nil

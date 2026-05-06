@@ -348,6 +348,10 @@ func (s *IMService) GetUnreadCounts(userID uint64) map[uint64]int64 {
 	return s.repo.GetUnreadCounts(userID)
 }
 
+func (s *IMService) GetLastMessages(userID uint64) map[uint64]repository.LastMessageInfo {
+	return s.repo.GetLastMessages(userID)
+}
+
 func (s *IMService) handleChatMessage(msg *WSMessage) {
 	conv, err := s.repo.FindConversationByID(msg.ConversationID)
 	if err != nil {

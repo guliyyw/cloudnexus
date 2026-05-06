@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 
 interface WSMessage {
   type: string
@@ -19,6 +19,9 @@ type MessageHandler = (msg: WSMessage) => void
 export function useWebSocket(handler: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null)
   const pingRef = useRef<number>(0)
+  const handlerRef = useRef<MessageHandler>(handler)
+
+  handlerRef.current = handler
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
@@ -40,7 +43,7 @@ export function useWebSocket(handler: MessageHandler) {
       try {
         const msg: WSMessage = JSON.parse(event.data)
         if (msg.type === 'pong') return
-        handler(msg)
+        handlerRef.current(msg)
       } catch {}
     }
 
@@ -54,11 +57,11 @@ export function useWebSocket(handler: MessageHandler) {
     }
   }, [])
 
-  const sendMessage = (msg: WSMessage) => {
+  const sendMessage = useCallback((msg: WSMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg))
     }
-  }
+  }, [])
 
   return { sendMessage }
 }

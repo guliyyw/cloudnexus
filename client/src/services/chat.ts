@@ -7,6 +7,8 @@ export interface Conversation {
   creator_id: string
   last_msg_seq: number
   unread: number
+  last_message: string
+  last_msg_type: string
   created_at: string
   updated_at: string
 }

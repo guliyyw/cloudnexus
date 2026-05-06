@@ -428,6 +428,8 @@ WebDAV 端点挂载在 `/webdav/` 路径下，支持标准 WebDAV 协议方法�
       "creator_id": "2051225055077076992",
       "last_msg_seq": 42,
       "unread": 3,
+      "last_message": "你好！",
+      "last_msg_type": "text",
       "created_at": "2026-05-03T08:00:00Z",
       "updated_at": "2026-05-03T09:55:00Z"
     }

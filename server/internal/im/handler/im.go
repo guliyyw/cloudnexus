@@ -48,7 +48,9 @@ func (h *IMHandler) HandleWebSocket(c *gin.Context) {
 
 type conversationInfo struct {
 	model.Conversation
-	Unread int64 `json:"unread"`
+	Unread      int64  `json:"unread"`
+	LastMessage string `json:"last_message"`
+	LastMsgType string `json:"last_msg_type"`
 }
 
 func (h *IMHandler) HandleGetConversations(c *gin.Context) {
@@ -59,12 +61,18 @@ func (h *IMHandler) HandleGetConversations(c *gin.Context) {
 		return
 	}
 	unreadMap := h.svc.GetUnreadCounts(userID)
+	lastMsgMap := h.svc.GetLastMessages(userID)
 	result := make([]conversationInfo, len(convs))
 	for i, conv := range convs {
-		result[i] = conversationInfo{
+		info := conversationInfo{
 			Conversation: conv,
 			Unread:       unreadMap[conv.ID],
 		}
+		if lm, ok := lastMsgMap[conv.ID]; ok {
+			info.LastMessage = lm.Content
+			info.LastMsgType = lm.MsgType
+		}
+		result[i] = info
 	}
 	c.JSON(http.StatusOK, response.OKWithData(result))
 }

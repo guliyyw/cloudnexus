@@ -20,6 +20,8 @@ interface ChatState {
   addMember: (convId: string, userId: string) => Promise<void>
   removeMember: (convId: string, userId: string) => Promise<void>
   leaveGroup: (convId: string) => Promise<void>
+  incrementUnread: (convId: string) => void
+  updateLastMessage: (convId: string, content: string, msgType: string) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -114,5 +116,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await chatApi.leaveGroup(convId)
     set({ currentConvId: null, messages: [], members: [] })
     await get().fetchConversations()
+  },
+
+  incrementUnread: (convId: string) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === convId ? { ...c, unread: c.unread + 1 } : c
+      ),
+    }))
+  },
+
+  updateLastMessage: (convId: string, content: string, msgType: string) => {
+    const preview = msgType === 'text' ? content
+      : msgType === 'image' ? '[图片]'
+      : msgType === 'video' ? '[视频]'
+      : msgType === 'file' ? '[文件]'
+      : msgType === 'system' ? content
+      : content
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === convId ? { ...c, last_message: preview, last_msg_type: msgType } : c
+      ),
+    }))
   },
 }))
