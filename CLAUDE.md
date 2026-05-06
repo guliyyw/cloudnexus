@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 CloudNexus is a self-hosted collaboration platform with three Go microservices and a React frontend.
 
 ```
-client/                    React 18 + TypeScript + Vite + Ant Design 5 + Zustand 5
+client/                    React 18 + TypeScript + Vite + Ant Design 6 + Zustand 5
 server/
   cmd/
     user-file-svc/         用户认证 + 文件管理 (port 8081)
@@ -144,6 +144,32 @@ The frontend connects to `window.location.host` for both API calls and WebSocket
 
 ### Friend system
 Bidirectional `Friend` model with `uniqueIndex:idx_friend_pair` on `(user_id, friend_id)`. Status: `pending` → `accepted`. Auto-creates private conversation on accept. If both users send requests simultaneously, the second auto-accepts. Friend queries return `FriendInfo` (embeds Friend + `friend_username` from JOIN on users table) for display without extra queries.
+
+### File sharing system
+Shares are created per-file with an optional password (bcrypt hashed) and expiry. The share code is a random 12-char hex string. Two frontend views:
+- **MySharesPage** (`/shares`) — authenticated user's table of all shares they created
+- **ShareAccessPage** (`/s/:code`) — **public** landing page (no login required): shows file info, prompts for password if `has_password`, verifies via `POST /api/v1/share/:code/verify`, then offers preview (inline) and download
+- Share download supports `?inline=true` for browser preview (same pattern as file download)
+- `getShareUrl(code)` returns `/s/{code}` (frontend landing page), not the raw API endpoint
+- Public share endpoints (no auth): `GET /share/:code`, `POST /share/:code/verify`, `GET /share/:code/download`
+
+### File move/copy
+- Backend: `POST /file/move`, `POST /file/copy` — validates ownership, prevents ancestor cycles, checks name conflicts
+- Copy recursively duplicates directory trees, including MinIO object copy for each file
+- Frontend: drag-and-drop onto directory rows triggers move (via `application/cloudnexus-move` data transfer)
+- Batch operations: select multiple files → "移动到..." / "复制到..." opens `DirectoryPickerModal` for target selection
+
+### Theme & styling
+- **No CSS files** (except `client/src/index.css` for body/scrollbar). All component styling via inline `style` props.
+- Custom `ConfigProvider theme` in `App.tsx`: warm amber primary `#e8964a`, light warm background `#fafaf8`, rounded 10-12px
+- Sidebar: light mode (white bg, warm highlight `#fef3e7`), fixed position, logo in primary color
+- Shared utilities: `client/src/utils/preview.ts` (`isPreviewable()`), `client/src/utils/format.ts` (`formatFileSize()`)
+- Keep terminal/log viewer areas dark (`#1e1e1e`) regardless of theme
+
+### Frontend routing
+Public routes (no auth, no layout chrome): `/login`, `/register`, `/s/:code`
+Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/shares`, `/chat`, `/friends`, `/docker`, `/admin`
+Catch-all redirects to `/files`
 
 ## Testing
 
