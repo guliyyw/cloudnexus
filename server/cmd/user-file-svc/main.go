@@ -13,6 +13,7 @@ import (
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
+	"github.com/cloudnexus/server/pkg/migration"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/storage"
@@ -50,8 +51,11 @@ func main() {
 		logger.Log.Fatal("连接数据库失败", zap.Error(err))
 	}
 
+	if err := migration.Up(db); err != nil {
+		logger.Log.Warn("SQL migration skipped", zap.Error(err))
+	}
 	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}); err != nil {
-		logger.Log.Fatal("数据库迁移失败", zap.Error(err))
+		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
 	minioClient, err := storage.NewMinIO(storage.Config{
