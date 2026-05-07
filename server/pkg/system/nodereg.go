@@ -107,28 +107,70 @@ func (n *NodeRegistrar) heartbeatLoop() {
 
 func (n *NodeRegistrar) upsert(status string) {
 	now := time.Now()
-	node := model.DockerNode{
-		Name:     n.name,
-		Host:     n.host,
-		Port:     n.port,
-		NodeType: "service",
-	}
 
+	// Merge by logical identity (host+port+service) — same logical service
+	// on the same host after rebuild gets the same node record.
 	var existing model.DockerNode
-	isNew := n.db.Where("name = ?", n.name).First(&existing).Error != nil
+	err := n.db.Where("host = ? AND port = ? AND service = ? AND node_type = 'service'",
+		n.host, n.port, n.serviceName).First(&existing).Error
 
-	if isNew {
-		node.Status = status
-		node.Service = n.serviceName
-		node.FirstSeenAt = &now
-		node.TotalOnlineSeconds = 0
-		node.ContainerName = n.containerName
-		node.Version = n.version
+	if err == nil && existing.Name != n.name {
+		// Same logical service, new container (rebuild) — merge into existing record.
+		oldName := existing.Name
+		wasOnline := existing.OfflineSince == nil
+		n.db.Model(&existing).Updates(map[string]interface{}{
+			"name":           n.name,
+			"host":           n.host,
+			"port":           n.port,
+			"last_heartbeat": now,
+			"container_name": n.containerName,
+			"version":        n.version,
+		})
+		// Close the old container's open session if any.
+		// New session will be created by HealthAggregator on next probe.
+		if wasOnline {
+			n.db.Model(&model.NodeOnlineSession{}).
+				Where("node_name = ? AND end_time IS NULL", oldName).
+				Updates(map[string]interface{}{
+					"end_time": now,
+					"duration": gorm.Expr("EXTRACT(EPOCH FROM (? - start_time))", now),
+				})
+		}
+		// Update all old sessions to point to the new node name so
+		// session history is preserved under the current node identity.
+		n.db.Model(&model.NodeOnlineSession{}).
+			Where("node_name = ?", oldName).
+			Update("node_name", n.name)
+		return
 	}
 
-	// On conflict, only update host/port/last_heartbeat — do NOT touch status,
-	// which is managed by HealthAggregator (healthy/unresponsive/offline).
-	err := n.db.Clauses(clause.OnConflict{
+	if err == nil {
+		// Same name — heartbeat update only, status managed by HealthAggregator.
+		n.db.Model(&existing).Updates(map[string]interface{}{
+			"host":           n.host,
+			"port":           n.port,
+			"last_heartbeat": now,
+			"container_name": n.containerName,
+			"version":        n.version,
+		})
+		return
+	}
+
+	// New logical service — insert.
+	node := model.DockerNode{
+		Name:          n.name,
+		Host:          n.host,
+		Port:          n.port,
+		NodeType:      "service",
+		Status:        status,
+		Service:       n.serviceName,
+		FirstSeenAt:   &now,
+		ContainerName: n.containerName,
+		Version:       n.version,
+	}
+
+	// ON CONFLICT (name) as safety net for concurrent inserts.
+	err = n.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"host", "port", "last_heartbeat",
@@ -136,25 +178,5 @@ func (n *NodeRegistrar) upsert(status string) {
 	}).Create(&node).Error
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "node register failed: %v\n", err)
-		return
 	}
-
-	// Always update container_name and version (may change after rebuild)
-	n.db.Model(&model.DockerNode{}).
-		Where("name = ?", n.name).
-		Updates(map[string]interface{}{
-			"last_heartbeat": now,
-			"container_name": n.containerName,
-			"version":        n.version,
-		})
-
-	// Mark any other nodes with same host+port+service as offline (stale containers).
-	// Only if host is a real IP (not localhost), to avoid cross-server false positives.
-	n.db.Model(&model.DockerNode{}).
-		Where("name != ? AND host = ? AND port = ? AND service = ? AND status IN ('healthy','unresponsive')",
-			n.name, n.host, n.port, n.serviceName).
-		Updates(map[string]interface{}{
-			"status":        "offline",
-			"offline_since": now,
-		})
 }
