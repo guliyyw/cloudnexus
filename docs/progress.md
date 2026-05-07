@@ -301,6 +301,7 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-06 | v0.1.0-dev | 聊天图片/视频消息：直接上传渲染、粘贴上传；链接预览卡片：URL 检测 + OG 元数据抓取 + 卡片展示 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 全部完成：所有 P1 功能已补齐，含跨节点 IM Redis Pub/Sub | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 节点增强：服务标识/在线时间追踪/NodeOnlineSession/基础设施节点/按服务主机类型筛选/未响应渐进式状态/节点名取容器hostname/主机统一localhost/容器重建自动接管下线 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | fix: 节点接管匹配unresponsive状态 + 在线节点删除保护（每种服务至少保留一个节点） | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Docker 多主机 TLS：EndpointManager 多端点客户端管理/TLS (CA+客户端证书)/端点 CRUD/前端主机选择器/每30s ping 更新状态 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Nginx 负载均衡：upstream 多后端/ip_hash WebSocket sticky/被动健康检查(max_fails+timeout)/集群 compose 模板/基础设施 hostname 动态注册 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 完成：Docker镜像管理、容器监控、用户设置、IM文件消息、响应式布局、数据库迁移 | CloudNexus 团队 |
