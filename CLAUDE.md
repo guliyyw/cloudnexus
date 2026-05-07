@@ -241,7 +241,7 @@ Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/user-file-svc
 ### Node registration & heartbeat
 `pkg/system/nodereg.go` — `NodeRegistrar` manages lifecycle in `docker_nodes` table:
 - `NewNodeRegistrar(db, name, host, serviceName, port)` — node name defaults to container hostname (`os.Hostname()`), overridable via `NODE_NAME` env var. Host defaults to `detectHostIP()` (first private IPv4), or `localhost` as last resort; overridable via `NODE_HOST`.
-- `Start()`: upserts node row via `ON CONFLICT (name)` with `DoUpdates` on `host, port, last_heartbeat` only — **status is NOT overwritten**, preserving HealthAggregator's progressive status. Then goroutine updates `last_heartbeat` every 10s. Also marks any other online node with same `host+port+service` as offline (container rebuild takeover).
+- `Start()`: upserts node by logical identity `(host, port, service)` — same logical service after rebuild merges into the existing record (updates name/container_name). Only heartbeat fields updated; status is managed by HealthAggregator. Old sessions are closed and node_name updated to preserve history.
 - `Stop()`: marks node `status=offline`, closes stop channel.
 - Wired in all three services and infrastructure nodes (postgres/redis/minio) via `HealthAggregator.RegisterInfra()`.
 - Database model: `pkg/model/docker.go` — `DockerNode` with `NodeType` (service/infrastructure), `Service`, `ContainerName`, `Version`, `TotalOnlineSeconds`, `OfflineSince`.
