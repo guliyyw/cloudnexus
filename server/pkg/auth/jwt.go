@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -27,13 +29,21 @@ type Config struct {
 }
 
 func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool) (*TokenPair, error) {
+	now := time.Now()
+	jti := make([]byte, 16)
+	if _, err := rand.Read(jti); err != nil {
+		return nil, err
+	}
+	jtiStr := hex.EncodeToString(jti)
+
 	accessClaims := &Claims{
 		UserID:   userID,
 		Username: username,
 		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.AccessTTL)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.AccessTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        jtiStr + "_a",
 		},
 	}
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(cfg.AccessSecret))
@@ -46,8 +56,9 @@ func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool)
 		Username: username,
 		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.RefreshTTL)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.RefreshTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        jtiStr + "_r",
 		},
 	}
 	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(cfg.RefreshSecret))
