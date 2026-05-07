@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -25,14 +26,17 @@ type NodeRegistrar struct {
 }
 
 // NewNodeRegistrar creates a registrar. serviceName is the logical service name
-// (e.g. "user-file-svc"). name defaults to the container hostname. Call Start() to begin heartbeat.
+// (e.g. "user-file-svc"). name defaults to the container hostname.
+// host defaults to the first non-loopback IPv4 address detected on the machine,
+// or "localhost" as last resort. Override via NODE_HOST env var.
+// Call Start() to begin heartbeat.
 func NewNodeRegistrar(db *gorm.DB, name, host, serviceName string, port int) *NodeRegistrar {
 	containerName, _ := os.Hostname()
 	if name == "" {
 		name = containerName
 	}
 	if host == "" {
-		host = "localhost"
+		host = detectHostIP()
 	}
 	if port == 0 {
 		port = 8081
@@ -47,6 +51,27 @@ func NewNodeRegistrar(db *gorm.DB, name, host, serviceName string, port int) *No
 		version:       os.Getenv("SERVICE_VERSION"),
 		stopCh:        make(chan struct{}),
 	}
+}
+
+func detectHostIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "localhost"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			if ipnet.IP.IsPrivate() {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	// If no private IP found, try any non-loopback IPv4.
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return "localhost"
 }
 
 // Start registers the node and begins periodic heartbeat (every 10s).
@@ -83,16 +108,17 @@ func (n *NodeRegistrar) heartbeatLoop() {
 func (n *NodeRegistrar) upsert(status string) {
 	now := time.Now()
 	node := model.DockerNode{
-		Name:   n.name,
-		Host:   n.host,
-		Port:   n.port,
-		Status: status,
+		Name:     n.name,
+		Host:     n.host,
+		Port:     n.port,
+		NodeType: "service",
 	}
 
 	var existing model.DockerNode
 	isNew := n.db.Where("name = ?", n.name).First(&existing).Error != nil
 
 	if isNew {
+		node.Status = status
 		node.Service = n.serviceName
 		node.FirstSeenAt = &now
 		node.TotalOnlineSeconds = 0
@@ -100,10 +126,12 @@ func (n *NodeRegistrar) upsert(status string) {
 		node.Version = n.version
 	}
 
+	// On conflict, only update host/port/last_heartbeat — do NOT touch status,
+	// which is managed by HealthAggregator (healthy/unresponsive/offline).
 	err := n.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"host", "port", "status", "last_heartbeat",
+			"host", "port", "last_heartbeat",
 		}),
 	}).Create(&node).Error
 	if err != nil {
@@ -121,7 +149,7 @@ func (n *NodeRegistrar) upsert(status string) {
 		})
 
 	// Mark any other nodes with same host+port+service as offline (stale containers).
-	// The new container takes over.
+	// Only if host is a real IP (not localhost), to avoid cross-server false positives.
 	n.db.Model(&model.DockerNode{}).
 		Where("name != ? AND host = ? AND port = ? AND service = ? AND status IN ('healthy','unresponsive')",
 			n.name, n.host, n.port, n.serviceName).

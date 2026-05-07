@@ -169,12 +169,9 @@ func (a *HealthAggregator) probeServiceNode(node model.DockerNode) {
 		return
 	}
 
-	// If host is localhost (default), the probe may fail across Docker containers.
-	// Fall back to using the node name as hostname, which equals the Docker service name.
-	if node.Host == "localhost" || node.Host == "127.0.0.1" {
-		if a.tryProbe(node.Name, node.Port, &node, now) {
-			return
-		}
+	// Fall back to node name as hostname (Docker container ID resolves via Docker DNS).
+	if a.tryProbe(node.Name, node.Port, &node, now) {
+		return
 	}
 
 	a.handleFailure(&node, now)

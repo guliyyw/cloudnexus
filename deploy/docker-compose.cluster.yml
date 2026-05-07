@@ -31,7 +31,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.cluster.yaml
       - SERVICE_VERSION=latest
-      - NODE_HOST=${SERVER_HOST:-localhost}
+      - NODE_HOST=${SERVER_HOST}
     volumes:
       - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
       - logs:/app/logs
@@ -51,7 +51,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.cluster.yaml
       - SERVICE_VERSION=latest
-      - NODE_HOST=${SERVER_HOST:-localhost}
+      - NODE_HOST=${SERVER_HOST}
     volumes:
       - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
     restart: unless-stopped
@@ -70,7 +70,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.cluster.yaml
       - SERVICE_VERSION=latest
-      - NODE_HOST=${SERVER_HOST:-localhost}
+      - NODE_HOST=${SERVER_HOST}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../server/config/config.cluster.yaml:/app/config/config.cluster.yaml:ro
