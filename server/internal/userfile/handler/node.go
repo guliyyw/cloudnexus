@@ -18,12 +18,14 @@ func NewNodeHandler(db *gorm.DB) *NodeHandler {
 }
 
 type addNodeRequest struct {
-	Name    string `json:"name" binding:"required"`
-	Host    string `json:"host" binding:"required"`
-	Port    int    `json:"port"`
-	TLSCert string `json:"tls_cert"`
-	TLSKey  string `json:"tls_key"`
-	CACert  string `json:"ca_cert"`
+	Name     string `json:"name" binding:"required"`
+	Host     string `json:"host" binding:"required"`
+	Port     int    `json:"port"`
+	NodeType string `json:"node_type"`
+	Service  string `json:"service"`
+	TLSCert  string `json:"tls_cert"`
+	TLSKey   string `json:"tls_key"`
+	CACert   string `json:"ca_cert"`
 }
 
 // HandleListNodes returns all registered nodes, with optional filters:
@@ -88,14 +90,25 @@ func (h *NodeHandler) HandleAddNode(c *gin.Context) {
 		req.Port = 2376
 	}
 
+	nodeType := req.NodeType
+	if nodeType == "" {
+		nodeType = "docker_endpoint"
+	}
+	svc := req.Service
+	if svc == "" && nodeType == "docker_endpoint" {
+		svc = "docker"
+	}
+
 	node := model.DockerNode{
-		Name:    req.Name,
-		Host:    req.Host,
-		Port:    req.Port,
-		TLSCert: req.TLSCert,
-		TLSKey:  req.TLSKey,
-		CACert:  req.CACert,
-		Status:  "offline",
+		Name:     req.Name,
+		Host:     req.Host,
+		Port:     req.Port,
+		NodeType: nodeType,
+		Service:  svc,
+		TLSCert:  req.TLSCert,
+		TLSKey:   req.TLSKey,
+		CACert:   req.CACert,
+		Status:   "offline",
 	}
 
 	if err := h.db.Create(&node).Error; err != nil {

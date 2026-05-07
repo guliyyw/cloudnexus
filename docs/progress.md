@@ -170,11 +170,12 @@
 | 后端 | 健康聚合器 — 定期探测所有节点 /healthz，未响应→离线渐进式状态 | 1d | ✅ |
 | 后端 | 节点在线时间追踪 — NodeOnlineSession 表、累计在线时长、容器名/版本 | 2d | ✅ |
 | 后端 | 基础设施节点监控 — PostgreSQL/Redis/MinIO TCP/HTTP 健康探测 | 1d | ✅ |
-| 后端 | Docker 多主机 (TLS/Agent) + 多主机健康探测 | 3d | ⬜ |
+| 后端 | Docker 多主机 (TLS/Agent) + 多主机健康探测 | 3d | ✅ |
+| 后端 | 基础设施多实例监控 — 从配置动态注册，支持多实例 | 0.5d | ✅ |
 | 后端 | 集群节点管理 API — CRUD + 状态查询 + 按服务/主机/类型筛选 | 1d | ✅ |
 | 前端 | admin 面板新增"集群节点"页面 — 节点列表/筛选/在线时间表/基础设施 | 1.5d | ✅ |
 | 后端 | 告警预留 — webhook 接口 + 阈值检测 | 0.5d | ⬜ |
-| 部署 | Nginx 负载均衡 | 1d | ⬜ |
+| 部署 | Nginx 负载均衡 — upstream + ip_hash(WS) + 被动健康检查 | 1d | ✅ |
 | 部署 | Docker Swarm 编排 | 2d | ⬜ |
 
 **预计总工时：** 约 11.5 人天（含新增监控 4.5 人天）
@@ -300,6 +301,8 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-06 | v0.1.0-dev | 聊天图片/视频消息：直接上传渲染、粘贴上传；链接预览卡片：URL 检测 + OG 元数据抓取 + 卡片展示 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 全部完成：所有 P1 功能已补齐，含跨节点 IM Redis Pub/Sub | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 节点增强：服务标识/在线时间追踪/NodeOnlineSession/基础设施节点/按服务主机类型筛选/未响应渐进式状态/节点名取容器hostname/主机统一localhost/容器重建自动接管下线 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | Phase 3 Docker 多主机 TLS：EndpointManager 多端点客户端管理/TLS (CA+客户端证书)/端点 CRUD/前端主机选择器/每30s ping 更新状态 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | Phase 3 Nginx 负载均衡：upstream 多后端/ip_hash WebSocket sticky/被动健康检查(max_fails+timeout)/集群 compose 模板/基础设施 hostname 动态注册 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 完成：Docker镜像管理、容器监控、用户设置、IM文件消息、响应式布局、数据库迁移 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 规划：P1 补齐 (Docker镜像/监控、用户设置、IM文件消息、响应式、Redis Pub/Sub) | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | 暖色主题重设计：ConfigProvider 主题、侧边栏亮色、全局暖色调、共享工具函数 | CloudNexus 团队 |

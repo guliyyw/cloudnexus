@@ -9,34 +9,47 @@ export interface ContainerInfo {
   created: string
 }
 
-export async function listContainers(all: boolean = false): Promise<ContainerInfo[]> {
-  const res = await api.get('/docker/containers', { params: { all } })
+export interface EndpointInfo {
+  name: string
+  host: string
+  port: number
+  status: string
+  tls: boolean
+}
+
+export async function listEndpoints(): Promise<EndpointInfo[]> {
+  const res = await api.get('/docker/endpoints')
   return res.data.data
 }
 
-export async function createContainer(image: string, name: string): Promise<{ id: string }> {
-  const res = await api.post('/docker/containers', { image, name })
+export async function listContainers(all: boolean = false, endpoint: string = 'local'): Promise<ContainerInfo[]> {
+  const res = await api.get('/docker/containers', { params: { all, endpoint } })
   return res.data.data
 }
 
-export async function startContainer(id: string): Promise<void> {
-  await api.post(`/docker/containers/${id}/start`)
+export async function createContainer(image: string, name: string, endpoint: string = 'local'): Promise<{ id: string }> {
+  const res = await api.post('/docker/containers', { image, name }, { params: { endpoint } })
+  return res.data.data
 }
 
-export async function stopContainer(id: string): Promise<void> {
-  await api.post(`/docker/containers/${id}/stop`)
+export async function startContainer(id: string, endpoint: string = 'local'): Promise<void> {
+  await api.post(`/docker/containers/${id}/start`, null, { params: { endpoint } })
 }
 
-export async function restartContainer(id: string): Promise<void> {
-  await api.post(`/docker/containers/${id}/restart`)
+export async function stopContainer(id: string, endpoint: string = 'local'): Promise<void> {
+  await api.post(`/docker/containers/${id}/stop`, null, { params: { endpoint } })
 }
 
-export async function removeContainer(id: string, force = false): Promise<void> {
-  await api.delete(`/docker/containers/${id}`, { params: { force } })
+export async function restartContainer(id: string, endpoint: string = 'local'): Promise<void> {
+  await api.post(`/docker/containers/${id}/restart`, null, { params: { endpoint } })
 }
 
-export async function getContainerLogs(id: string, tail = '100'): Promise<string> {
-  const res = await api.get(`/docker/containers/${id}/logs`, { params: { tail }, responseType: 'text' })
+export async function removeContainer(id: string, force = false, endpoint: string = 'local'): Promise<void> {
+  await api.delete(`/docker/containers/${id}`, { params: { force, endpoint } })
+}
+
+export async function getContainerLogs(id: string, tail = '100', endpoint: string = 'local'): Promise<string> {
+  const res = await api.get(`/docker/containers/${id}/logs`, { params: { tail, endpoint }, responseType: 'text' })
   return res.data
 }
 
@@ -49,17 +62,17 @@ export interface ImageInfo {
   created: string
 }
 
-export async function listImages(): Promise<ImageInfo[]> {
-  const res = await api.get('/docker/images')
+export async function listImages(endpoint: string = 'local'): Promise<ImageInfo[]> {
+  const res = await api.get('/docker/images', { params: { endpoint } })
   return res.data.data
 }
 
-export async function pullImage(image: string): Promise<void> {
-  await api.post('/docker/images/pull', { image })
+export async function pullImage(image: string, endpoint: string = 'local'): Promise<void> {
+  await api.post('/docker/images/pull', { image }, { params: { endpoint } })
 }
 
-export async function removeImage(image: string, force = false): Promise<void> {
-  await api.delete(`/docker/images/${encodeURIComponent(image)}`, { params: { force } })
+export async function removeImage(image: string, force = false, endpoint: string = 'local'): Promise<void> {
+  await api.delete(`/docker/images/${encodeURIComponent(image)}`, { params: { force, endpoint } })
 }
 
 // --- Container stats ---
@@ -71,7 +84,7 @@ export interface ContainerStats {
   memory_percent: number
 }
 
-export async function getContainerStats(id: string): Promise<ContainerStats> {
-  const res = await api.get(`/docker/containers/${id}/stats`)
+export async function getContainerStats(id: string, endpoint: string = 'local'): Promise<ContainerStats> {
+  const res = await api.get(`/docker/containers/${id}/stats`, { params: { endpoint } })
   return res.data.data
 }

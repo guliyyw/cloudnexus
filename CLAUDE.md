@@ -255,15 +255,38 @@ Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/user-file-svc
 
 ### Infrastructure nodes
 Registered via `HealthAggregator.RegisterInfra()` in user-file-svc:
-- `postgres` — TCP probe on `cfg.DBHost():5432`, displayed as `localhost:5432`
-- `redis` — TCP probe on `cfg.RedisHost():6379`, displayed as `localhost:6379`
-- `minio` — HTTP probe on `http://<MinIOHost>:9000/minio/health/live`, displayed as `localhost:9000`
+- `postgres` — TCP probe on `cfg.DBHost():5432`
+- `redis` — TCP probe on `cfg.RedisHost():6379`
+- `minio` — HTTP probe on `http://<MinIOHost>:9000/minio/health/live`
+- Host values come from config DSN/addr/endpoint fields, not hardcoded `localhost`
+- Additional infrastructure instances can be added via `POST /admin/nodes` with `node_type=infrastructure`
 
 ### Cluster nodes admin API
 `internal/userfile/handler/node.go` — admin endpoints:
 - `GET /admin/nodes` — list all, optional filters: `?service=` `?host=` `?type=` `?status=` (comma-separated)
 - `GET /admin/nodes/:name/sessions` — online session history for a node
 - `POST /admin/nodes` / `DELETE /admin/nodes/:name` — manual node management
+- `addNodeRequest` supports `node_type` (docker_endpoint/service/infrastructure), `service`, and TLS fields (`tls_cert`, `tls_key`, `ca_cert`)
+
+### Docker multi-endpoint + TLS
+`internal/dockermgr/service/endpoint.go` — `EndpointManager` manages multiple Docker daemon connections:
+- **Local endpoint**: always available from `DOCKER_HOST` env or platform default (unix socket on Linux, tcp://localhost:2375 on Windows)
+- **Remote endpoints**: queried from `docker_nodes` where `node_type=docker_endpoint` and `service=docker`, lazy-cached
+- **TLS**: `buildTLSClient(node)` builds a TLS-configured HTTP client when `tls_cert`/`tls_key` fields are non-empty. Uses `crypto/tls` with system CA pool + optional custom CA, client certificate, min TLS 1.2
+- **Health**: `PingAll()` called every 30s from docker-svc goroutine, pings all endpoints via Docker `/_ping` and updates node status in DB
+- All `DockerService` methods take `endpoint string` as first parameter; handler extracts via `getEndpoint(c)` = `c.DefaultQuery("endpoint", "local")`
+- Routes: `GET /api/v1/docker/endpoints` (list), `GET /api/v1/docker/ping?endpoint=` (ping specific)
+- Frontend `DockerPage` has `Select` host selector showing endpoint name, host:port, and status tag
+
+### Nginx load balancing
+`deploy/nginx/nginx.conf` — upstream blocks for multi-server deployment:
+- `user_file_backend`: user-file-svc instances (default: single server, add more for multi-server)
+- `im_backend`: `ip_hash` sticky session for WebSocket
+- `docker_backend`: docker-svc instances
+- All servers use `max_fails=3 fail_timeout=30s` for passive health checks
+- Single-server deployment: each upstream has one server, behavior unchanged
+- Multi-server: add additional `server` lines to each upstream block
+- `docker-compose.cluster.yml`: per-server deployment template with `SERVER_HOST` env var for node registration
 
 ## Testing
 

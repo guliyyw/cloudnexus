@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
   Table, Button, Modal, Input, Space, Tag, message, Popconfirm,
-  Typography, Switch, Tabs, Progress,
+  Typography, Switch, Tabs, Progress, Select,
 } from 'antd'
 import {
   PlusOutlined, ReloadOutlined, PlayCircleOutlined,
   PauseCircleOutlined, SyncOutlined, DeleteOutlined,
   FileTextOutlined, CloudDownloadOutlined, BlockOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons'
 import { useDockerStore } from '../stores/dockerStore'
 import * as dockerApi from '../services/docker'
@@ -32,8 +33,9 @@ function formatBytes(bytes: number): string {
 
 export default function DockerPage() {
   const {
+    endpoint, endpoints, setEndpoint,
     containers, images, stats, loading, imagesLoading,
-    fetchContainers, create, start, stop, restart, remove,
+    fetchEndpoints, fetchContainers, create, start, stop, restart, remove,
     fetchImages, pullImage, removeImage, fetchStats,
   } = useDockerStore()
 
@@ -49,13 +51,14 @@ export default function DockerPage() {
   const [pullLoading, setPullLoading] = useState(false)
   const [expandedStats, setExpandedStats] = useState<Set<string>>(new Set())
 
-  useEffect(() => { fetchContainers(showAll) }, [showAll])
+  useEffect(() => { fetchEndpoints() }, [])
+  useEffect(() => { fetchContainers(showAll) }, [showAll, endpoint])
 
   const handleViewLogs = async (id: string) => {
     setLogsVisible(true)
     setLogsLoading(true)
     try {
-      const logs = await dockerApi.getContainerLogs(id, '200')
+      const logs = await dockerApi.getContainerLogs(id, '200', endpoint)
       setLogsContent(logs)
     } catch {
       setLogsContent('获取日志失败')
@@ -143,6 +146,36 @@ export default function DockerPage() {
 
   return (
     <div>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Space>
+          <EnvironmentOutlined />
+          <Select
+            value={endpoint}
+            onChange={(v) => {
+              setEndpoint(v)
+              fetchContainers(showAll)
+            }}
+            style={{ minWidth: 240 }}
+            options={endpoints.map(ep => ({
+              value: ep.name,
+              label: (
+                <span>
+                  {ep.name} <Text type="secondary" style={{ fontSize: 12 }}>
+                    ({ep.host}{ep.port ? ':' + ep.port : ''})
+                  </Text>
+                  <Tag style={{ marginLeft: 4, fontSize: 10 }}
+                    color={ep.status === 'healthy' ? 'green' : ep.status === 'unresponsive' ? 'orange' : 'red'}>
+                    {ep.status}
+                  </Tag>
+                </span>
+              ),
+            }))}
+          />
+          <Button size="small" icon={<ReloadOutlined />}
+            onClick={fetchEndpoints} title="刷新端点列表" />
+        </Space>
+      </div>
+
       <Tabs
         defaultActiveKey="containers"
         onChange={(key) => {

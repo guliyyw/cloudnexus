@@ -96,15 +96,15 @@ func main() {
 
 	aggregator := system.NewHealthAggregator(db)
 	aggregator.RegisterInfra(system.InfraNode{
-		Name: "postgres", Host: "localhost", Port: 5432,
+		Name: "postgres", Host: cfg.DBHost(), Port: 5432,
 		ProbeFn: system.TCPProbe(cfg.DBHost(), 5432),
 	})
 	aggregator.RegisterInfra(system.InfraNode{
-		Name: "redis", Host: "localhost", Port: 6379,
+		Name: "redis", Host: cfg.RedisHost(), Port: 6379,
 		ProbeFn: system.TCPProbe(cfg.RedisHost(), 6379),
 	})
 	aggregator.RegisterInfra(system.InfraNode{
-		Name: "minio", Host: "localhost", Port: 9000,
+		Name: "minio", Host: cfg.MinIOHost(), Port: 9000,
 		ProbeFn: system.HTTPProbe(fmt.Sprintf("http://%s:9000/minio/health/live", cfg.MinIOHost())),
 	})
 	aggregator.Start()

@@ -183,7 +183,11 @@ export async function getNodeSessions(name: string): Promise<NodeOnlineSession[]
   return res.data.data.sessions
 }
 
-export async function addNode(req: { name: string; host: string; port: number }): Promise<DockerNode> {
+export async function addNode(req: {
+  name: string; host: string; port: number;
+  node_type?: string; service?: string;
+  tls_cert?: string; tls_key?: string; ca_cert?: string;
+}): Promise<DockerNode> {
   const res = await api.post('/admin/nodes', req)
   return res.data.data.node
 }

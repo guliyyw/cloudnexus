@@ -1,57 +1,27 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type DockerService struct {
-	httpClient *http.Client
-	baseURL    string
+	mgr *EndpointManager
 }
 
-func NewDockerService() (*DockerService, error) {
-	host := os.Getenv("DOCKER_HOST")
-	if host == "" {
-		if runtime.GOOS == "windows" {
-			host = "tcp://localhost:2375"
-		} else {
-			host = "unix:///var/run/docker.sock"
-		}
-	}
+func NewDockerService(mgr *EndpointManager) *DockerService {
+	return &DockerService{mgr: mgr}
+}
 
-	var transport *http.Transport
-	if strings.HasPrefix(host, "unix://") {
-		sock := strings.TrimPrefix(host, "unix://")
-		transport = &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", sock)
-			},
-		}
-	} else {
-		transport = &http.Transport{}
-	}
-
-	baseURL := "http://localhost"
-	if strings.HasPrefix(host, "tcp://") {
-		baseURL = "http://" + strings.TrimPrefix(host, "tcp://")
-	}
-
-	return &DockerService{
-		httpClient: &http.Client{Transport: transport, Timeout: 30 * time.Second},
-		baseURL:    baseURL,
-	}, nil
+func (s *DockerService) clientFor(endpoint string) (*endpointClient, error) {
+	return s.mgr.GetClient(endpoint)
 }
 
 type ContainerInfo struct {
@@ -84,8 +54,12 @@ type ContainerInspect struct {
 	} `json:"Config"`
 }
 
-func (s *DockerService) InspectContainer(id string) (*ContainerInspect, error) {
-	resp, err := s.httpClient.Get(fmt.Sprintf("%s/containers/%s/json", s.baseURL, id))
+func (s *DockerService) InspectContainer(endpoint, id string) (*ContainerInspect, error) {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := ec.client.Get(fmt.Sprintf("%s/containers/%s/json", ec.baseURL, id))
 	if err != nil {
 		return nil, fmt.Errorf("inspect container failed: %w", err)
 	}
@@ -101,11 +75,11 @@ func (s *DockerService) InspectContainer(id string) (*ContainerInspect, error) {
 	return &info, nil
 }
 
-func (s *DockerService) checkOwnership(id string, userID uint64, isAdmin bool) error {
+func (s *DockerService) checkOwnership(endpoint, id string, userID uint64, isAdmin bool) error {
 	if isAdmin {
 		return nil
 	}
-	info, err := s.InspectContainer(id)
+	info, err := s.InspectContainer(endpoint, id)
 	if err != nil {
 		return err
 	}
@@ -120,13 +94,17 @@ func (s *DockerService) checkOwnership(id string, userID uint64, isAdmin bool) e
 	return nil
 }
 
-func (s *DockerService) ListContainers(all bool, userID uint64, isAdmin bool) ([]ContainerInfo, error) {
-	apiURL := fmt.Sprintf("%s/containers/json?all=%v", s.baseURL, all)
+func (s *DockerService) ListContainers(endpoint string, all bool, userID uint64, isAdmin bool) ([]ContainerInfo, error) {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	apiURL := fmt.Sprintf("%s/containers/json?all=%v", ec.baseURL, all)
 	if !isAdmin {
 		labelFilter := fmt.Sprintf(`{"label":["cloudnexus.creator=%d"]}`, userID)
 		apiURL += "&filters=" + url.QueryEscape(labelFilter)
 	}
-	resp, err := s.httpClient.Get(apiURL)
+	resp, err := ec.client.Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("连接 Docker 失败: %w", err)
 	}
@@ -156,10 +134,14 @@ func (s *DockerService) ListContainers(all bool, userID uint64, isAdmin bool) ([
 	return result, nil
 }
 
-func (s *DockerService) doAction(id, action string) error {
-	url := fmt.Sprintf("%s/containers/%s/%s", s.baseURL, id, action)
+func (s *DockerService) doAction(endpoint, id, action string) error {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/containers/%s/%s", ec.baseURL, id, action)
 	req, _ := http.NewRequest("POST", url, nil)
-	resp, err := s.httpClient.Do(req)
+	resp, err := ec.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -171,32 +153,36 @@ func (s *DockerService) doAction(id, action string) error {
 	return nil
 }
 
-func (s *DockerService) StartContainer(id string, userID uint64, isAdmin bool) error {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) StartContainer(endpoint, id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return err
 	}
-	return s.doAction(id, "start")
+	return s.doAction(endpoint, id, "start")
 }
-func (s *DockerService) StopContainer(id string, userID uint64, isAdmin bool) error {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) StopContainer(endpoint, id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return err
 	}
-	return s.doAction(id, "stop")
+	return s.doAction(endpoint, id, "stop")
 }
-func (s *DockerService) RestartContainer(id string, userID uint64, isAdmin bool) error {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) RestartContainer(endpoint, id string, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return err
 	}
-	return s.doAction(id, "restart")
+	return s.doAction(endpoint, id, "restart")
 }
 
-func (s *DockerService) RemoveContainer(id string, force bool, userID uint64, isAdmin bool) error {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) RemoveContainer(endpoint, id string, force bool, userID uint64, isAdmin bool) error {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/containers/%s?force=%v", s.baseURL, id, force)
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/containers/%s?force=%v", ec.baseURL, id, force)
 	req, _ := http.NewRequest("DELETE", url, nil)
-	resp, err := s.httpClient.Do(req)
+	resp, err := ec.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -204,12 +190,16 @@ func (s *DockerService) RemoveContainer(id string, force bool, userID uint64, is
 	return nil
 }
 
-func (s *DockerService) GetLogs(id, tail string, userID uint64, isAdmin bool) (io.ReadCloser, error) {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) GetLogs(endpoint, id, tail string, userID uint64, isAdmin bool) (io.ReadCloser, error) {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("%s/containers/%s/logs?stdout=true&stderr=true&tail=%s", s.baseURL, id, tail)
-	resp, err := s.httpClient.Get(url)
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/containers/%s/logs?stdout=true&stderr=true&tail=%s", ec.baseURL, id, tail)
+	resp, err := ec.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -232,9 +222,13 @@ type dockerImage struct {
 	Created int64    `json:"Created"`
 }
 
-func (s *DockerService) ListImages() ([]ImageInfo, error) {
-	url := fmt.Sprintf("%s/images/json", s.baseURL)
-	resp, err := s.httpClient.Get(url)
+func (s *DockerService) ListImages(endpoint string) ([]ImageInfo, error) {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/images/json", ec.baseURL)
+	resp, err := ec.client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("获取镜像列表失败: %w", err)
 	}
@@ -268,11 +262,15 @@ func (s *DockerService) ListImages() ([]ImageInfo, error) {
 	return result, nil
 }
 
-func (s *DockerService) PullImage(image string) error {
-	url := fmt.Sprintf("%s/images/create?fromImage=%s", s.baseURL, image)
+func (s *DockerService) PullImage(endpoint, image string) error {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/images/create?fromImage=%s", ec.baseURL, image)
 	req, _ := http.NewRequest("POST", url, nil)
 	req.Header.Set("X-Registry-Auth", "{}")
-	resp, err := s.httpClient.Do(req)
+	resp, err := ec.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("拉取镜像失败: %w", err)
 	}
@@ -282,15 +280,18 @@ func (s *DockerService) PullImage(image string) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("拉取镜像失败: %s", string(body))
 	}
-	// Drain the stream (Docker returns JSON lines during pull)
 	io.Copy(io.Discard, resp.Body)
 	return nil
 }
 
-func (s *DockerService) RemoveImage(image string, force bool) error {
-	url := fmt.Sprintf("%s/images/%s?force=%v", s.baseURL, image, force)
+func (s *DockerService) RemoveImage(endpoint, image string, force bool) error {
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/images/%s?force=%v", ec.baseURL, image, force)
 	req, _ := http.NewRequest("DELETE", url, nil)
-	resp, err := s.httpClient.Do(req)
+	resp, err := ec.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("删除镜像失败: %w", err)
 	}
@@ -331,12 +332,16 @@ type dockerStats struct {
 	} `json:"memory_stats"`
 }
 
-func (s *DockerService) GetStats(id string, userID uint64, isAdmin bool) (*ContainerStats, error) {
-	if err := s.checkOwnership(id, userID, isAdmin); err != nil {
+func (s *DockerService) GetStats(endpoint, id string, userID uint64, isAdmin bool) (*ContainerStats, error) {
+	if err := s.checkOwnership(endpoint, id, userID, isAdmin); err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("%s/containers/%s/stats?stream=false", s.baseURL, id)
-	resp, err := s.httpClient.Get(url)
+	ec, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/containers/%s/stats?stream=false", ec.baseURL, id)
+	resp, err := ec.client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("获取容器状态失败: %w", err)
 	}
@@ -371,23 +376,15 @@ func (s *DockerService) GetStats(id string, userID uint64, isAdmin bool) (*Conta
 	}, nil
 }
 
-func (s *DockerService) Ping() error {
-	resp, err := s.httpClient.Get(fmt.Sprintf("%s/_ping", s.baseURL))
+func (s *DockerService) CreateContainer(endpoint, image, name string, userID uint64, username string) (string, error) {
+	ec, err := s.clientFor(endpoint)
 	if err != nil {
-		return fmt.Errorf("docker daemon unreachable: %w", err)
+		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("docker daemon returned status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func (s *DockerService) CreateContainer(image, name string, userID uint64, username string) (string, error) {
 	labels := fmt.Sprintf(`"cloudnexus.creator":"%d","cloudnexus.creator_name":"%s"`, userID, username)
 	body := fmt.Sprintf(`{"Image":"%s","Labels":{%s}}`, image, labels)
-	createURL := fmt.Sprintf("%s/containers/create?name=%s", s.baseURL, name)
-	resp, err := s.httpClient.Post(createURL, "application/json", strings.NewReader(body))
+	createURL := fmt.Sprintf("%s/containers/create?name=%s", ec.baseURL, name)
+	resp, err := ec.client.Post(createURL, "application/json", strings.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -400,5 +397,31 @@ func (s *DockerService) CreateContainer(image, name string, userID uint64, usern
 		return "", fmt.Errorf("create container failed: %w", err)
 	}
 
-	return result.ID, s.doAction(result.ID, "start")
+	return result.ID, s.doAction(endpoint, result.ID, "start")
+}
+
+func (s *DockerService) Ping() error {
+	ec, _ := s.mgr.GetClient("local")
+	if ec == nil {
+		return fmt.Errorf("local docker endpoint not available")
+	}
+	resp, err := ec.client.Get(ec.baseURL + "/_ping")
+	if err != nil {
+		return fmt.Errorf("docker daemon unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("docker daemon returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// ListEndpoints returns all available Docker endpoints.
+func (s *DockerService) ListEndpoints() []EndpointInfo {
+	return s.mgr.ListEndpoints()
+}
+
+// PingEndpoint pings a specific endpoint.
+func (s *DockerService) PingEndpoint(name string) error {
+	return s.mgr.PingEndpoint(name)
 }

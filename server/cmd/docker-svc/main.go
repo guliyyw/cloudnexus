@@ -37,16 +37,11 @@ func main() {
 	}
 	defer logger.Sync()
 
-	dockerSvc, err := service.NewDockerService()
-	if err != nil {
-		logger.Log.Fatal("连接 Docker 失败", zap.Error(err))
-	}
-
 	snowflake.Init(3)
 
 	db, err := database.NewPostgres(database.Config{DSN: cfg.Database.DSN})
 	if err != nil {
-		logger.Log.Warn("连接数据库失败，节点注册不可用", zap.Error(err))
+		logger.Log.Warn("连接数据库失败，节点注册和远程端点不可用", zap.Error(err))
 	}
 
 	if db != nil {
@@ -59,6 +54,20 @@ func main() {
 		nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "docker-svc", 8083)
 		nodeReg.Start()
 		defer nodeReg.Stop()
+	}
+
+	endpointMgr := service.NewEndpointManager(db)
+	dockerSvc := service.NewDockerService(endpointMgr)
+
+	// Background: ping all Docker endpoints every 30s and update status
+	if db != nil {
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				endpointMgr.PingAll()
+			}
+		}()
 	}
 
 	jwtCfg := auth.Config{
@@ -79,6 +88,9 @@ func main() {
 	{
 		docker := api.Group("/docker")
 		{
+			docker.GET("/endpoints", dockerH.HandleListEndpoints)
+			docker.GET("/ping", dockerH.HandlePingEndpoint)
+
 			containers := docker.Group("/containers")
 			{
 				containers.GET("", dockerH.HandleListContainers)
@@ -101,8 +113,11 @@ func main() {
 
 	r.GET("/healthz", system.HealthzHandler("docker-svc",
 		func() (string, string) {
-			if err := dockerSvc.Ping(); err != nil {
-				return "docker", "error: " + err.Error()
+			eps := endpointMgr.ListEndpoints()
+			for _, ep := range eps {
+				if err := endpointMgr.PingEndpoint(ep.Name); err != nil {
+					return "docker:" + ep.Name, "error: " + err.Error()
+				}
 			}
 			return "docker", "ok"
 		},

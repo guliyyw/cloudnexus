@@ -850,6 +850,25 @@ function ClusterNodes() {
           <Form.Item name="port" label="端口" initialValue={2376}>
             <InputNumber min={1} max={65535} style={{ width: '100%' }} />
           </Form.Item>
+          <Form.Item name="node_type" label="节点类型" initialValue="docker_endpoint">
+            <Select options={[
+              { value: 'docker_endpoint', label: 'Docker 端点' },
+              { value: 'service', label: '服务节点' },
+              { value: 'infrastructure', label: '基础设施' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="service" label="服务名" tooltip="docker 端点默认使用 docker，留空自动填充">
+            <Input placeholder="例如: docker" />
+          </Form.Item>
+          <Form.Item name="tls_cert" label="TLS 客户端证书 (PEM)">
+            <Input.TextArea rows={3} placeholder="-----BEGIN CERTIFICATE-----" />
+          </Form.Item>
+          <Form.Item name="tls_key" label="TLS 客户端密钥 (PEM)">
+            <Input.TextArea rows={3} placeholder="-----BEGIN PRIVATE KEY-----" />
+          </Form.Item>
+          <Form.Item name="ca_cert" label="CA 证书 (PEM)">
+            <Input.TextArea rows={3} placeholder="-----BEGIN CERTIFICATE-----" />
+          </Form.Item>
         </Form>
       </Modal>
     </div>
