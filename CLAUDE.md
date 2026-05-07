@@ -173,9 +173,12 @@ Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry po
 - `/ws` → im-svc:8082 (WebSocket upgrade)
 - `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc}` for per-service probing
 - `/` → Serves `client/dist/` static files with SPA `try_files` fallback
+- `//api/*` → 308 redirect to `/api/*` (handles double-slash from misconfigured clients like Apifox)
 
 Config is at `deploy/nginx/nginx.conf` and is volume-mounted (restart, not rebuild, to apply changes).
 The frontend connects to `window.location.host` for both API calls and WebSocket. Vite proxy config is retained as an alternative for devs who prefer not to run nginx.
+
+**Important**: `nginx:alpine` image ships with `/etc/nginx/conf.d/default.conf` containing a default server block that conflicts with our config and rejects POST requests (returns 405). Docker Compose files use a `command` override to remove it before starting: `rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'`. If switching to a custom nginx image, this may not be needed.
 
 ### Docker multi-stage build
 `server/Dockerfile` uses a `SERVICE` build arg to select which `cmd/` binary to build:

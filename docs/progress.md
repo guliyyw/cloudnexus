@@ -324,4 +324,6 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-04 | v0.1.0-dev | ID 统一使用雪花算法、好友列表显示用户名、文件预览 Token 修复、上传拖拽优化 | CloudNexus 团队 |
 | 2026-05-04 | v0.1.0-dev | 批量文件上传、文件在线预览、会话删除、好友系统、JWT 8小时 TTL、集成测试通过、前端浏览器测试 | CloudNexus 团队 |
 | 2026-05-04 | v0.1.0-dev | 会话名称修复（私聊显示对方昵称）、创建会话用户存在性校验、聊天消息左右对齐、测试数据文档 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | fix: nginx POST 405 — nginx:alpine 自带 default.conf 冲突，启动时 rm -f 移除 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | fix: nginx 双斜杠 URI — Apifox 等客户端 `//api/...` 返回404，加 308 重定向至 `/api/...` | CloudNexus 团队 |
 | 2026-05-03 | v0.1.0-dev | Phase 1 单机 MVP 开发完成：用户认证、文件管理、即时通讯、Docker管理（前后端全栈） | CloudNexus 团队 |
