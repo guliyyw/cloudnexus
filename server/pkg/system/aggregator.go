@@ -139,16 +139,23 @@ func (a *HealthAggregator) resetFailures(name string) {
 }
 
 func (a *HealthAggregator) probeInfraNode(node model.DockerNode) {
-	var ok bool
+	now := time.Now()
+
+	// First try the registered probe function (for local infrastructure nodes).
 	for _, infra := range a.infraNodes {
 		if infra.Name == node.Name {
-			ok = infra.ProbeFn()
-			break
+			if infra.ProbeFn() {
+				a.resetFailures(node.Name)
+				a.markHealthy(&node, node.Service, node.Version, now)
+			} else {
+				a.handleFailure(&node, now)
+			}
+			return
 		}
 	}
 
-	now := time.Now()
-	if ok {
+	// Fall back to generic TCP probe for manually added infra nodes.
+	if TCPProbe(node.Host, node.Port)() {
 		a.resetFailures(node.Name)
 		a.markHealthy(&node, node.Service, node.Version, now)
 	} else {
