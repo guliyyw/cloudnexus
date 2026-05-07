@@ -132,16 +132,30 @@ func (h *NodeHandler) HandleGetNodeSessions(c *gin.Context) {
 	c.JSON(200, response.OKWithData(gin.H{"sessions": sessions}))
 }
 
-// HandleDeleteNode removes a node.
+// HandleDeleteNode removes a node. Prevents deleting the last node of any service type.
 func (h *NodeHandler) HandleDeleteNode(c *gin.Context) {
 	name := c.Param("name")
-	result := h.db.Where("name = ?", name).Delete(&model.DockerNode{})
-	if result.Error != nil {
-		c.JSON(500, response.Error(500, "删除节点失败"))
+
+	var target model.DockerNode
+	if err := h.db.Where("name = ?", name).First(&target).Error; err != nil {
+		c.JSON(404, response.Error(404, "节点不存在"))
 		return
 	}
-	if result.RowsAffected == 0 {
-		c.JSON(404, response.Error(404, "节点不存在"))
+
+	// If the node belongs to a service, ensure at least one other node exists for that service.
+	if target.Service != "" {
+		var count int64
+		h.db.Model(&model.DockerNode{}).
+			Where("service = ? AND name != ?", target.Service, name).
+			Count(&count)
+		if count == 0 {
+			c.JSON(409, response.Error(409, "无法删除：该服务至少需要保留一个节点"))
+			return
+		}
+	}
+
+	if err := h.db.Delete(&target).Error; err != nil {
+		c.JSON(500, response.Error(500, "删除节点失败"))
 		return
 	}
 	c.JSON(200, response.OK("节点已删除"))

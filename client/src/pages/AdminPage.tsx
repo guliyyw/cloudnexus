@@ -588,10 +588,14 @@ function ClusterNodes() {
   }
 
   const handleDelete = async (name: string) => {
-    await adminApi.deleteNode(name)
-    message.success('节点已删除')
-    setSessionsCache((prev) => { const n = { ...prev }; delete n[name]; return n })
-    fetchNodes()
+    try {
+      await adminApi.deleteNode(name)
+      message.success('节点已删除')
+      setSessionsCache((prev) => { const n = { ...prev }; delete n[name]; return n })
+      fetchNodes()
+    } catch (err: any) {
+      message.error(err.response?.data?.message || '删除失败')
+    }
   }
 
   const handleExpandRow = async (name: string) => {
@@ -669,6 +673,14 @@ function ClusterNodes() {
     {
       title: '主机:端口', key: 'addr', width: 170,
       render: (_: any, r: adminApi.DockerNode) => <Text type="secondary">{r.host}:{r.port}</Text>,
+    },
+    {
+      title: '操作', key: 'actions', width: 60,
+      render: (_: any, record: adminApi.DockerNode) => (
+        <Popconfirm title="确定删除此节点及历史？" onConfirm={() => handleDelete(record.name)}>
+          <Button size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
     },
   ]
 

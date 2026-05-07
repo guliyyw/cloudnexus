@@ -123,7 +123,7 @@ func (n *NodeRegistrar) upsert(status string) {
 	// Mark any other nodes with same host+port+service as offline (stale containers).
 	// The new container takes over.
 	n.db.Model(&model.DockerNode{}).
-		Where("name != ? AND host = ? AND port = ? AND service = ? AND status = 'healthy'",
+		Where("name != ? AND host = ? AND port = ? AND service = ? AND status IN ('healthy','unresponsive')",
 			n.name, n.host, n.port, n.serviceName).
 		Updates(map[string]interface{}{
 			"status":        "offline",
