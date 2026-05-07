@@ -4,9 +4,24 @@
 
 所有 ID 由 Snowflake 算法自动生成，测试时以实际返回值为准。
 
+### 默认管理员
+
+首次启动 user-file-svc 时，若 `users` 表为空，会自动创建默认管理员账号：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `DEFAULT_ADMIN_USERNAME` | `admin` | 管理员用户名 |
+| `DEFAULT_ADMIN_PASSWORD` | `CloudNexus@admin` | 管理员密码 |
+| `DEFAULT_ADMIN_EMAIL` | `admin@cloudnexus.local` | 管理员邮箱 |
+
+> 这些值可通过 Docker Compose 的 `environment` 或 K8s env vars 修改。
+> 仅当数据库中无任何用户时才会触发种子创建，不会覆盖已有数据。
+
+### 手动测试账号
+
 | 用户名 | 密码 | 备注 |
 |--------|------|------|
-| admin | admin123 | 管理员账号 |
+| admin | CloudNexus@admin | 默认管理员 (自动种子) |
 | testuser | 123456 | 默认测试账号 |
 | alice | alice123 | |
 | bob | bob123 | |

@@ -106,7 +106,20 @@ jwt:
 
 **宿主机开发**使用 `config.single.yaml`（host 均为 `localhost`）。
 
-### 2.7 Docker Compose 服务一览
+### 2.7 默认管理员账号
+
+系统首次启动时会自动创建默认管理员（仅当 `users` 表为空）：
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `DEFAULT_ADMIN_USERNAME` | `admin` | 管理员用户名 |
+| `DEFAULT_ADMIN_PASSWORD` | `CloudNexus@admin` | 管理员密码 |
+| `DEFAULT_ADMIN_EMAIL` | `admin@cloudnexus.local` | 管理员邮箱 |
+
+在 `docker-compose.single.yml` 中修改 `user-file-svc` 的 environment 即可自定义。
+生产环境请务必修改默认密码。
+
+### 2.8 Docker Compose 服务一览
 
 | 服务 | 来源 | 说明 |
 |------|------|------|
@@ -118,7 +131,7 @@ jwt:
 | docker-svc | 构建 `../server` (SERVICE=docker-svc) | Go 服务，挂载 docker.sock |
 | nginx | `nginx:alpine` | 入口 + 静态文件 |
 
-### 2.8 常用命令
+### 2.9 常用命令
 
 ```bash
 # 查看日志

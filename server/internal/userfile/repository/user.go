@@ -86,3 +86,9 @@ func (r *UserRepository) SetAdmin(id uint64, isAdmin bool) error {
 func (r *UserRepository) SetStatus(id uint64, status int8) error {
 	return r.db.Model(&model.User{}).Where("id = ?", id).Update("status", status).Error
 }
+
+func (r *UserRepository) CountUsers() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.User{}).Count(&count).Error
+	return count, err
+}

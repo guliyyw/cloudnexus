@@ -80,6 +80,7 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	userSvc := service.NewUserService(userRepo, jwtCfg)
+	userSvc.SeedDefaultAdmin()
 	userH := handler.NewUserHandler(userSvc)
 
 	fileRepo := repository.NewFileRepository(db)

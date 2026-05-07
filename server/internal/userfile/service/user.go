@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"time"
 
 	"github.com/cloudnexus/server/internal/userfile/repository"
@@ -187,4 +188,42 @@ func (s *UserService) ToggleStatus(userID uint64) (*model.User, error) {
 func hashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
+}
+
+func (s *UserService) SeedDefaultAdmin() {
+	count, err := s.repo.CountUsers()
+	if err != nil {
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	username := os.Getenv("DEFAULT_ADMIN_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+	email := os.Getenv("DEFAULT_ADMIN_EMAIL")
+	if email == "" {
+		email = "admin@cloudnexus.local"
+	}
+	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
+	if password == "" {
+		password = "CloudNexus@admin"
+	}
+
+	hashed, err := crypto.HashPassword(password)
+	if err != nil {
+		return
+	}
+
+	user := &model.User{
+		Username: username,
+		Email:    email,
+		Password: hashed,
+		IsAdmin:  true,
+	}
+	if err := s.repo.CreateUser(user); err != nil {
+		return
+	}
 }

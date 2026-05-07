@@ -52,6 +52,10 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
+      # 默认管理员 — 仅当数据库中无用户时创建（首次启动）
+      - DEFAULT_ADMIN_USERNAME=admin
+      - DEFAULT_ADMIN_PASSWORD=CloudNexus@admin
+      - DEFAULT_ADMIN_EMAIL=admin@cloudnexus.local
     ports:
       - "8081:8081"
     volumes:
