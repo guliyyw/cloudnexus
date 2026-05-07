@@ -262,7 +262,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 ## 9. 相关文档
 
-- [API 接口文档](api.md)
+- [API 接口文档](openapi.yaml)
 - [数据库设计](database.md)
 - [部署指南](deployment.md)
 - [开发指南](development.md)

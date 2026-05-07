@@ -91,7 +91,7 @@ cloudnexus/
 │   └── k8s/                         # Kubernetes 资源 (预留)
 │
 ├── docs/                            # 项目文档
-│   ├── api.md                       # API 接口文档
+│   ├── openapi.yaml                  # OpenAPI 3.0 接口规范
 │   ├── database.md                  # 数据库设计
 │   ├── deployment.md                # 部署指南
 │   ├── development.md               # 开发指南 (本文件)
@@ -241,7 +241,7 @@ repository (数据层) → 数据库操作、缓存访问
 3. **编写 service** — `internal/userfile/service/user.go` 中添加 `GetUserList()`
 4. **编写 handler** — `internal/userfile/handler/user.go` 中添加 `HandleListUsers`
 5. **注册路由** — 在 `cmd/user-file-svc/main.go` 中添加路由
-6. **更新文档** — 在 `docs/api.md` 中记录新接口
+6. **更新文档** — 在 `docs/openapi.yaml` 中记录新接口
 
 ---
 

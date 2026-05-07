@@ -36,7 +36,7 @@ server/
     config.single.yaml     单机配置 (DSN, Redis, MinIO, JWT)
     config.cluster.yaml    集群配置
 deploy/                    Docker Compose (PostgreSQL + Redis + MinIO)
-docs/                      api.md, architecture.md, database.md, deployment.md, development.md, progress.md, test-data.md
+docs/                      openapi.yaml, architecture.md, database.md, deployment.md, development.md, progress.md, test-data.md
 ```
 
 ## Build & Run

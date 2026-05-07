@@ -1,0 +1,1957 @@
+openapi: "3.0.3"
+info:
+  title: CloudNexus API
+  description: |
+    CloudNexus 自托管协作平台 API — 三个 Go 微服务：
+    - **user-file-svc** (8081)：用户认证、文件管理、分享、管理后台
+    - **im-svc** (8082)：即时通讯、WebSocket、好友系统
+    - **docker-svc** (8083)：Docker 容器与镜像管理
+
+    所有认证接口使用 Bearer Token（JWT），通过 `Authorization: Bearer <token>` 请求头传递。
+    WebSocket 通过 `?token=<jwt>` 查询参数认证。公开分享接口无需认证。
+  version: 0.1.0-dev
+  contact:
+    name: CloudNexus Team
+
+servers:
+  - url: http://localhost
+    description: 本地单机部署 (nginx 80 端口统一入口)
+
+tags:
+  - name: 用户认证
+    description: 注册、登录、令牌刷新
+  - name: 用户信息
+    description: 个人资料查询与修改
+  - name: 文件管理
+    description: 文件上传、下载、目录、搜索、批量操作
+  - name: 文件分享
+    description: 创建分享链接、密码保护、公开访问
+  - name: 即时通讯
+    description: 会话、消息、WebSocket
+  - name: 好友系统
+    description: 好友请求、列表、删除
+  - name: 聊天备份
+    description: 会话导出与导入
+  - name: Docker 管理
+    description: 容器生命周期、镜像管理、端点
+  - name: 管理后台
+    description: 用户管理、日志查看、集群节点、系统指标
+  - name: 系统
+    description: 健康检查、运行时指标
+
+# ────────────────────────────────────────────────────
+# Security
+# ────────────────────────────────────────────────────
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ── Shared Schemas ──
+  schemas:
+    # Generic response envelope
+    APIResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP 状态码
+        message:
+          type: string
+          description: 状态描述
+        data:
+          type: object
+          description: 响应数据
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+
+    # ── User ──
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Snowflake ID
+        username:
+          type: string
+        email:
+          type: string
+        avatar:
+          type: string
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        password:
+          type: string
+          minLength: 6
+        email:
+          type: string
+          format: email
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (8h TTL)
+        refresh_token:
+          type: string
+          description: JWT refresh token (7d TTL)
+        expires_in:
+          type: integer
+          description: Access token 过期秒数
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        avatar:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 6
+
+    # ── File ──
+    FileInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        mime_type:
+          type: string
+        is_dir:
+          type: boolean
+        parent_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FileListResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileInfo'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    MkdirRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+
+    BatchDeleteRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+
+    BatchDownloadRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+
+    MoveCopyRequest:
+      type: object
+      required: [target_parent_id]
+      properties:
+        target_parent_id:
+          type: string
+
+    # ── Share ──
+    ShareInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        file_id:
+          type: string
+        code:
+          type: string
+          description: 12位随机 hex 分享码
+        has_password:
+          type: boolean
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+        file_name:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        mime_type:
+          type: string
+
+    CreateShareRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          description: 可选访问密码
+        expire_days:
+          type: integer
+          description: 有效期天数，0 表示永久
+
+    VerifyShareRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+
+    # ── IM ──
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [private, group]
+        name:
+          type: string
+        avatar:
+          type: string
+        unread_count:
+          type: integer
+        last_message:
+          type: string
+        last_msg_type:
+          type: string
+        last_msg_at:
+          type: string
+          format: date-time
+
+    CreateConversationRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [private, group]
+        name:
+          type: string
+          description: 群聊名称（群聊必填）
+        user_ids:
+          type: array
+          items:
+            type: string
+          description: 成员 ID 列表（私聊为对方 ID，群聊为成员列表）
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        conversation_id:
+          type: string
+        sender_id:
+          type: string
+        sender_name:
+          type: string
+        msg_type:
+          type: string
+          enum: [text, image, video, file, system]
+        content:
+          type: string
+          description: 文本内容或 JSON 序列化的富媒体元数据
+        seq:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    MessageListResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    SendMessageRequest:
+      type: object
+      properties:
+        msg_type:
+          type: string
+          enum: [text, image, video, file, system]
+          default: text
+        content:
+          type: string
+
+    AddGroupMemberRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+
+    LinkPreviewResponse:
+      type: object
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        site_name:
+          type: string
+
+    # ── Friend ──
+    FriendInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        friend_id:
+          type: string
+        friend_username:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted]
+        created_at:
+          type: string
+          format: date-time
+
+    FriendRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          description: 对方用户名
+
+    # ── Import/Export ──
+    ImportSummary:
+      type: object
+      properties:
+        inserted:
+          type: integer
+          description: 成功导入消息数
+        skipped:
+          type: integer
+          description: 跳过（重复）消息数
+        total:
+          type: integer
+          description: 文件中总消息数
+
+    # ── Docker ──
+    DockerContainer:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        image:
+          type: string
+        status:
+          type: string
+        state:
+          type: string
+        created:
+          type: string
+          format: date-time
+        ports:
+          type: array
+          items:
+            type: object
+
+    CreateContainerRequest:
+      type: object
+      required: [image]
+      properties:
+        image:
+          type: string
+        name:
+          type: string
+        ports:
+          type: object
+          additionalProperties:
+            type: string
+        env:
+          type: array
+          items:
+            type: string
+        volumes:
+          type: array
+          items:
+            type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+
+    ContainerStats:
+      type: object
+      properties:
+        cpu_percent:
+          type: number
+        memory_usage:
+          type: integer
+          format: int64
+        memory_limit:
+          type: integer
+          format: int64
+        memory_percent:
+          type: number
+        network_rx:
+          type: integer
+          format: int64
+        network_tx:
+          type: integer
+          format: int64
+
+    DockerImage:
+      type: object
+      properties:
+        id:
+          type: string
+        repository:
+          type: string
+        tag:
+          type: string
+        size:
+          type: integer
+          format: int64
+        created:
+          type: string
+          format: date-time
+
+    PullImageRequest:
+      type: object
+      required: [image]
+      properties:
+        image:
+          type: string
+          description: 镜像名，如 nginx:alpine
+
+    DockerEndpoint:
+      type: object
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        status:
+          type: string
+        node_type:
+          type: string
+
+    # ── Admin ──
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        is_admin:
+          type: boolean
+        status:
+          type: string
+          enum: [active, disabled]
+        created_at:
+          type: string
+          format: date-time
+
+    AdminUserListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ClusterNode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        status:
+          type: string
+          enum: [healthy, unresponsive, offline]
+        node_type:
+          type: string
+          enum: [service, infrastructure, docker_endpoint]
+        service:
+          type: string
+        container_name:
+          type: string
+        version:
+          type: string
+        first_seen_at:
+          type: string
+          format: date-time
+        last_heartbeat:
+          type: string
+          format: date-time
+        total_online_seconds:
+          type: integer
+        offline_since:
+          type: string
+          format: date-time
+          nullable: true
+
+    ClusterNodeListResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClusterNode'
+
+    NodeSession:
+      type: object
+      properties:
+        id:
+          type: string
+        node_name:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        duration:
+          type: integer
+        container_name:
+          type: string
+        version:
+          type: string
+
+    AddNodeRequest:
+      type: object
+      required: [name, host, port]
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        node_type:
+          type: string
+          enum: [service, infrastructure, docker_endpoint]
+          default: service
+        service:
+          type: string
+        tls_cert:
+          type: string
+        tls_key:
+          type: string
+        ca_cert:
+          type: string
+
+    LogQueryRequest:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [debug, info, warn, error]
+        request_id:
+          type: string
+        user_id:
+          type: string
+        service:
+          type: string
+        limit:
+          type: integer
+          default: 100
+
+    LogEntry:
+      type: object
+      properties:
+        level:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        caller:
+          type: string
+        msg:
+          type: string
+        request_id:
+          type: string
+        user_id:
+          type: string
+
+    # ── Health ──
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        service:
+          type: string
+        uptime:
+          type: string
+        go_version:
+          type: string
+        goroutines:
+          type: integer
+        memory_mb:
+          type: number
+        components:
+          type: object
+          additionalProperties:
+            type: string
+
+    ResourceMetrics:
+      type: object
+      properties:
+        cpu_percent:
+          type: number
+        memory_total:
+          type: integer
+          format: int64
+        memory_used:
+          type: integer
+          format: int64
+        memory_percent:
+          type: number
+        disk_total:
+          type: integer
+          format: int64
+        disk_used:
+          type: integer
+          format: int64
+        disk_percent:
+          type: number
+
+# ════════════════════════════════════════════════════
+# Paths — user-file-svc (port 8081)
+# ════════════════════════════════════════════════════
+paths:
+  # ── Auth ──
+  /api/v1/user/register:
+    post:
+      tags: [用户认证]
+      summary: 注册新用户
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+
+  /api/v1/user/login:
+    post:
+      tags: [用户认证]
+      summary: 用户登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功，返回令牌对
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/TokenPair'
+
+  /api/v1/user/refresh:
+    post:
+      tags: [用户认证]
+      summary: 刷新令牌
+      description: 使用 refresh_token 换取新的令牌对
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/TokenPair'
+
+  # ── User Profile ──
+  /api/v1/user/profile:
+    get:
+      tags: [用户信息]
+      summary: 获取当前用户信息
+      responses:
+        '200':
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+    put:
+      tags: [用户信息]
+      summary: 修改用户信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 修改成功
+
+  /api/v1/user/password:
+    put:
+      tags: [用户信息]
+      summary: 修改密码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: 密码修改成功
+
+  # ── File Management ──
+  /api/v1/file/upload:
+    post:
+      tags: [文件管理]
+      summary: 上传文件
+      description: 支持批量上传（多个 file 字段）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                parent_id:
+                  type: string
+      responses:
+        '200':
+          description: 上传成功
+
+  /api/v1/file/list:
+    get:
+      tags: [文件管理]
+      summary: 文件列表
+      parameters:
+        - name: parent_id
+          in: query
+          schema:
+            type: string
+          description: 父目录 ID，空为根目录
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 文件列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/FileListResponse'
+
+  /api/v1/file/download/{id}:
+    get:
+      tags: [文件管理]
+      summary: 下载文件
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inline
+          in: query
+          schema:
+            type: boolean
+          description: true 时浏览器内联预览
+      responses:
+        '200':
+          description: 文件二进制内容
+          content:
+            application/octet-stream: {}
+
+  /api/v1/file/{id}:
+    delete:
+      tags: [文件管理]
+      summary: 删除文件或目录
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/file/mkdir:
+    post:
+      tags: [文件管理]
+      summary: 创建目录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MkdirRequest'
+      responses:
+        '200':
+          description: 创建成功
+
+  /api/v1/file/search:
+    get:
+      tags: [文件管理]
+      summary: 搜索文件
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 搜索结果
+
+  /api/v1/file/batch-delete:
+    post:
+      tags: [文件管理]
+      summary: 批量删除
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDeleteRequest'
+      responses:
+        '200':
+          description: 批量删除成功
+
+  /api/v1/file/batch-download:
+    post:
+      tags: [文件管理]
+      summary: 批量下载（ZIP 打包）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDownloadRequest'
+      responses:
+        '200':
+          description: ZIP 文件
+          content:
+            application/zip: {}
+
+  /api/v1/file/move:
+    post:
+      tags: [文件管理]
+      summary: 移动文件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MoveCopyRequest'
+                - properties:
+                    file_id:
+                      type: string
+      responses:
+        '200':
+          description: 移动成功
+
+  /api/v1/file/copy:
+    post:
+      tags: [文件管理]
+      summary: 复制文件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MoveCopyRequest'
+                - properties:
+                    file_id:
+                      type: string
+      responses:
+        '200':
+          description: 复制成功
+
+  # ── Share ──
+  /api/v1/file/{id}/share:
+    post:
+      tags: [文件分享]
+      summary: 创建分享链接
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShareRequest'
+      responses:
+        '200':
+          description: 创建成功（返回分享码）
+
+  /api/v1/file/{id}/shares:
+    get:
+      tags: [文件分享]
+      summary: 查看文件的所有分享链接
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 分享列表
+
+  /api/v1/shares/my:
+    get:
+      tags: [文件分享]
+      summary: 我创建的分享链接
+      responses:
+        '200':
+          description: 分享列表
+
+  /api/v1/shares/{id}:
+    delete:
+      tags: [文件分享]
+      summary: 取消分享
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 取消成功
+
+  # ── Public Share Access (no auth) ──
+  /api/v1/share/{code}:
+    get:
+      tags: [文件分享]
+      summary: 获取分享信息（公开）
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 分享文件信息
+
+  /api/v1/share/{code}/verify:
+    post:
+      tags: [文件分享]
+      summary: 验证分享密码（公开）
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyShareRequest'
+      responses:
+        '200':
+          description: 验证通过
+
+  /api/v1/share/{code}/download:
+    get:
+      tags: [文件分享]
+      summary: 下载分享文件（公开）
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: password
+          in: query
+          schema:
+            type: string
+        - name: inline
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 文件内容
+          content:
+            application/octet-stream: {}
+
+  # ════════════════════════════════════════════════════
+  # Paths — im-svc (port 8082)
+  # ════════════════════════════════════════════════════
+
+  /api/v1/im/conversations:
+    get:
+      tags: [即时通讯]
+      summary: 会话列表
+      description: 获取当前用户的所有会话（含未读数和最后消息）
+      responses:
+        '200':
+          description: 会话列表
+    post:
+      tags: [即时通讯]
+      summary: 创建会话
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '200':
+          description: 创建成功
+
+  /api/v1/im/conversations/{id}/messages:
+    get:
+      tags: [即时通讯]
+      summary: 获取消息历史
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: before
+          in: query
+          schema:
+            type: integer
+          description: 游标（seq），不传则获取最新
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MessageListResponse'
+
+  /api/v1/im/conversations/{id}:
+    delete:
+      tags: [即时通讯]
+      summary: 删除会话（用户视角软删除）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/im/conversations/{id}/members:
+    get:
+      tags: [即时通讯]
+      summary: 获取群成员列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成员列表
+    post:
+      tags: [即时通讯]
+      summary: 添加群成员
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddGroupMemberRequest'
+      responses:
+        '200':
+          description: 添加成功
+
+  /api/v1/im/conversations/{id}/members/{uid}:
+    delete:
+      tags: [即时通讯]
+      summary: 移除群成员
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 移除成功
+
+  /api/v1/im/conversations/{id}/leave:
+    post:
+      tags: [即时通讯]
+      summary: 退出群聊
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 退出成功
+
+  /api/v1/im/link-preview:
+    post:
+      tags: [即时通讯]
+      summary: 获取链接预览
+      description: 抓取 URL 的 Open Graph 元数据
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: 链接预览数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/LinkPreviewResponse'
+
+  # ── Friend System ──
+  /api/v1/im/friends/requests:
+    get:
+      tags: [好友系统]
+      summary: 待处理好友请求
+      responses:
+        '200':
+          description: 好友请求列表
+    post:
+      tags: [好友系统]
+      summary: 发送好友请求
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FriendRequest'
+      responses:
+        '200':
+          description: 发送成功
+
+  /api/v1/im/friends/requests/{id}/accept:
+    put:
+      tags: [好友系统]
+      summary: 接受好友请求
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已接受（自动创建私聊会话）
+
+  /api/v1/im/friends/requests/{id}/reject:
+    put:
+      tags: [好友系统]
+      summary: 拒绝好友请求
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已拒绝
+
+  /api/v1/im/friends:
+    get:
+      tags: [好友系统]
+      summary: 好友列表
+      responses:
+        '200':
+          description: 好友列表
+
+  /api/v1/im/friends/{friend_id}:
+    delete:
+      tags: [好友系统]
+      summary: 删除好友
+      parameters:
+        - name: friend_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已删除
+
+  # ── Chat Backup ──
+  /api/v1/im/conversations/{id}/export:
+    get:
+      tags: [聊天备份]
+      summary: 导出会话
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: JSON 格式的会话导出文件（含 SHA256 校验码）
+          content:
+            application/json: {}
+
+  /api/v1/im/conversations/import:
+    post:
+      tags: [聊天备份]
+      summary: 导入会话
+      description: 上传 JSON 文件，验证校验码后导入（自动去重）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 导入结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ImportSummary'
+
+  # ════════════════════════════════════════════════════
+  # Paths — docker-svc (port 8083)
+  # ════════════════════════════════════════════════════
+
+  /api/v1/docker/endpoints:
+    get:
+      tags: [Docker 管理]
+      summary: Docker 端点列表
+      responses:
+        '200':
+          description: 端点列表
+
+  /api/v1/docker/ping:
+    get:
+      tags: [Docker 管理]
+      summary: Ping Docker 端点
+      parameters:
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 端点状态
+
+  /api/v1/docker/containers:
+    get:
+      tags: [Docker 管理]
+      summary: 容器列表
+      parameters:
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+        - name: all
+          in: query
+          schema:
+            type: boolean
+          description: 包含已停止的容器
+      responses:
+        '200':
+          description: 容器列表
+    post:
+      tags: [Docker 管理]
+      summary: 创建容器
+      parameters:
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContainerRequest'
+      responses:
+        '200':
+          description: 创建成功
+
+  /api/v1/docker/containers/{id}/start:
+    post:
+      tags: [Docker 管理]
+      summary: 启动容器
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 启动成功
+
+  /api/v1/docker/containers/{id}/stop:
+    post:
+      tags: [Docker 管理]
+      summary: 停止容器
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 停止成功
+
+  /api/v1/docker/containers/{id}/restart:
+    post:
+      tags: [Docker 管理]
+      summary: 重启容器
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 重启成功
+
+  /api/v1/docker/containers/{id}:
+    delete:
+      tags: [Docker 管理]
+      summary: 删除容器
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+        - name: force
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/docker/containers/{id}/logs:
+    get:
+      tags: [Docker 管理]
+      summary: 容器日志
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+        - name: tail
+          in: query
+          schema:
+            type: integer
+          description: 返回最后 N 行
+      responses:
+        '200':
+          description: 日志内容
+          content:
+            text/plain: {}
+
+  /api/v1/docker/containers/{id}/stats:
+    get:
+      tags: [Docker 管理]
+      summary: 容器资源统计
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 容器资源使用情况
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ContainerStats'
+
+  /api/v1/docker/images:
+    get:
+      tags: [Docker 管理]
+      summary: 镜像列表
+      parameters:
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      responses:
+        '200':
+          description: 镜像列表
+
+  /api/v1/docker/images/pull:
+    post:
+      tags: [Docker 管理]
+      summary: 拉取镜像
+      parameters:
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PullImageRequest'
+      responses:
+        '200':
+          description: 拉取成功
+
+  /api/v1/docker/images/{image}:
+    delete:
+      tags: [Docker 管理]
+      summary: 删除镜像
+      parameters:
+        - name: image
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: endpoint
+          in: query
+          schema:
+            type: string
+            default: local
+        - name: force
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 删除成功
+
+  # ════════════════════════════════════════════════════
+  # Paths — Admin (user-file-svc)
+  # ════════════════════════════════════════════════════
+
+  /api/v1/admin/users:
+    get:
+      tags: [管理后台]
+      summary: 用户列表
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/AdminUserListResponse'
+
+  /api/v1/admin/users/{id}/toggle-admin:
+    put:
+      tags: [管理后台]
+      summary: 切换管理员状态
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 切换成功
+
+  /api/v1/admin/users/{id}/toggle-status:
+    put:
+      tags: [管理后台]
+      summary: 切换用户启用/禁用状态
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 切换成功
+
+  # ── Admin Logs ──
+  /api/v1/admin/logs:
+    get:
+      tags: [管理后台]
+      summary: 查询日志（环形缓冲区）
+      parameters:
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: request_id
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: 日志条目列表
+
+  /api/v1/admin/logs/services:
+    get:
+      tags: [管理后台]
+      summary: 日志服务列表
+      responses:
+        '200':
+          description: 服务名称列表
+
+  /api/v1/admin/logs/files:
+    get:
+      tags: [管理后台]
+      summary: 日志文件列表
+      responses:
+        '200':
+          description: 按日期组织的日志文件
+
+  /api/v1/admin/logs/download:
+    get:
+      tags: [管理后台]
+      summary: 下载日志文件
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+          description: YYYY-MM-DD 格式日期
+      responses:
+        '200':
+          description: 日志文件内容
+          content:
+            text/plain: {}
+
+  # ── Admin Cluster Nodes ──
+  /api/v1/admin/nodes:
+    get:
+      tags: [管理后台]
+      summary: 集群节点列表
+      parameters:
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: host
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [service, infrastructure, docker_endpoint]
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: 逗号分隔，如 healthy,unresponsive
+      responses:
+        '200':
+          description: 节点列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ClusterNodeListResponse'
+    post:
+      tags: [管理后台]
+      summary: 手动添加节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddNodeRequest'
+      responses:
+        '200':
+          description: 添加成功
+
+  /api/v1/admin/nodes/{name}:
+    get:
+      tags: [管理后台]
+      summary: 获取单个节点详情
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 节点详情
+    delete:
+      tags: [管理后台]
+      summary: 删除节点
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/admin/nodes/{name}/sessions:
+    get:
+      tags: [管理后台]
+      summary: 节点在线会话历史
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 会话历史列表
+
+  # ── Admin Metrics ──
+  /api/v1/admin/metrics/resources:
+    get:
+      tags: [管理后台]
+      summary: 系统资源指标
+      responses:
+        '200':
+          description: 资源使用情况
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ResourceMetrics'
+
+  /api/v1/admin/metrics/history:
+    get:
+      tags: [管理后台]
+      summary: 指标历史
+      description: 最近 300 个快照（每 10s 采集一次）
+      responses:
+        '200':
+          description: 历史指标列表
+
+  # ════════════════════════════════════════════════════
+  # System / Health
+  # ════════════════════════════════════════════════════
+
+  /healthz:
+    get:
+      tags: [系统]
+      summary: 聚合健康检查（Nginx → user-file-svc）
+      security: []
+      responses:
+        '200':
+          description: 服务健康
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/metrics:
+    get:
+      tags: [系统]
+      summary: 运行时指标
+      security: []
+      responses:
+        '200':
+          description: Go runtime 指标
+
+  /api/v1/metrics/resources:
+    get:
+      tags: [系统]
+      summary: 系统资源指标
+      security: []
+      responses:
+        '200':
+          description: 系统资源使用
+
+  # ── WebSocket ──
+  /ws:
+    get:
+      tags: [即时通讯]
+      summary: WebSocket 连接
+      description: |
+        建立 WebSocket 长连接用于实时消息。认证通过 `?token=<jwt>` 查询参数。
+        消息格式为 JSON：`{"type":"message","content":...,"conversation_id":...}`
+        消息类型：`message`、`ping`/`pong`、`read_receipt`、`presence`、`ack`、`error`
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: JWT access token
+      responses:
+        '101':
+          description: WebSocket 升级成功

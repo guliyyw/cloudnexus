@@ -97,7 +97,7 @@ curl http://localhost:8083/healthz  # Docker 状态
 
 | 文档 | 内容 |
 |------|------|
-| [API 接口文档](docs/api.md) | REST & WebSocket 接口规范 |
+| [API 接口文档](docs/openapi.yaml) | OpenAPI 3.0 规范 |
 | [数据库设计](docs/database.md) | 表结构、索引、ER 关系 |
 | [部署指南](docs/deployment.md) | 单机/集群部署、备份、监控 |
 | [开发指南](docs/development.md) | 环境搭建、项目结构、代码规范 |
