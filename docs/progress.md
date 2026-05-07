@@ -89,7 +89,8 @@
 | B14 | 数据库迁移脚本 | P1 | ✅ 已完成 | 版本化 SQL 迁移 + 追踪表 |
 | B16 | 统一日志系统 | P1 | ✅ 已完成 | 结构化日志(zap)、级别过滤、请求追踪、环形缓冲区 |
 | B17 | 系统监控端点 | P1 | ✅ 已完成 | 三服务 /healthz 统一详细格式 (组件/内存/goroutine/uptime) |
-| B18 | 集群节点监控 | P1 | 🔄 进行中 | 节点注册/心跳/健康聚合/Docker 多主机探测/告警预留 |
+| B18 | 集群节点监控 | P1 | ✅ 已完成 | 节点注册/心跳/健康聚合/Docker 多主机探测/告警预留 |
+| B19 | 共享基础设施集群部署 | P1 | ✅ 已完成 | 基础设施 Compose + 集群 Compose + 配置分离 + 部署文档 |
 
 ---
 
@@ -175,10 +176,12 @@
 | 后端 | 集群节点管理 API — CRUD + 状态查询 + 按服务/主机/类型筛选 | 1d | ✅ |
 | 前端 | admin 面板新增"集群节点"页面 — 节点列表/筛选/在线时间表/基础设施 | 1.5d | ✅ |
 | 后端 | 告警预留 — webhook 接口 + 阈值检测 | 0.5d | ⬜ |
+| 后端 | Snowflake 节点 ID 去重 — 通过环境变量传入 worker ID 替代硬编码 | 0.5d | ⬜ |
 | 部署 | Nginx 负载均衡 — upstream + ip_hash(WS) + 被动健康检查 | 1d | ✅ |
+| 部署 | 共享基础设施集群部署 — 基础设施 Compose + 集群 Compose + 配置分离 | 1d | ✅ |
 | 部署 | Docker Swarm 编排 | 2d | ⬜ |
 
-**预计总工时：** 约 11.5 人天（含新增监控 4.5 人天）
+**预计总工时：** 约 12 人天（含新增监控 4.5 人天 + Snowflake ID 去重 0.5 人天）
 
 ### Phase 4 — 高级功能
 
@@ -302,6 +305,9 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 全部完成：所有 P1 功能已补齐，含跨节点 IM Redis Pub/Sub | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 节点增强：服务标识/在线时间追踪/NodeOnlineSession/基础设施节点/按服务主机类型筛选/未响应渐进式状态/节点名取容器hostname/主机统一localhost/容器重建自动接管下线 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | fix: 节点接管匹配unresponsive状态 + 在线节点删除保护（每种服务至少保留一个节点） | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | feat: 默认管理员种子 — 首次启动自动创建 admin 账号 (环境变量可配) | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | fix: 健康聚合器 — 手动添加的基础设施节点使用 TCP 回退探测 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | doc: 集群部署文档更新 — 共享基础设施架构/部署步骤/Snowflake ID 去重计划/基础设施高可用远期规划 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Docker 多主机 TLS：EndpointManager 多端点客户端管理/TLS (CA+客户端证书)/端点 CRUD/前端主机选择器/每30s ping 更新状态 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Nginx 负载均衡：upstream 多后端/ip_hash WebSocket sticky/被动健康检查(max_fails+timeout)/集群 compose 模板/基础设施 hostname 动态注册 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 完成：Docker镜像管理、容器监控、用户设置、IM文件消息、响应式布局、数据库迁移 | CloudNexus 团队 |
