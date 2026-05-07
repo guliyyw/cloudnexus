@@ -308,6 +308,7 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-07 | v0.1.0-dev | feat: 默认管理员种子 — 首次启动自动创建 admin 账号 (环境变量可配) | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | fix: 健康聚合器 — 手动添加的基础设施节点使用 TCP 回退探测 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | doc: 集群部署文档更新 — 共享基础设施架构/部署步骤/Snowflake ID 去重计划/基础设施高可用远期规划 | CloudNexus 团队 |
+| 2026-05-07 | v0.1.0-dev | fix: 节点注册与健康聚合三大修复 — 主机IP自动检测(detectHostIP) + status移出心跳ON CONFLICT保留渐进式状态 + 回退探测简化 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Docker 多主机 TLS：EndpointManager 多端点客户端管理/TLS (CA+客户端证书)/端点 CRUD/前端主机选择器/每30s ping 更新状态 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | Phase 3 Nginx 负载均衡：upstream 多后端/ip_hash WebSocket sticky/被动健康检查(max_fails+timeout)/集群 compose 模板/基础设施 hostname 动态注册 | CloudNexus 团队 |
 | 2026-05-06 | v0.1.0-dev | Phase 2.5 完成：Docker镜像管理、容器监控、用户设置、IM文件消息、响应式布局、数据库迁移 | CloudNexus 团队 |

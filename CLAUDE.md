@@ -240,15 +240,15 @@ Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/user-file-svc
 
 ### Node registration & heartbeat
 `pkg/system/nodereg.go` — `NodeRegistrar` manages lifecycle in `docker_nodes` table:
-- `NewNodeRegistrar(db, name, host, serviceName, port)` — node name defaults to container hostname (`os.Hostname()`), overridable via `NODE_NAME` env var. Host defaults to `localhost`, overridable via `NODE_HOST`.
-- `Start()`: upserts node row via `ON CONFLICT (name)`, then goroutine updates `last_heartbeat` every 10s. Also marks any other online node with same `host+port+service` as offline (container rebuild takeover).
+- `NewNodeRegistrar(db, name, host, serviceName, port)` — node name defaults to container hostname (`os.Hostname()`), overridable via `NODE_NAME` env var. Host defaults to `detectHostIP()` (first private IPv4), or `localhost` as last resort; overridable via `NODE_HOST`.
+- `Start()`: upserts node row via `ON CONFLICT (name)` with `DoUpdates` on `host, port, last_heartbeat` only — **status is NOT overwritten**, preserving HealthAggregator's progressive status. Then goroutine updates `last_heartbeat` every 10s. Also marks any other online node with same `host+port+service` as offline (container rebuild takeover).
 - `Stop()`: marks node `status=offline`, closes stop channel.
 - Wired in all three services and infrastructure nodes (postgres/redis/minio) via `HealthAggregator.RegisterInfra()`.
 - Database model: `pkg/model/docker.go` — `DockerNode` with `NodeType` (service/infrastructure), `Service`, `ContainerName`, `Version`, `TotalOnlineSeconds`, `OfflineSince`.
 
 ### Health aggregator
 `pkg/system/aggregator.go` — `HealthAggregator` runs in user-file-svc, probes every 15s:
-- **Service nodes**: HTTP GET `/healthz`. Falls back from `host` to node `name` (Docker service name) when host is `localhost`.
+- **Service nodes**: HTTP GET `/healthz`. Falls back from `host` to node `name` (Docker service name).
 - **Infrastructure nodes**: TCP dial (postgres:5432, redis:6379) or HTTP endpoint (minio:9000/minio/health/live).
 - **Progressive status**: 1 failure → stays healthy, 2 failures (~30s) → unresponsive, 5 failures (~75s) → offline. Counter resets on any success.
 - **Session tracking**: `NodeOnlineSession` records each online period (start/end/duration) with container_name and version.
@@ -303,4 +303,4 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 - **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.
 - **WebSocket stale closures**: `useWebSocket` uses `handlerRef` pattern. Always use the ref to access current React state inside WebSocket callbacks — never close over state directly in `useEffect([], [])`.
 - **Nginx config is volume-mounted**: Changes to `deploy/nginx/nginx.conf` only need `docker compose restart nginx`, not a full rebuild.
-- **Node registration**: All three services register themselves as nodes via `NodeRegistrar`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
+- **Node registration**: All three services register themselves as nodes via `NodeRegistrar`. Node host is auto-detected via `detectHostIP()` (first private IPv4) unless overridden by `NODE_HOST` env var. Heartbeat upsert does NOT overwrite `status` — only `host`, `port`, `last_heartbeat`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
