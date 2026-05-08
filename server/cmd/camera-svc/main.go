@@ -100,6 +100,7 @@ func main() {
 			cameras.POST("", camH.HandleCreateCamera)
 			cameras.PUT("/:id", camH.HandleUpdateCamera)
 			cameras.DELETE("/:id", camH.HandleDeleteCamera)
+			cameras.POST("/discover", camH.HandleDiscoverCameras)
 			cameras.POST("/:id/stream/start", camH.HandleStartStream)
 			cameras.POST("/:id/stream/stop", camH.HandleStopStream)
 			cameras.POST("/:id/recognition/start", camH.HandleStartRecognition)

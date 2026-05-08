@@ -216,6 +216,30 @@ func (h *CameraHandler) HandleListEvents(c *gin.Context) {
 	}))
 }
 
+// HandleDiscoverCameras scans the local network for RTSP/ONVIF cameras.
+func (h *CameraHandler) HandleDiscoverCameras(c *gin.Context) {
+	var req service.DiscoverRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, response.Error(400, "参数错误: 请提供 subnet 字段"))
+		return
+	}
+	resp, err := h.svc.DiscoverCameras(req)
+	if err != nil {
+		if appErr, ok := err.(interface{ Code() int }); ok {
+			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
+			return
+		}
+		c.JSON(500, response.Error(500, "扫描失败: "+err.Error()))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{
+		"cameras":          resp.Cameras,
+		"scan_duration_ms": resp.ScanDurationMs,
+		"total_scanned":    resp.TotalScanned,
+		"open_ports":       resp.OpenPorts,
+	}))
+}
+
 // HandleDetectImage performs one-shot AI detection on an uploaded image.
 func (h *CameraHandler) HandleDetectImage(c *gin.Context) {
 	file, err := c.FormFile("image")

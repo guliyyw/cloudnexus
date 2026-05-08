@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, message, Tag, Popconfirm } from 'antd'
-import { PlusOutlined, VideoCameraOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, message, Tag, Popconfirm, List, Progress, Alert } from 'antd'
+import { PlusOutlined, VideoCameraOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Camera } from '../services/camera'
-import { getCameras, createCamera, updateCamera, deleteCamera } from '../services/camera'
+import { getCameras, createCamera, updateCamera, deleteCamera, discoverCameras } from '../services/camera'
+import { detectLocalIP, generateSubnetIPs, discoverCamerasLocally, subnetFromIP, type LocalDiscoveredCamera } from '../utils/cameraDiscovery'
 
 export default function CameraListPage() {
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -72,6 +73,90 @@ export default function CameraListPage() {
     setModalOpen(true)
   }
 
+  // --- Discovery ---
+  const [discoverModalOpen, setDiscoverModalOpen] = useState(false)
+  const [discoverSubnet, setDiscoverSubnet] = useState('192.168.1.0/24')
+  const [discovering, setDiscovering] = useState(false)
+  const [discoveredCameras, setDiscoveredCameras] = useState<LocalDiscoveredCamera[]>([])
+  const [discoverProgress, setDiscoverProgress] = useState({ scanned: 0, total: 0 })
+  const [discoverSource, setDiscoverSource] = useState<'client' | 'server'>('client')
+
+  const openDiscover = async () => {
+    setDiscoveredCameras([])
+    setDiscoverProgress({ scanned: 0, total: 0 })
+    const ip = await detectLocalIP()
+    if (ip) {
+      setDiscoverSubnet(subnetFromIP(ip))
+    }
+    setDiscoverSource('client')
+    setDiscoverModalOpen(true)
+  }
+
+  const handleDiscover = async () => {
+    setDiscovering(true)
+    setDiscoveredCameras([])
+    setDiscoverProgress({ scanned: 0, total: 0 })
+    setDiscoverSource('client')
+    try {
+      const raw = discoverSubnet.replace('/24', '').split('/')[0] || '192.168.1.0'
+      const ips = generateSubnetIPs(raw)
+      if (ips.length === 0) {
+        message.error('无效的子网范围')
+        setDiscovering(false)
+        return
+      }
+      setDiscoverProgress({ scanned: 0, total: ips.length * 8 })
+      const localResults = await discoverCamerasLocally(ips, (scanned, total) => {
+        setDiscoverProgress({ scanned, total })
+      })
+      if (localResults.length > 0) {
+        setDiscoveredCameras(localResults)
+        message.success(`客户端发现 ${localResults.length} 个摄像头`)
+      }
+    } catch {
+      message.error('扫描失败')
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const handleServerDiscover = async () => {
+    setDiscovering(true)
+    setDiscoveredCameras([])
+    setDiscoverProgress({ scanned: 0, total: 0 })
+    setDiscoverSource('server')
+    try {
+      const res = await discoverCameras({ subnet: discoverSubnet })
+      const cameras: LocalDiscoveredCamera[] = (res.cameras || []).map((c) => ({
+        ip: c.ip,
+        port: c.port,
+        path: '',
+        source: c.source,
+      }))
+      setDiscoveredCameras(cameras)
+      if (cameras.length === 0) {
+        message.info('未发现摄像头')
+      } else {
+        message.success(`服务器发现 ${cameras.length} 个摄像头`)
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || '服务器扫描失败')
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const handleAddDiscovered = (cam: LocalDiscoveredCamera) => {
+    setDiscoverModalOpen(false)
+    const name = `摄像头-${cam.ip}`
+    form.setFieldsValue({
+      name,
+      stream_url: `rtsp://${cam.ip}:554/`,
+      protocol: 'rtsp',
+    })
+    setModalOpen(true)
+  }
+
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
     {
@@ -107,6 +192,7 @@ export default function CameraListPage() {
         extra={
           <Space>
             <Button icon={<ReloadOutlined />} onClick={fetchCameras}>刷新</Button>
+            <Button icon={<SearchOutlined />} onClick={openDiscover}>发现摄像头</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>添加摄像头</Button>
           </Space>
         }
@@ -137,7 +223,7 @@ export default function CameraListPage() {
             <Input placeholder="如：大门摄像头" />
           </Form.Item>
           <Form.Item name="stream_url" label="RTSP 地址" rules={[{ required: true, message: '请输入 RTSP 地址' }]}>
-            <Input placeholder="rtsp://admin:password@192.168.1.126:554/udp/av0_0" />
+            <Input placeholder="rtsp://admin:888888@192.168.1.32:554/udp/av0_0" />
           </Form.Item>
           <Form.Item name="protocol" label="协议">
             <Select>
@@ -154,6 +240,103 @@ export default function CameraListPage() {
           <br />
           rtsp://admin:888888@IP:554/udp/av0_1 (子码流)
         </div>
+      </Modal>
+
+      {/* Discovery Modal */}
+      <Modal
+        title="发现摄像头"
+        open={discoverModalOpen}
+        onCancel={() => { setDiscoverModalOpen(false); setDiscoveredCameras([]) }}
+        footer={null}
+        width={680}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>子网范围</div>
+          <Input
+            value={discoverSubnet}
+            onChange={(e) => setDiscoverSubnet(e.target.value)}
+            placeholder="192.168.1.0/24"
+            disabled={discovering}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <Space>
+            <Button
+              type="primary"
+              onClick={handleDiscover}
+              loading={discovering && discoverSource === 'client'}
+              icon={<SearchOutlined />}
+            >
+              局域网扫描
+            </Button>
+            <Button
+              onClick={handleServerDiscover}
+              loading={discovering && discoverSource === 'server'}
+            >
+              服务器深度扫描
+            </Button>
+          </Space>
+        </div>
+
+        {discovering && discoverProgress.total > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <Progress
+              percent={Math.round((discoverProgress.scanned / discoverProgress.total) * 100)}
+              format={() => `${discoverProgress.scanned}/${discoverProgress.total}`}
+              size="small"
+            />
+          </div>
+        )}
+
+        {discoveredCameras.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 500, marginBottom: 8 }}>
+              发现的摄像头 ({discoveredCameras.length})
+            </div>
+            <List
+              dataSource={discoveredCameras}
+              renderItem={(cam) => (
+                <List.Item
+                  actions={[
+                    <Button
+                      type="link"
+                      onClick={() => handleAddDiscovered(cam)}
+                      icon={<PlusOutlined />}
+                    >
+                      添加
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Space>
+                        <span>{cam.ip}:{cam.port}</span>
+                        {cam.source === 'onvif' && <Tag color="blue">ONVIF</Tag>}
+                        {cam.source === 'http' && <Tag color="green">HTTP</Tag>}
+                        {cam.source === 'rtsp_probe' && <Tag color="orange">RTSP</Tag>}
+                      </Space>
+                    }
+                    description={
+                      <span>
+                        建议 RTSP: <code>rtsp://{cam.ip}:554/</code>
+                      </span>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          </div>
+        )}
+
+        {!discovering && discoveredCameras.length === 0 && (
+          <Alert
+            message="点击「局域网扫描」从浏览器直接探测本地网络。如果摄像头与服务器在同一网络，也可尝试「服务器深度扫描」。"
+            type="info"
+            showIcon
+          />
+        )}
       </Modal>
     </div>
   )

@@ -78,6 +78,30 @@ export async function getEvents(id: string, page = 1, pageSize = 20): Promise<Pa
   return data.data
 }
 
+export interface DiscoverRequest {
+  subnet: string
+  ports?: number[]
+}
+
+export interface DiscoveredCamera {
+  ip: string
+  port: number
+  rtsp_url: string
+  source: string
+}
+
+export interface DiscoverResponse {
+  cameras: DiscoveredCamera[]
+  scan_duration_ms: number
+  total_scanned: number
+  open_ports: number
+}
+
+export async function discoverCameras(params: DiscoverRequest): Promise<DiscoverResponse> {
+  const { data } = await api.post('/cameras/discover', params)
+  return data.data
+}
+
 export async function detectImage(file: File): Promise<DetectedObject[]> {
   const form = new FormData()
   form.append('image', file)
