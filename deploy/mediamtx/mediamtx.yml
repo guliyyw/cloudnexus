@@ -22,3 +22,12 @@ hlsAlwaysRemux: yes
 paths:
   all:
     source: publisher
+
+# Allow anonymous access to API (camera-svc calls from Docker internal network)
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: api
+      - action: publish
+      - action: read
+      - action: playback

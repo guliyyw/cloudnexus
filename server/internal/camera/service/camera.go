@@ -94,7 +94,7 @@ func (s *CameraService) StartStream(cameraID uint64, ownerID uint64) (hlsURL, we
 
 	body, _ := json.Marshal(cfg)
 	resp, err := http.Post(
-		fmt.Sprintf("%s/v3/config/paths/%s", s.mediamtxURL, pathName),
+		fmt.Sprintf("%s/v3/config/paths/add/%s", s.mediamtxURL, pathName),
 		"application/json",
 		bytes.NewReader(body),
 	)
@@ -136,7 +136,7 @@ func (s *CameraService) StopStream(cameraID uint64, ownerID uint64) error {
 func (s *CameraService) stopStream(c *model.Camera) error {
 	pathName := fmt.Sprintf("cam_%d", c.ID)
 	req, _ := http.NewRequest("DELETE",
-		fmt.Sprintf("%s/v3/config/paths/%s", s.mediamtxURL, pathName), nil)
+		fmt.Sprintf("%s/v3/config/paths/delete/%s", s.mediamtxURL, pathName), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

@@ -48,11 +48,19 @@ export default function CameraLiveView() {
   }, [])
 
   const handlePlay = async () => {
-    if (!id || !videoRef.current) return
+    if (!id) return
     setLoading(true)
     try {
+      if (!videoRef.current) return
+
       const { hls_url } = await startStream(id)
+      // Render the video element first
+      setPlaying(true)
+      // Wait for React to render the video element
+      await new Promise(r => setTimeout(r, 100))
+
       const video = videoRef.current
+      if (!video) return
 
       if (Hls.isSupported()) {
         const hls = new Hls()
@@ -61,14 +69,13 @@ export default function CameraLiveView() {
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play())
         hlsRef.current = hls
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Safari native HLS
         video.src = hls_url
         video.play()
       }
-      setPlaying(true)
       message.success('视频流已开启')
       fetchCamera()
     } catch (e: any) {
+      setPlaying(false)
       message.error(e?.response?.data?.message || '开启视频流失败')
     } finally {
       setLoading(false)
