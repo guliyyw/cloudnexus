@@ -13,6 +13,7 @@ import {
   MenuUnfoldOutlined,
   UserOutlined,
   VideoCameraOutlined,
+  SmileOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
 
@@ -40,6 +41,7 @@ export default function AppLayout() {
     { key: '/friends', icon: <TeamOutlined />, label: '好友' },
     { key: '/docker', icon: <ContainerOutlined />, label: 'Docker 管理' },
     { key: '/cameras', icon: <VideoCameraOutlined />, label: '摄像头' },
+    { key: '/faces', icon: <SmileOutlined />, label: '人脸库' },
     ...(user?.is_admin ? [{ key: '/admin', icon: <SettingOutlined />, label: '管理后台' }] : []),
   ]
 

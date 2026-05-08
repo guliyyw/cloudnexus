@@ -110,3 +110,74 @@ export async function detectImage(file: File): Promise<DetectedObject[]> {
   })
   return data.data.objects
 }
+
+// --- Face ---
+
+export interface FaceProfile {
+  id: string
+  owner_id: string
+  name: string
+  embedding: string
+  thumbnail_url: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MatchResult {
+  matched: boolean
+  face_id?: string
+  name: string
+  confidence: number
+}
+
+export interface FaceRecognitionEvent {
+  id: string
+  camera_id: string
+  face_id?: string
+  face_name: string
+  confidence: number
+  snapshot_url: string
+  bbox_json: string
+  created_at: string
+}
+
+export async function getFaceProfiles(): Promise<FaceProfile[]> {
+  const { data } = await api.get('/faces')
+  return data.data.profiles
+}
+
+export async function createFaceProfile(params: {
+  name: string
+  embedding: number[]
+  thumbnail_url?: string
+}): Promise<FaceProfile> {
+  const { data } = await api.post('/faces', params)
+  return data.data.profile
+}
+
+export async function updateFaceProfile(id: string, name: string): Promise<void> {
+  await api.put(`/faces/${id}`, { name })
+}
+
+export async function deleteFaceProfile(id: string): Promise<void> {
+  await api.delete(`/faces/${id}`)
+}
+
+export async function matchFace(params: {
+  embedding: number[]
+  camera_id?: string
+}): Promise<MatchResult> {
+  const { data } = await api.post('/faces/match', params)
+  return data.data
+}
+
+export async function getFaceEvents(
+  cameraId: string,
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedResponse<FaceRecognitionEvent>> {
+  const { data } = await api.get(`/cameras/${cameraId}/faces`, {
+    params: { page, page_size: pageSize },
+  })
+  return data.data
+}

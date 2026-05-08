@@ -70,3 +70,56 @@ func (r *CameraRepository) ListEvents(cameraID uint64, offset, limit int) ([]mod
 func (r *CameraRepository) CreateEvent(e *model.RecognitionEvent) error {
 	return r.db.Create(e).Error
 }
+
+// --- FaceProfile ---
+
+func (r *CameraRepository) ListFaceProfiles(ownerID uint64) ([]model.FaceProfile, error) {
+	var profiles []model.FaceProfile
+	err := r.db.Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&profiles).Error
+	return profiles, err
+}
+
+func (r *CameraRepository) FindFaceProfileByID(id uint64) (*model.FaceProfile, error) {
+	var p model.FaceProfile
+	if err := r.db.First(&p, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *CameraRepository) CreateFaceProfile(p *model.FaceProfile) error {
+	return r.db.Create(p).Error
+}
+
+func (r *CameraRepository) UpdateFaceProfile(p *model.FaceProfile) error {
+	return r.db.Save(p).Error
+}
+
+func (r *CameraRepository) DeleteFaceProfile(id uint64) error {
+	return r.db.Delete(&model.FaceProfile{}, "id = ?", id).Error
+}
+
+func (r *CameraRepository) AllFaceProfiles(ownerID uint64) ([]model.FaceProfile, error) {
+	var profiles []model.FaceProfile
+	err := r.db.Where("owner_id = ?", ownerID).Find(&profiles).Error
+	return profiles, err
+}
+
+// --- FaceRecognitionEvent ---
+
+func (r *CameraRepository) CreateFaceEvent(e *model.FaceRecognitionEvent) error {
+	return r.db.Create(e).Error
+}
+
+func (r *CameraRepository) ListFaceEvents(cameraID uint64, offset, limit int) ([]model.FaceRecognitionEvent, int64, error) {
+	var total int64
+	var events []model.FaceRecognitionEvent
+	q := r.db.Model(&model.FaceRecognitionEvent{}).Where("camera_id = ?", cameraID)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := q.Order("created_at DESC").Offset(offset).Limit(limit).Find(&events).Error; err != nil {
+		return nil, 0, err
+	}
+	return events, total, nil
+}

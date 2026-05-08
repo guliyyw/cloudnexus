@@ -57,6 +57,8 @@ func main() {
 	if err := db.AutoMigrate(
 		&model.Camera{},
 		&model.RecognitionEvent{},
+		&model.FaceProfile{},
+		&model.FaceRecognitionEvent{},
 	); err != nil {
 		logger.Log.Fatal("数据库 AutoMigrate 失败", zap.Error(err))
 	}
@@ -85,7 +87,9 @@ func main() {
 
 	camSvc := service.NewCameraService(repo, mediamtxURL)
 	recSvc := service.NewRecognitionService(repo, inferenceURL)
+	faceSvc := service.NewFaceService(repo)
 	camH := handler.NewCameraHandler(camSvc, recSvc)
+	faceH := handler.NewFaceHandler(faceSvc)
 
 	r := gin.Default()
 	r.Use(middleware.Logger())
@@ -106,6 +110,15 @@ func main() {
 			cameras.POST("/:id/recognition/start", camH.HandleStartRecognition)
 			cameras.POST("/:id/recognition/stop", camH.HandleStopRecognition)
 			cameras.GET("/:id/events", camH.HandleListEvents)
+			cameras.GET("/:id/faces", faceH.HandleListFaceEvents)
+		}
+		faces := api.Group("/faces")
+		{
+			faces.GET("", faceH.HandleListProfiles)
+			faces.POST("", faceH.HandleCreateProfile)
+			faces.PUT("/:id", faceH.HandleUpdateProfile)
+			faces.DELETE("/:id", faceH.HandleDeleteProfile)
+			faces.POST("/match", faceH.HandleMatchFace)
 		}
 		api.POST("/detect-image", camH.HandleDetectImage)
 	}
