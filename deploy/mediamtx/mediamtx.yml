@@ -1,0 +1,25 @@
+# MediaMTX configuration for CloudNexus
+# Docs: https://github.com/bluenviron/mediamtx
+
+# API settings (enabled for dynamic path management)
+api: yes
+apiAddress: :8889
+
+# RTSP server
+rtspAddress: :8554
+
+# RTMP server
+rtmpAddress: :1935
+
+# WebRTC
+webrtcAddress: :8888
+
+# HLS settings
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+
+# Path defaults (paths are created dynamically by camera-svc)
+paths:
+  all:
+    source: publisher
+    sourceOnDemand: yes

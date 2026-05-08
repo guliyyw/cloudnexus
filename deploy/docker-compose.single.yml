@@ -121,6 +121,60 @@ services:
       retries: 3
       start_period: 5s
 
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8889/v3/paths/list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  ai-inference:
+    image: ultralytics/ultralytics:latest
+    command: python /app/app.py
+    volumes:
+      - ./ai-inference/app.py:/app/app.py:ro
+    restart: unless-stopped
+    # GPU support: uncomment the following lines if NVIDIA GPU is available
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  camera-svc:
+    build:
+      context: ../server
+      args:
+        SERVICE: camera-svc
+    environment:
+      - CONFIG_PATH=/app/config/config.docker.yaml
+      - SERVICE_VERSION=latest
+      - SNOWFLAKE_NODE_ID=5
+      - MEDIAMTX_API_URL=http://mediamtx:8889
+      - AI_INFERENCE_URL=http://ai-inference:8000
+    ports:
+      - "8085:8085"
+    volumes:
+      - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
+      - logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   nginx:
     image: nginx:alpine
     command: /bin/sh -c "rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"

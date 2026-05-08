@@ -13,6 +13,8 @@ import AdminPage from './pages/AdminPage'
 import MySharesPage from './pages/MySharesPage'
 import ShareAccessPage from './pages/ShareAccessPage'
 import UserSettingsPage from './pages/UserSettingsPage'
+import CameraListPage from './pages/CameraListPage'
+import CameraLiveView from './pages/CameraLiveView'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -86,6 +88,8 @@ export default function App() {
             <Route path="/friends" element={<FriendPage />} />
             <Route path="/docker" element={<DockerPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/cameras" element={<CameraListPage />} />
+            <Route path="/cameras/:id" element={<CameraLiveView />} />
             <Route path="/settings" element={<UserSettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />
