@@ -155,8 +155,21 @@ export default function CameraListPage() {
     setModalOpen(true)
   }
 
+  const extractHost = (url: string) => {
+    try {
+      const u = new URL(url)
+      return `${u.hostname}:${u.port || (u.protocol === 'rtsp:' ? '554' : '80')}`
+    } catch {
+      // Try regex fallback for non-standard URLs
+      const m = url.match(/:\/\/([^\/:]+)(?::(\d+))?/)
+      if (m) return `${m[1]}:${m[2] || '554'}`
+      return '-'
+    }
+  }
+
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
+    { title: 'IP:端口', key: 'host', width: 180, render: (_: any, r: Camera) => <code>{extractHost(r.stream_url)}</code> },
     {
       title: '协议', dataIndex: 'protocol', key: 'protocol', width: 80,
       render: (p: string) => <Tag>{p.toUpperCase()}</Tag>,

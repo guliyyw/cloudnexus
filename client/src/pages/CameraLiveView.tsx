@@ -174,15 +174,26 @@ export default function CameraLiveView() {
             </div>
           </div>
           <div style={{ flex: '0 0 280px', minWidth: 240 }}>
-            {camera && (
+            {camera && (() => {
+              let host = '-'
+              try {
+                const u = new URL(camera.stream_url)
+                host = `${u.hostname}:${u.port || (u.protocol === 'rtsp:' ? '554' : '80')}`
+              } catch {
+                const m = camera.stream_url.match(/:\/\/([^\/:]+)(?::(\d+))?/)
+                if (m) host = `${m[1]}:${m[2] || '554'}`
+              }
+              return (
               <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
                 <Descriptions.Item label="协议">{camera.protocol?.toUpperCase()}</Descriptions.Item>
+                <Descriptions.Item label="IP:端口"><code>{host}</code></Descriptions.Item>
                 <Descriptions.Item label="地址" styles={{ content: { wordBreak: 'break-all' } }}>
                   {camera.stream_url}
                 </Descriptions.Item>
                 <Descriptions.Item label="最近在线">{camera.last_seen_at ? new Date(camera.last_seen_at).toLocaleString() : '-'}</Descriptions.Item>
               </Descriptions>
-            )}
+              )
+            })()}
             <Card title="AI 识别记录" size="small" extra={<Button size="small" onClick={fetchEvents}>刷新</Button>}>
               <Table
                 dataSource={events}
