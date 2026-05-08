@@ -32,6 +32,7 @@ http://localhost:80 (唯一入口)
     │
     ├── /api/*          → user-file-svc:8081 (用户、文件)
     ├── /api/v1/im/*    → im-svc:8082 (即时通讯 REST)
+    ├── /api/v1/cameras/* → camera-svc:8085 (摄像头管理)
     ├── /api/v1/docker/* → docker-svc:8083 (Docker 管理)
     ├── /ws             → im-svc:8082 (WebSocket)
     └── /               → client/dist 静态文件 (SPA)
@@ -63,9 +64,11 @@ curl http://localhost/healthz
 | 服务 | 端口 | 对外 | 说明 |
 |------|------|------|------|
 | **nginx** | **80** | **是** | 唯一对外端口，统一入口 |
+| **mediamtx HLS** | **8888** | **是** | 摄像头 HLS 视频流直连（绕过 nginx cookie 检查） |
 | user-file-svc | 8081 | 否 | 用户 & 文件 |
 | im-svc | 8082 | 否 | 即时通讯 & WebSocket |
 | docker-svc | 8083 | 否 | Docker 管理 |
+| camera-svc | 8085 | 否 | 摄像头管理 & AI 识别 |
 | PostgreSQL | 5432 | 否 | 数据库 |
 | Redis | 6379 | 否 | 缓存 / 消息总线 |
 | MinIO API | 9000 | 否 | 对象存储 S3 API |
@@ -77,9 +80,15 @@ curl http://localhost/healthz
 |------|------|------|
 | `/api/v1/im/*` | im-svc:8082 | IM REST API |
 | `/api/v1/docker/*` | docker-svc:8083 | Docker 管理 API |
+| `/api/v1/cameras/*` | camera-svc:8085 | 摄像头管理 API |
+| `/api/v1/detect-image` | camera-svc:8085 | AI 图片检测 |
 | `/api/*` | user-file-svc:8081 | 用户/文件 API (兜底) |
 | `/ws` | im-svc:8082 | WebSocket (需 Upgrade 头) |
+| `/cam_*/` | mediamtx:8888 | HLS 视频流 (nginx 反向代理) |
 | `/` | 静态文件 | SPA (try_files 回退到 index.html) |
+
+> **注意**：前端 HLS.js 播放器直连 `服务器IP:8888` 获取视频流，不经过 nginx，
+> 避免 MediaMTX cookie 检查导致的重定向循环。8888 端口需对外开放。
 
 配置文件：`deploy/nginx/nginx.conf`
 
