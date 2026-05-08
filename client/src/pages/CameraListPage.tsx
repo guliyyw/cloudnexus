@@ -82,8 +82,6 @@ export default function CameraListPage() {
   const [discoverSource, setDiscoverSource] = useState<'client' | 'server'>('client')
 
   const openDiscover = async () => {
-    setDiscoveredCameras([])
-    setDiscoverProgress({ scanned: 0, total: 0 })
     const ip = await detectLocalIP()
     if (ip) {
       setDiscoverSubnet(subnetFromIP(ip))
@@ -246,7 +244,7 @@ export default function CameraListPage() {
       <Modal
         title="发现摄像头"
         open={discoverModalOpen}
-        onCancel={() => { setDiscoverModalOpen(false); setDiscoveredCameras([]) }}
+        onCancel={() => { setDiscoverModalOpen(false) }}
         footer={null}
         width={680}
         destroyOnClose

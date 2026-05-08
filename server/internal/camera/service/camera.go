@@ -105,7 +105,12 @@ func (s *CameraService) StartStream(cameraID uint64, ownerID uint64) (hlsURL, we
 
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", "", fmt.Errorf("mediamtx 返回 %d: %s", resp.StatusCode, string(respBody))
+		// Path already exists — stream is already configured, just return URLs.
+		if resp.StatusCode == 400 && bytes.Contains(respBody, []byte("path already exists")) {
+			zap.L().Info("mediamtx path already exists, reusing", zap.String("path", pathName))
+		} else {
+			return "", "", fmt.Errorf("mediamtx 返回 %d: %s", resp.StatusCode, string(respBody))
+		}
 	}
 
 	// Update camera status

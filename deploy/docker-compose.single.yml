@@ -123,6 +123,8 @@ services:
 
   mediamtx:
     image: bluenviron/mediamtx:latest
+    ports:
+      - "8888:8888"
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     restart: unless-stopped

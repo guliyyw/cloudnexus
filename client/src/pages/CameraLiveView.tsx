@@ -51,8 +51,6 @@ export default function CameraLiveView() {
     if (!id) return
     setLoading(true)
     try {
-      if (!videoRef.current) return
-
       const { hls_url } = await startStream(id)
       // Render the video element first
       setPlaying(true)
@@ -62,14 +60,17 @@ export default function CameraLiveView() {
       const video = videoRef.current
       if (!video) return
 
+      // Use direct HLS port to avoid nginx cookie-check redirect loop
+      const directUrl = `http://${window.location.hostname}:8888${hls_url}`
+
       if (Hls.isSupported()) {
         const hls = new Hls()
-        hls.loadSource(hls_url)
+        hls.loadSource(directUrl)
         hls.attachMedia(video)
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play())
         hlsRef.current = hls
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = hls_url
+        video.src = directUrl
         video.play()
       }
       message.success('视频流已开启')
