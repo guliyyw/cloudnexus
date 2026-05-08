@@ -8,11 +8,11 @@ app = FastAPI(title="CloudNexus AI Inference")
 
 # Auto-detect device
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME = "yolov8m.pt" if DEVICE == "cuda" else "yolov8n.pt"
+MODEL_PATH = "/app/yolov8n.pt"
 
-print(f"[inference] device={DEVICE}, model={MODEL_NAME}")
+print(f"[inference] device={DEVICE}, model={MODEL_PATH}")
 
-model = YOLO(MODEL_NAME)
+model = YOLO(MODEL_PATH)
 model.to(DEVICE)
 
 
@@ -21,7 +21,7 @@ def health():
     return {
         "status": "ok",
         "device": DEVICE,
-        "model": MODEL_NAME,
+        "model": MODEL_PATH,
         "cuda_available": torch.cuda.is_available(),
     }
 

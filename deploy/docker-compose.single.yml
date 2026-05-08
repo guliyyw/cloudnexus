@@ -126,17 +126,11 @@ services:
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8889/v3/paths/list"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
   ai-inference:
-    image: ultralytics/ultralytics:latest
-    command: python /app/app.py
-    volumes:
-      - ./ai-inference/app.py:/app/app.py:ro
+    build:
+      context: .
+      dockerfile: ./ai-inference/Dockerfile
     restart: unless-stopped
     # GPU support: uncomment the following lines if NVIDIA GPU is available
     # deploy:

@@ -12,7 +12,7 @@ rtspAddress: :8554
 rtmpAddress: :1935
 
 # WebRTC
-webrtcAddress: :8888
+webrtcAddress: :8890
 
 # HLS settings
 hlsAddress: :8888
@@ -22,4 +22,3 @@ hlsAlwaysRemux: yes
 paths:
   all:
     source: publisher
-    sourceOnDemand: yes
