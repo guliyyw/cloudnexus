@@ -52,6 +52,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
+      - SNOWFLAKE_NODE_ID=1
       # 默认管理员 — 仅当数据库中无用户时创建（首次启动）
       - DEFAULT_ADMIN_USERNAME=admin
       - DEFAULT_ADMIN_PASSWORD=CloudNexus@admin
@@ -81,6 +82,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
+      - SNOWFLAKE_NODE_ID=2
     ports:
       - "8082:8082"
     volumes:
@@ -106,6 +108,7 @@ services:
     environment:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
+      - SNOWFLAKE_NODE_ID=3
     ports:
       - "8083:8083"
     volumes:

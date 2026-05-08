@@ -176,7 +176,7 @@
 | 后端 | 集群节点管理 API — CRUD + 状态查询 + 按服务/主机/类型筛选 | 1d | ✅ |
 | 前端 | admin 面板新增"集群节点"页面 — 节点列表/筛选/在线时间表/基础设施 | 1.5d | ✅ |
 | 后端 | 告警预留 — webhook 接口 + 阈值检测 | 0.5d | ✅ |
-| 后端 | Snowflake 节点 ID 去重 — 通过环境变量传入 worker ID 替代硬编码 | 0.5d | ⬜ |
+| 后端 | Snowflake 节点 ID 去重 — 通过环境变量传入 worker ID 替代硬编码 | 0.5d | ✅ |
 | 部署 | Nginx 负载均衡 — upstream + ip_hash(WS) + 被动健康检查 | 1d | ✅ |
 | 部署 | 共享基础设施集群部署 — 基础设施 Compose + 集群 Compose + 配置分离 | 1d | ✅ |
 | 部署 | Docker Swarm 编排 | 2d | ⬜ |
@@ -326,5 +326,6 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-04 | v0.1.0-dev | 会话名称修复（私聊显示对方昵称）、创建会话用户存在性校验、聊天消息左右对齐、测试数据文档 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | fix: nginx POST 405 — nginx:alpine 自带 default.conf 冲突，启动时 rm -f 移除 | CloudNexus 团队 |
 | 2026-05-07 | v0.1.0-dev | fix: nginx 双斜杠 URI — Apifox 等客户端 `//api/...` 返回404，加 308 重定向至 `/api/...` | CloudNexus 团队 |
+| 2026-05-08 | v0.1.0-dev | feat: Snowflake 节点 ID 去重 — SNOWFLAKE_NODE_ID 环境变量替代硬编码节点ID，单机/集群 Compose 模板同步更新 | CloudNexus 团队 |
 | 2026-05-08 | v0.1.0-dev | feat: 告警预留 — webhook 接口 + 阈值检测 (AlertRule/AlertHistory 模型、AlertEvaluator 评估器、CRUD API、前端告警规则管理页) | CloudNexus 团队 |
 | 2026-05-03 | v0.1.0-dev | Phase 1 单机 MVP 开发完成：用户认证、文件管理、即时通讯、Docker管理（前后端全栈） | CloudNexus 团队 |

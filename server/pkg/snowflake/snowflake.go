@@ -2,6 +2,8 @@ package snowflake
 
 import (
 	"log"
+	"os"
+	"strconv"
 	"sync"
 
 	sf "github.com/bwmarrin/snowflake"
@@ -12,7 +14,15 @@ var (
 	mu   sync.Mutex
 )
 
-func Init(nodeID int64) {
+// Init initializes the snowflake node. If the SNOWFLAKE_NODE_ID env var is set,
+// it overrides the defaultID. The node ID must be in [0, 1023].
+func Init(defaultID int64) {
+	nodeID := defaultID
+	if v := os.Getenv("SNOWFLAKE_NODE_ID"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			nodeID = id
+		}
+	}
 	var err error
 	node, err = sf.NewNode(nodeID)
 	if err != nil {
