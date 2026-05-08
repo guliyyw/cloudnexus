@@ -195,3 +195,66 @@ export async function addNode(req: {
 export async function deleteNode(name: string): Promise<void> {
   await api.delete(`/admin/nodes/${name}`)
 }
+
+// --- 告警规则 ---
+
+export interface AlertRule {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  node_name: string
+  trigger_type: string
+  condition: string
+  webhook_url: string
+  cooldown_seconds: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AlertHistoryItem {
+  id: string
+  rule_id: string
+  rule_name: string
+  node_name: string
+  alert_type: string
+  status: string
+  message: string
+  fired_at: string
+  resolved_at: string
+  webhook_url: string
+  response_code: number
+  error_message: string
+}
+
+export async function getAlertRules(): Promise<AlertRule[]> {
+  const res = await api.get('/admin/alerts/rules')
+  return res.data.data.rules
+}
+
+export async function createAlertRule(req: {
+  name: string; description?: string; enabled?: boolean
+  node_name?: string; trigger_type?: string; condition?: string
+  webhook_url: string; cooldown_seconds?: number
+}): Promise<AlertRule> {
+  const res = await api.post('/admin/alerts/rules', req)
+  return res.data.data.rule
+}
+
+export async function updateAlertRule(id: string, req: Record<string, unknown>): Promise<AlertRule> {
+  const res = await api.put(`/admin/alerts/rules/${id}`, req)
+  return res.data.data.rule
+}
+
+export async function deleteAlertRule(id: string): Promise<void> {
+  await api.delete(`/admin/alerts/rules/${id}`)
+}
+
+export async function getAlertHistory(params?: {
+  page?: number; page_size?: number
+  rule_id?: string; node_name?: string; alert_type?: string
+}): Promise<{ items: AlertHistoryItem[]; total: number; page: number; page_size: number }> {
+  const res = await api.get('/admin/alerts/history', { params })
+  return res.data.data
+}

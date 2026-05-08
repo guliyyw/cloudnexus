@@ -33,17 +33,19 @@ type HealthAggregator struct {
 	infraNodes []InfraNode
 	failures   map[string]int
 	failuresMu sync.Mutex
+	alerter    *AlertEvaluator
 }
 
 // NewHealthAggregator creates a new health aggregator.
 // Probes every 15s with a 5s HTTP timeout per node.
-func NewHealthAggregator(db *gorm.DB) *HealthAggregator {
+func NewHealthAggregator(db *gorm.DB, alerter *AlertEvaluator) *HealthAggregator {
 	return &HealthAggregator{
 		db:       db,
 		interval: 15 * time.Second,
 		client:   &http.Client{Timeout: 5 * time.Second},
 		stopCh:   make(chan struct{}),
 		failures: make(map[string]int),
+		alerter:  alerter,
 	}
 }
 
@@ -246,6 +248,10 @@ func (a *HealthAggregator) markUnresponsive(node *model.DockerNode, now time.Tim
 	if wasOnline {
 		node.OfflineSince = &now
 	}
+
+	if a.alerter != nil {
+		a.alerter.Evaluate(*node, "unresponsive")
+	}
 }
 
 func (a *HealthAggregator) markHealthy(node *model.DockerNode, service, version string, now time.Time) {
@@ -312,6 +318,11 @@ func (a *HealthAggregator) markHealthy(node *model.DockerNode, service, version 
 		Scan(&total)
 	a.db.Model(&model.DockerNode{}).Where("name = ?", node.Name).
 		Update("total_online_seconds", total)
+
+	if a.alerter != nil && wasOffline {
+		go a.alerter.ResolveAlert(node.Name)
+		a.alerter.Evaluate(*node, "recovery")
+	}
 }
 
 func (a *HealthAggregator) markOffline(node *model.DockerNode, now time.Time) {
@@ -339,6 +350,10 @@ func (a *HealthAggregator) markOffline(node *model.DockerNode, now time.Time) {
 	} else {
 		a.db.Model(&model.DockerNode{}).Where("name = ?", node.Name).
 			Update("status", "offline")
+	}
+
+	if a.alerter != nil {
+		a.alerter.Evaluate(*node, "offline")
 	}
 }
 

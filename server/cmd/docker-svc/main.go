@@ -48,7 +48,7 @@ func main() {
 		if err := migration.Up(db); err != nil {
 			logger.Log.Warn("SQL migration skipped", zap.Error(err))
 		}
-		if err := db.AutoMigrate(&model.DockerNode{}, &model.NodeOnlineSession{}); err != nil {
+		if err := db.AutoMigrate(&model.DockerNode{}, &model.NodeOnlineSession{}, &model.AlertRule{}, &model.AlertHistory{}); err != nil {
 			logger.Log.Warn("DockerNode AutoMigrate 失败", zap.Error(err))
 		}
 		nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "docker-svc", 8083)

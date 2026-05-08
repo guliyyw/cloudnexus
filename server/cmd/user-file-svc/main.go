@@ -56,7 +56,7 @@ func main() {
 	if err := migration.Up(db); err != nil {
 		logger.Log.Warn("SQL migration skipped", zap.Error(err))
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.DockerNode{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -90,12 +90,14 @@ func main() {
 	go systemH.StartMetricsCollector()
 
 	nodeH := handler.NewNodeHandler(db)
+	alertH := handler.NewAlertHandler(db)
 
 	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "user-file-svc", 8081)
 	nodeReg.Start()
 	defer nodeReg.Stop()
 
-	aggregator := system.NewHealthAggregator(db)
+	alerter := system.NewAlertEvaluator(db)
+	aggregator := system.NewHealthAggregator(db, alerter)
 	aggregator.RegisterInfra(system.InfraNode{
 		Name: "postgres", Host: cfg.DBHost(), Port: 5432,
 		ProbeFn: system.TCPProbe(cfg.DBHost(), 5432),
@@ -187,7 +189,16 @@ func main() {
 			admin.GET("/nodes/:name/sessions", nodeH.HandleGetNodeSessions)
 			admin.POST("/nodes", nodeH.HandleAddNode)
 			admin.DELETE("/nodes/:name", nodeH.HandleDeleteNode)
-		}
+
+				alerts := admin.Group("/alerts")
+				{
+					alerts.GET("/rules", alertH.HandleListRules)
+					alerts.POST("/rules", alertH.HandleCreateRule)
+					alerts.PUT("/rules/:id", alertH.HandleUpdateRule)
+					alerts.DELETE("/rules/:id", alertH.HandleDeleteRule)
+					alerts.GET("/history", alertH.HandleListHistory)
+				}
+			}
 	}
 
 	r.GET("/healthz", systemH.HandleHealthz)
