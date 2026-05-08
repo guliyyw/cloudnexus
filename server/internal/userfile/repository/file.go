@@ -90,3 +90,39 @@ func (r *FileRepository) FindAllByParent(userID, parentID uint64) ([]model.File,
 func (r *FileRepository) BatchCreate(files []*model.File) error {
 	return r.db.Create(&files).Error
 }
+
+// ── 文件版本 ──
+
+func (r *FileRepository) CreateVersion(v *model.FileVersion) error {
+	return r.db.Create(v).Error
+}
+
+func (r *FileRepository) ListVersions(fileID uint64, page, pageSize int) ([]model.FileVersion, int64, error) {
+	var versions []model.FileVersion
+	var total int64
+
+	query := r.db.Model(&model.FileVersion{}).Where("file_id = ?", fileID)
+	query.Count(&total)
+
+	offset := (page - 1) * pageSize
+	err := query.Order("version_num DESC").Offset(offset).Limit(pageSize).Find(&versions).Error
+	return versions, total, err
+}
+
+func (r *FileRepository) GetMaxVersionNum(fileID uint64) (int, error) {
+	var maxNum int
+	err := r.db.Model(&model.FileVersion{}).
+		Select("COALESCE(MAX(version_num), 0)").
+		Where("file_id = ?", fileID).
+		Scan(&maxNum).Error
+	return maxNum, err
+}
+
+func (r *FileRepository) FindVersionByID(id uint64) (*model.FileVersion, error) {
+	var v model.FileVersion
+	err := r.db.Where("id = ?", id).First(&v).Error
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}

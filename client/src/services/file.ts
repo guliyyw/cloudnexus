@@ -185,3 +185,39 @@ export function getSharePreviewUrl(code: string, password?: string): string {
   if (password) params.set('password', password)
   return `/api/v1/share/${code}/download?${params.toString()}`
 }
+
+// ── 文件版本 ──
+
+export interface FileVersion {
+  id: string
+  file_id: string
+  version_num: number
+  storage_key: string
+  size: number
+  sha256: string
+  message: string
+  created_at: string
+}
+
+export interface VersionListResponse {
+  items: FileVersion[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export async function getVersions(fileId: string, page: number, pageSize: number): Promise<VersionListResponse> {
+  const res = await api.get(`/file/${fileId}/versions`, { params: { page, page_size: pageSize } })
+  return res.data.data
+}
+
+export async function restoreVersion(fileId: string, versionId: string): Promise<FileItem> {
+  const res = await api.post(`/file/${fileId}/versions/${versionId}/restore`)
+  return res.data.data
+}
+
+export function getVersionDownloadUrl(fileId: string, versionId: string): string {
+  const token = getToken()
+  const sep = token ? `?token=${token}` : ''
+  return `/api/v1/file/${fileId}/versions/${versionId}/download${sep}`
+}

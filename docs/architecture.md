@@ -1,6 +1,6 @@
 # CloudNexus 架构设计
 
-> 版本：v1.0.0 | 更新：2026-05-06
+> 版本：v1.1.0 | 更新：2026-05-08
 
 ## 1. 项目概述
 
@@ -9,6 +9,8 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 - 云存储 (文件管理、分享、WebDAV)
 - 即时通讯 (私聊、群聊、消息推送)
 - Docker 管理 (容器生命周期、多主机)
+- 视频监控 (摄像头管理、AI 识别)
+- 在线文档 (协作编辑)
 
 支持桌面端 (Windows/macOS/Linux)、Web 端、安卓移动端。
 
@@ -31,18 +33,23 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
                       +-----------+
                       |   nginx   |  (静态文件 + 反向代理)
                       +-----------+
-                       /    |     \
-                      /     |      \
-          +-----------+  +-------+  +------------+
-          |user-file-svc| |im-svc |  | docker-svc |
-          |   (:8081)  |  |(:8082)|  |  (:8083)   |
-          +-----------+  +-------+  +------------+
-               |    |        |    |        |
-               v    v        v    v        v
-          +--------+  +-------+  +----+  +===============+
-          |PostgreSQL| | MinIO |  |Redis|  | Docker Daemon |
-          |  (:5432)|  |(:9000)|  |:6379|  |(socket mount) |
-          +--------+  +-------+  +----+  +===============+
+                       /    |     \        \
+                      /     |      \         \
+          +-----------+  +-------+  +------------+  +------------+
+          |user-file-svc| |im-svc |  | docker-svc |  |camera-svc  |
+          |   (:8081)  |  |(:8082)|  |  (:8083)   |  |  (:8085)   |
+          +-----------+  +-------+  +------------+  +------------+
+               |    |        |    |        |               |
+               v    v        v    v        v               v
+          +--------+  +-------+  +----+  +===============+ +----------+
+          |PostgreSQL| | MinIO |  |Redis|  | Docker Daemon | | MediaMTX |
+          |  (:5432)|  |(:9000)|  |:6379|  |(socket mount) | |(:8554)   |
+          +--------+  +-------+  +----+  +===============+ +----------+
+                                                              |
+                                                      +-------+
+                                                      |ai-inference|
+                                                      |  (:8000)   |
+                                                      +------------+
 
           所有服务通过 Docker 内部网络通信，仅 nginx 暴露端口
 ```
@@ -77,7 +84,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
          └──────────────────────────────────┘
 ```
 
-**应用节点**（每台服务器）：只部署 `user-file-svc` + `im-svc` + `docker-svc` + `nginx`，无状态，可任意横向扩展。
+**应用节点**（每台服务器）：只部署 `user-file-svc` + `im-svc` + `docker-svc` + `camera-svc` + `nginx`，无状态，可任意横向扩展。
 
 **基础设施服务器**（1 台）：集中部署 PostgreSQL + Redis + MinIO，所有应用节点共享。
 
@@ -91,7 +98,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 集群监控 | 所有节点向同一张 `docker_nodes` 表注册 + 心跳，HealthAggregator 统一探测 |
 | Docker 管理 | 各节点管理本地 Docker Daemon，跨主机通过 EndpointManager + TLS 远程连接 |
 
-**Snowflake 节点 ID：** 当前每个服务写死了 worker ID（user-file-svc=1, im-svc=2, docker-svc=3），多实例部署时需要每个实例使用不同的 worker ID，通过环境变量 `SNOWFLAKE_NODE_ID` 传入，否则会产生 ID 冲突。此改动已在 Phase 3 计划中。
+**Snowflake 节点 ID：** 通过环境变量 `SNOWFLAKE_NODE_ID` 传入（user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5），多实例部署时每个实例使用不同的 worker ID，否则会产生 ID 冲突。
 
 **基础设施高可用（远期考虑）：** 当前推荐 1 台基础设施服务器 + 定时备份。多基础设施涉及 PostgreSQL 主从复制（Patroni）、Redis Sentinel/Cluster、MinIO 分布式模式，复杂度显著增加，建议在业务真正需要时再引入。
 
@@ -134,6 +141,16 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 客户端 HTTP → nginx(:80) → docker-svc (Docker) → Docker Socket (/var/run/docker.sock)
 ```
 
+### 4.5 摄像头视频流
+
+```
+客户端 HLS.js → nginx(:80) → MediaMTX (:8888) → RTSP 摄像头 (局域网)
+客户端 HTTP  → nginx(:80) → camera-svc (:8085) ──→ MediaMTX API (动态注册)
+                                    ├── PostgreSQL (摄像头/事件)
+                                    ├── ai-inference (:8000) → YOLO 目标检测
+                                    └── MinIO (截图)
+```
+
 ## 5. 技术栈
 
 | 层 | 技术 |
@@ -141,6 +158,8 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 入口 | nginx:alpine (Docker) |
 | 后端 | Go + Gin + GORM |
 | 前端 | React 18 + TypeScript + Vite + Ant Design 6 + Zustand 5 |
+| 流媒体 | MediaMTX (RTSP→HLS/WebRTC) |
+| AI | YOLOv8 (ultralytics) GPU/CPU 自适应 |
 | 数据库 | PostgreSQL 15 |
 | 缓存/消息 | Redis 7 |
 | 对象存储 | MinIO (S3 兼容) |
@@ -177,9 +196,9 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 
 **当前端点：**
 
-| 端点 | user-file-svc | im-svc | docker-svc |
-|------|:---:|:---:|:---:|
-| `GET /healthz` | 详细（DB/MinIO/内存/goroutine/uptime） | 详细（DB/Redis/内存/goroutine/uptime） | 详细（Docker/内存/goroutine/uptime） |
+| 端点 | user-file-svc | im-svc | docker-svc | camera-svc |
+|------|:---:|:---:|:---:|:---:|
+| `GET /healthz` | 详细（DB/MinIO/内存/goroutine/uptime） | 详细（DB/Redis/内存/goroutine/uptime） | 详细（Docker/内存/goroutine/uptime） | 详细（DB/内存/goroutine/uptime） |
 | `GET /metrics` | 进程级（堆内存/GC/goroutine） | ❌ | ❌ |
 | `GET /metrics/resources` | 主机级（CPU%/内存/磁盘/网络） | ❌ | ❌ |
 | `GET /metrics/history` | 300 点环形缓冲/10s 间隔 | ❌ | ❌ |
@@ -191,6 +210,7 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 - `GET /healthz/user-file-svc` → user-file-svc:8081/healthz
 - `GET /healthz/im-svc` → im-svc:8082/healthz
 - `GET /healthz/docker-svc` → docker-svc:8083/healthz
+- `GET /healthz/camera-svc` → camera-svc:8085/healthz
 
 **日志系统端点：**
 - `GET /system/log/services` — 可查询的日志服务列表
@@ -257,7 +277,8 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 | 日志系统 | ✅ 已实现：zap 三路输出 + 管理后台实时查询 |
 | 跨节点 IM | ✅ 已实现：Redis Pub/Sub (im:broadcast) 跨节点消息中继 |
 | 聊天记录备份 | ✅ 已实现：导出为 JSON (SHA256 校验码) + 自动存云盘 + 导入去重 |
-| 集群监控 | Phase 3 规划：节点注册/心跳/健康聚合/docker_nodes 表/Docker 多主机探测/告警预留 |
+| 视频监控 | ✅ 已实现：camera-svc + MediaMTX + YOLO AI 识别 |
+| 集群监控 | ✅ 已实现：节点注册/心跳/健康聚合/docker_nodes 表/Docker 多主机探测/告警预留 |
 | 监控告警 | /metrics 端点预留 Prometheus 格式，可集成 Grafana 告警 |
 
 ## 9. 相关文档

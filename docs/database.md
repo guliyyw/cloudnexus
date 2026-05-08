@@ -102,6 +102,25 @@ CREATE INDEX idx_files_storage_key ON files(storage_key);
 CREATE INDEX idx_file_shares_share_code ON file_shares(share_code);
 ```
 
+### file_versions — 文件版本表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| file_id | BIGINT | NOT NULL, INDEX | 所属文件 |
+| version_num | INT | NOT NULL | 版本号（1, 2, 3...） |
+| storage_key | VARCHAR(512) | NOT NULL | MinIO 对象 key |
+| size | BIGINT | DEFAULT 0 | 文件大小 |
+| sha256 | VARCHAR(64) | | 内容校验值 |
+| message | VARCHAR(256) | | 版本说明 |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+
+**索引：**
+```sql
+CREATE INDEX idx_file_versions_file_id ON file_versions(file_id);
+CREATE INDEX idx_file_versions_file_version ON file_versions(file_id, version_num DESC);
+```
+
 ---
 
 ## 4. 即时通讯模块
@@ -218,24 +237,64 @@ CREATE INDEX idx_docker_nodes_status ON docker_nodes(status);
 
 ---
 
-## 6. ER 关系图
+## 6. 摄像头与 AI 识别模块
+
+### cameras — 摄像头表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| owner_id | BIGINT | NOT NULL, INDEX | 所属用户 |
+| name | VARCHAR(128) | NOT NULL | 摄像头名称 |
+| stream_url | VARCHAR(512) | NOT NULL | RTSP/RTMP 地址 |
+| protocol | VARCHAR(16) | DEFAULT 'rtsp' | rtsp / rtmp / onvif |
+| status | VARCHAR(16) | DEFAULT 'offline' | online / offline |
+| last_seen_at | TIMESTAMPTZ | | 最近在线时间 |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+| deleted_at | TIMESTAMPTZ | INDEX | 软删除 |
+
+### recognition_events — AI 识别事件表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| camera_id | BIGINT | NOT NULL, INDEX | 所属摄像头 |
+| event_type | VARCHAR(32) | NOT NULL | 如 person / car |
+| confidence | FLOAT | NOT NULL | 置信度 0-1 |
+| snapshot_url | VARCHAR(512) | | MinIO 截图 URL |
+| metadata | TEXT | | JSON 格式检测框数据 |
+| created_at | TIMESTAMPTZ | NOT NULL, INDEX | |
+
+**索引：**
+```sql
+CREATE INDEX idx_recognition_events_camera_id ON recognition_events(camera_id);
+CREATE INDEX idx_recognition_events_created_at ON recognition_events(created_at);
+```
+
+---
+
+## 7. ER 关系图
 
 ```
 users ──1:N──> refresh_tokens
 users ──1:N──> files
+files ──1:N──> file_versions
 users ──1:N──> file_shares
+users ──1:N──> cameras
+cameras ──1:N──> recognition_events
 users ──< conversation_members >── conversations
 conversations ──1:N──> messages
 users ──1:N──> messages
 users ──< friends >── users (好友双向关系)
-docker_nodes (模型已定义，功能待开发)
+docker_nodes
 schema_migrations (版本化 SQL 迁移追踪)
 ```
 
 ---
 
-## 7. 集群模式注意事项
+## 8. 集群模式注意事项
 
 - 主键使用 Snowflake uint64，天然支持分布式全局唯一，无需额外配置
-- 集群模式下各服务使用不同的 Snowflake node ID (user-file-svc=1, im-svc=2)
+- 集群模式下各服务使用不同的 Snowflake node ID (user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5)
 - 所有服务运行在 Docker 容器中，通过 Docker 内部网络通信

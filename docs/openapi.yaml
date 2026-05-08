@@ -2,10 +2,11 @@ openapi: "3.0.3"
 info:
   title: CloudNexus API
   description: |
-    CloudNexus 自托管协作平台 API — 三个 Go 微服务：
+    CloudNexus 自托管协作平台 API — 四个 Go 微服务：
     - **user-file-svc** (8081)：用户认证、文件管理、分享、管理后台
     - **im-svc** (8082)：即时通讯、WebSocket、好友系统
     - **docker-svc** (8083)：Docker 容器与镜像管理
+    - **camera-svc** (8085)：摄像头管理、流代理、AI 识别
 
     所有认证接口使用 Bearer Token（JWT），通过 `Authorization: Bearer <token>` 请求头传递。
     WebSocket 通过 `?token=<jwt>` 查询参数认证。公开分享接口无需认证。
@@ -36,6 +37,10 @@ tags:
     description: 容器生命周期、镜像管理、端点
   - name: 管理后台
     description: 用户管理、日志查看、集群节点、系统指标
+  - name: 摄像头管理
+    description: 摄像头列表、流代理、播放控制
+  - name: AI 识别
+    description: 视频流实时检测、图片分析、识别事件
   - name: 系统
     description: 健康检查、运行时指标
 
@@ -517,6 +522,113 @@ components:
           type: string
         node_type:
           type: string
+
+    # ── Camera ──
+    Camera:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Snowflake ID
+        owner_id:
+          type: string
+        name:
+          type: string
+        stream_url:
+          type: string
+        protocol:
+          type: string
+          enum: [rtsp, rtmp, onvif]
+        status:
+          type: string
+          enum: [online, offline]
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateCameraRequest:
+      type: object
+      required: [name, stream_url]
+      properties:
+        name:
+          type: string
+        stream_url:
+          type: string
+        protocol:
+          type: string
+          default: rtsp
+
+    UpdateCameraRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        stream_url:
+          type: string
+        protocol:
+          type: string
+
+    RecognitionEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        camera_id:
+          type: string
+        event_type:
+          type: string
+        confidence:
+          type: number
+        snapshot_url:
+          type: string
+        metadata:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    DetectedObject:
+      type: object
+      properties:
+        class:
+          type: string
+        confidence:
+          type: number
+        x1:
+          type: number
+        y1:
+          type: number
+        x2:
+          type: number
+        y2:
+          type: number
+
+    CameraListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Camera'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    StreamURLResponse:
+      type: object
+      properties:
+        hls_url:
+          type: string
+        webrtc_url:
+          type: string
+          nullable: true
 
     # ── Admin ──
     AdminUser:
@@ -1014,6 +1126,69 @@ paths:
       responses:
         '200':
           description: 复制成功
+
+  # ── File Versions ──
+  /api/v1/file/{id}/versions:
+    get:
+      tags: [文件管理]
+      summary: 文件版本列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 版本列表（分页）
+
+  /api/v1/file/{id}/versions/{versionId}/restore:
+    post:
+      tags: [文件管理]
+      summary: 恢复历史版本
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 恢复成功（当前文件自动保存为新版本）
+
+  /api/v1/file/{id}/versions/{versionId}/download:
+    get:
+      tags: [文件管理]
+      summary: 下载历史版本
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 版本文件下载
 
   # ── Share ──
   /api/v1/file/{id}/share:
@@ -1664,6 +1839,198 @@ paths:
       responses:
         '200':
           description: 删除成功
+
+  # ════════════════════════════════════════════════════
+  # Paths — camera-svc (port 8085)
+  # ════════════════════════════════════════════════════
+
+  /api/v1/cameras:
+    get:
+      tags: [摄像头管理]
+      summary: 摄像头列表
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: 摄像头分页列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/CameraListResponse'
+    post:
+      tags: [摄像头管理]
+      summary: 添加摄像头
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCameraRequest'
+      responses:
+        '200':
+          description: 添加成功
+
+  /api/v1/cameras/{id}:
+    put:
+      tags: [摄像头管理]
+      summary: 编辑摄像头
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCameraRequest'
+      responses:
+        '200':
+          description: 编辑成功
+    delete:
+      tags: [摄像头管理]
+      summary: 删除摄像头
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/cameras/{id}/stream/start:
+    post:
+      tags: [摄像头管理]
+      summary: 开启视频流
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 返回 HLS 和 WebRTC 播放 URL
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/StreamURLResponse'
+
+  /api/v1/cameras/{id}/stream/stop:
+    post:
+      tags: [摄像头管理]
+      summary: 停止视频流
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 停止成功
+
+  /api/v1/cameras/{id}/recognition/start:
+    post:
+      tags: [AI 识别]
+      summary: 开启 AI 识别
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 开启成功
+
+  /api/v1/cameras/{id}/recognition/stop:
+    post:
+      tags: [AI 识别]
+      summary: 停止 AI 识别
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 停止成功
+
+  /api/v1/cameras/{id}/events:
+    get:
+      tags: [AI 识别]
+      summary: 识别事件列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 识别事件分页列表
+
+  /api/v1/detect-image:
+    post:
+      tags: [AI 识别]
+      summary: 单张图片检测
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 检测结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DetectedObject'
 
   # ════════════════════════════════════════════════════
   # Paths — Admin (user-file-svc)

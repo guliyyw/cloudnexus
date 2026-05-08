@@ -26,6 +26,7 @@ func NewFileHandler(svc *service.FileService) *FileHandler {
 func (h *FileHandler) HandleUpload(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	parentID, _ := strconv.ParseUint(c.DefaultPostForm("parent_id", "0"), 10, 64)
+	versionMessage := c.DefaultPostForm("version_message", "")
 
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -42,7 +43,7 @@ func (h *FileHandler) HandleUpload(c *gin.Context) {
 	errMsgs := make([]string, 0)
 
 	for _, fh := range files {
-		file, err := h.svc.Upload(userID, parentID, fh)
+		file, err := h.svc.Upload(userID, parentID, fh, versionMessage)
 		if err != nil {
 			errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", fh.Filename, err.Error()))
 			continue
@@ -285,4 +286,77 @@ func (h *FileHandler) HandleSearch(c *gin.Context) {
 		"page":      page,
 		"page_size": pageSize,
 	}))
+}
+
+// ── 文件版本 ──
+
+func (h *FileHandler) HandleListVersions(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的文件 ID"))
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	versions, total, err := h.svc.ListVersions(userID, fileID, page, pageSize)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"items":     versions,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	}))
+}
+
+func (h *FileHandler) HandleRestoreVersion(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的文件 ID"))
+		return
+	}
+	versionID, err := strconv.ParseUint(c.Param("versionId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的版本 ID"))
+		return
+	}
+
+	file, err := h.svc.RestoreVersion(userID, fileID, versionID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleDownloadVersion(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的文件 ID"))
+		return
+	}
+	versionID, err := strconv.ParseUint(c.Param("versionId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的版本 ID"))
+		return
+	}
+
+	stream, ver, file, err := h.svc.DownloadVersion(userID, fileID, versionID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	defer stream.Close()
+
+	filename := fmt.Sprintf("%s_v%d%s", file.Name[:len(file.Name)-len(filepath.Ext(file.Name))], ver.VersionNum, filepath.Ext(file.Name))
+	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	c.Header("Content-Type", file.MimeType)
+	c.Header("Content-Length", strconv.FormatInt(ver.Size, 10))
+	c.DataFromReader(http.StatusOK, ver.Size, file.MimeType, stream, nil)
 }

@@ -56,7 +56,7 @@ func main() {
 	if err := migration.Up(db); err != nil {
 		logger.Log.Warn("SQL migration skipped", zap.Error(err))
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -151,6 +151,10 @@ func main() {
 			file.POST("/batch-download", fileH.HandleBatchDownload)
 			file.POST("/move", fileH.HandleMove)
 			file.POST("/copy", fileH.HandleCopy)
+			// 文件版本
+			file.GET("/:id/versions", fileH.HandleListVersions)
+			file.POST("/:id/versions/:versionId/restore", fileH.HandleRestoreVersion)
+			file.GET("/:id/versions/:versionId/download", fileH.HandleDownloadVersion)
 			file.POST("/:id/share", shareH.HandleCreateShare)
 			file.GET("/:id/shares", shareH.HandleListSharesByFile)
 		}

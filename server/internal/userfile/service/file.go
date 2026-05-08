@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"path/filepath"
 	"time"
 
@@ -24,7 +25,7 @@ func NewFileService(repo *repository.FileRepository, minioClient *minio.Client, 
 	return &FileService{repo: repo, minio: minioClient, bucket: bucket}
 }
 
-func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.FileHeader, versionMessage string) (*model.File, error) {
 	src, err := header.Open()
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "打开文件失败", err)
@@ -40,6 +41,34 @@ func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.F
 	})
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "存储文件失败", err)
+	}
+
+	// 检查是否存在同名文件，保存旧版本
+	existing, _ := s.repo.FindByNameAndParent(userID, parentID, header.Filename)
+	if existing != nil && !existing.IsDir {
+		maxNum, _ := s.repo.GetMaxVersionNum(existing.ID)
+		v := &model.FileVersion{
+			FileID:     existing.ID,
+			VersionNum: maxNum + 1,
+			StorageKey: existing.StorageKey,
+			Size:       existing.Size,
+			SHA256:     existing.StorageSHA256,
+			Message:    versionMessage,
+		}
+		if err := s.repo.CreateVersion(v); err != nil {
+			s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+			return nil, apperrors.NewAppError(500, "保存版本失败", err)
+		}
+
+		existing.Size = header.Size
+		existing.MimeType = contentType
+		existing.StorageKey = storageKey
+		existing.StorageSHA256 = ""
+		if err := s.repo.Update(existing); err != nil {
+			s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+			return nil, apperrors.NewAppError(500, "更新文件信息失败", err)
+		}
+		return existing, nil
 	}
 
 	file := &model.File{
@@ -310,4 +339,126 @@ func (s *FileService) copyRecursive(userID uint64, src *model.File, targetParent
 		}
 	}
 	return newDir, nil
+}
+
+// ── 文件版本管理 ──
+
+func (s *FileService) ListVersions(userID, fileID uint64, page, pageSize int) ([]model.FileVersion, int64, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, 0, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, 0, apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.ListVersions(fileID, page, pageSize)
+}
+
+func (s *FileService) RestoreVersion(userID, fileID, versionID uint64) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
+	if file.IsDir {
+		return nil, apperrors.NewAppError(400, "目录不支持版本恢复", apperrors.ErrBadRequest)
+	}
+
+	ver, err := s.repo.FindVersionByID(versionID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "版本不存在", apperrors.ErrNotFound)
+	}
+	if ver.FileID != fileID {
+		return nil, apperrors.NewAppError(400, "版本与文件不匹配", apperrors.ErrBadRequest)
+	}
+
+	// 当前文件作为新版本保存
+	maxNum, _ := s.repo.GetMaxVersionNum(fileID)
+	saveVer := &model.FileVersion{
+		FileID:     fileID,
+		VersionNum: maxNum + 1,
+		StorageKey: file.StorageKey,
+		Size:       file.Size,
+		SHA256:     file.StorageSHA256,
+		Message:    "恢复前自动保存",
+	}
+	if err := s.repo.CreateVersion(saveVer); err != nil {
+		return nil, apperrors.NewAppError(500, "保存当前版本失败", err)
+	}
+
+	// 复制旧版本对象到新 key（MinIO copy）
+	ext := filepath.Ext(file.Name)
+	newKey := fmt.Sprintf("%d/%d/%d%s", userID, file.ParentID, time.Now().UnixNano(), ext)
+	_, err = s.minio.CopyObject(context.Background(),
+		minio.CopyDestOptions{Bucket: s.bucket, Object: newKey},
+		minio.CopySrcOptions{Bucket: s.bucket, Object: ver.StorageKey},
+	)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "恢复版本内容失败", err)
+	}
+
+	file.StorageKey = newKey
+	file.Size = ver.Size
+	file.StorageSHA256 = ver.SHA256
+	if err := s.repo.Update(file); err != nil {
+		s.minio.RemoveObject(context.Background(), s.bucket, newKey, minio.RemoveObjectOptions{})
+		return nil, apperrors.NewAppError(500, "更新文件失败", err)
+	}
+	return file, nil
+}
+
+func (s *FileService) DownloadVersion(userID, fileID, versionID uint64) (io.ReadCloser, *model.FileVersion, *model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, nil, nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, nil, nil, apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+	}
+
+	ver, err := s.repo.FindVersionByID(versionID)
+	if err != nil {
+		return nil, nil, nil, apperrors.NewAppError(404, "版本不存在", apperrors.ErrNotFound)
+	}
+	if ver.FileID != fileID {
+		return nil, nil, nil, apperrors.NewAppError(400, "版本与文件不匹配", apperrors.ErrBadRequest)
+	}
+
+	obj, err := s.minio.GetObject(context.Background(), s.bucket, ver.StorageKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, nil, nil, apperrors.NewAppError(500, "获取版本文件失败", err)
+	}
+	return obj, ver, file, nil
+}
+
+func (s *FileService) VersionDownloadURL(userID, fileID, versionID uint64) (string, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return "", apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return "", apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+	}
+
+	ver, err := s.repo.FindVersionByID(versionID)
+	if err != nil {
+		return "", apperrors.NewAppError(404, "版本不存在", apperrors.ErrNotFound)
+	}
+	if ver.FileID != fileID {
+		return "", apperrors.NewAppError(400, "版本与文件不匹配", apperrors.ErrBadRequest)
+	}
+
+	u, err := s.minio.PresignedGetObject(context.Background(), s.bucket, ver.StorageKey, time.Hour, url.Values{})
+	if err != nil {
+		return "", apperrors.NewAppError(500, "生成下载链接失败", err)
+	}
+	return u.String(), nil
 }

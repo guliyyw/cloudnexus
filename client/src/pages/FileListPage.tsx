@@ -9,13 +9,14 @@ import {
   FileOutlined, HomeOutlined, ReloadOutlined, UploadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined, ShareAltOutlined,
-  SwapOutlined, CopyOutlined,
+  SwapOutlined, CopyOutlined, HistoryOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
 import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
 import ShareModal from '../components/ShareModal'
 import DirectoryPickerModal from '../components/DirectoryPickerModal'
+import FileVersionPanel from '../components/FileVersionPanel'
 import { isPreviewable } from '../utils/preview'
 import { getDownloadUrl } from '../services/file'
 import type { FileItem } from '../services/file'
@@ -56,6 +57,7 @@ export default function FileListPage() {
   const [uploadTargetDir, setUploadTargetDir] = useState({ id: '0', name: '根目录' })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const [shareFile, setShareFile] = useState<FileItem | null>(null)
+  const [versionFile, setVersionFile] = useState<FileItem | null>(null)
   const [dropDirId, setDropDirId] = useState<string | null>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
   const [pickerOpen, setPickerOpen] = useState<'move' | 'copy' | null>(null)
@@ -264,6 +266,11 @@ export default function FileListPage() {
               <Button type="link" size="small" icon={<ShareAltOutlined />} onClick={() => setShareFile(record)} />
             </Tooltip>
           )}
+          {!record.is_dir && (
+            <Tooltip title="版本">
+              <Button type="link" size="small" icon={<HistoryOutlined />} onClick={() => setVersionFile(record)} />
+            </Tooltip>
+          )}
           <Popconfirm title="确定删除？" onConfirm={() => remove(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -418,6 +425,12 @@ export default function FileListPage() {
         file={shareFile}
         open={!!shareFile}
         onClose={() => setShareFile(null)}
+      />
+
+      <FileVersionPanel
+        file={versionFile}
+        open={!!versionFile}
+        onClose={() => setVersionFile(null)}
       />
 
       <DirectoryPickerModal

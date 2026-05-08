@@ -1,6 +1,6 @@
 # CloudNexus 开发进度
 
-> 当前版本：v0.1.0-dev | 更新：2026-05-06
+> 当前版本：v0.1.0-dev | 更新：2026-05-08
 >
 > 版本策略：Phase 1–4 全部开发完毕且测试通过后发布 **v0.1.0**（首个大版本）
 
@@ -207,13 +207,13 @@
 
 | 模块 | 任务 | 预估 | 状态 |
 |------|------|------|------|
-| 后端 | camera-svc 微服务 — 摄像头 CRUD + 流代理 API | 1.5d | ⬜ |
-| 后端 | AI 推理服务 — YOLO FastAPI + GPU/CPU 自适应 | 0.5d | ⬜ |
-| 后端 | 流媒体集成 — MediaMTX 容器 + RTSP→HLS/WebRTC | 0.5d | ⬜ |
-| 后端 | AI 识别流水线 — 帧捕获 + 推理 + 事件记录 | 1d | ⬜ |
-| 前端 | 摄像头列表页 + 实时播放页 + 云台控制 | 1.5d | ⬜ |
-| 后端 | 文件版本管理 — FileVersion 模型 + 版本 CRUD | 1d | ⬜ |
-| 前端 | 文件版本面板 — 版本历史 + 恢复 + 下载 | 0.5d | ⬜ |
+| 后端 | camera-svc 微服务 — 摄像头 CRUD + 流代理 API | 1.5d | ✅ |
+| 后端 | AI 推理服务 — YOLO FastAPI + GPU/CPU 自适应 | 0.5d | ✅ |
+| 后端 | 流媒体集成 — MediaMTX 容器 + RTSP→HLS/WebRTC | 0.5d | ✅ |
+| 后端 | AI 识别流水线 — 帧捕获 + 推理 + 事件记录 | 1d | ✅ |
+| 前端 | 摄像头列表页 + 实时播放页 | 1.5d | ✅ |
+| 后端 | 文件版本管理 — FileVersion 模型 + 版本 CRUD | 1d | ✅ |
+| 前端 | 文件版本面板 — 版本历史 + 恢复 + 下载 | 0.5d | ✅ |
 | 后端 | collab-svc 微服务 — 文档 CRUD + Yjs WebSocket Hub | 1.5d | ⬜ |
 | 后端 | 协作同步 — Redis Pub/Sub 跨节点 | 0.5d | ⬜ |
 | 前端 | 文档列表页 + TipTap/Yjs 协作编辑器 | 1.5d | ⬜ |
@@ -241,7 +241,7 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | # | 功能 | 模块 | 预估 |
 |---|------|------|------|
 | F8 | WebDAV 挂载 | user-file-svc | 2d |
-| F9 | 文件版本管理 | user-file-svc | 🔄 提前到 Phase 4 |
+| F9 | 文件版本管理 | user-file-svc | ✅ 已完成 |
 | F10 | 回收站 (软删除恢复) | user-file-svc | 2d |
 | I8 | 消息搜索 | im-svc | 2d |
 | I9 | 消息推送 (FCM) | im-svc | 3d |
@@ -367,5 +367,6 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-08 | v0.1.0-dev | feat: Snowflake 节点 ID 去重 — SNOWFLAKE_NODE_ID 环境变量替代硬编码节点ID，单机/集群 Compose 模板同步更新 | CloudNexus 团队 |
 | 2026-05-08 | v0.1.0-dev | feat: 告警预留 — webhook 接口 + 阈值检测 (AlertRule/AlertHistory 模型、AlertEvaluator 评估器、CRUD API、前端告警规则管理页) | CloudNexus 团队 |
 | 2026-05-08 | v0.1.0-dev | feat: 新需求规划 — 摄像头AI识别+在线文档编辑+文件版本管理，Phase 4 启动，Docker Swarm 延后 | CloudNexus 团队 |
-| 2026-05-08 | v0.1.0-dev | feat: 开始开发摄像头管理+AI识别 — camera-svc微服务 + MediaMTX流媒体 + YOLO推理服务 | CloudNexus 团队 |
+| 2026-05-08 | v0.1.0-dev | feat: 摄像头功能完成 — camera-svc + MediaMTX + YOLO推理 + 前端列表/播放页，21文件 1529行新增 | CloudNexus 团队 |
+| 2026-05-08 | v0.1.0-dev | feat: 文件版本管理 — 覆盖上传自动保存旧版本、版本历史/恢复/下载、前端版本面板 Drawer | CloudNexus 团队 |
 | 2026-05-03 | v0.1.0-dev | Phase 1 单机 MVP 开发完成：用户认证、文件管理、即时通讯、Docker管理（前后端全栈） | CloudNexus 团队 |
