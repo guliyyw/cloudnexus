@@ -1,0 +1,26 @@
+[     169ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/admin/users?page=1&page_size=20:0
+[     170ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/user/profile:0
+[     173ms] AxiosError: Request failed with status code 502
+    at eH (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:15687)
+    at ic.request (http://192.168.91.135/assets/index-BaYjlaQ1.js:385:2231)
+    at async d_e (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:81255)
+    at async u (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:83233)
+[     173ms] AxiosError: Request failed with status code 502
+    at eH (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:15687)
+[    9053ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/admin/alerts/rules:0
+[    9053ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/admin/alerts/history?page=1&page_size=10:0
+[    9054ms] AxiosError: Request failed with status code 502
+    at eH (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:15687)
+    at ic.request (http://192.168.91.135/assets/index-BaYjlaQ1.js:385:2231)
+    at async C_e (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:82696)
+    at async v (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:103744)
+[   40556ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/admin/alerts/rules:0
+[   40564ms] AxiosError: Request failed with status code 502
+    at eH (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-BaYjlaQ1.js:383:15687)
+    at ic.request (http://192.168.91.135/assets/index-BaYjlaQ1.js:385:2231)
+    at async $_e (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:82778)
+    at async $ (http://192.168.91.135/assets/index-BaYjlaQ1.js:448:104219)

@@ -1,0 +1,11 @@
+[      88ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/file/list?parent_id=0&page=1&page_size=20:0
+[      91ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://192.168.91.135/api/v1/user/profile:0
+[      93ms] AxiosError: Request failed with status code 502
+    at JF (http://192.168.91.135/assets/index-D4MBI7BV.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-D4MBI7BV.js:383:15687)
+    at oc.request (http://192.168.91.135/assets/index-D4MBI7BV.js:385:2231)
+    at async Qp (http://192.168.91.135/assets/index-D4MBI7BV.js:389:58685)
+    at async fetchFiles (http://192.168.91.135/assets/index-D4MBI7BV.js:389:61467)
+[      93ms] AxiosError: Request failed with status code 502
+    at JF (http://192.168.91.135/assets/index-D4MBI7BV.js:383:10164)
+    at XMLHttpRequest.v (http://192.168.91.135/assets/index-D4MBI7BV.js:383:15687)

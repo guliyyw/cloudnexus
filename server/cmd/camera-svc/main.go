@@ -124,6 +124,7 @@ func main() {
 			cameras.POST("/:id/recognition/stop", camH.HandleStopRecognition)
 			cameras.GET("/:id/events", camH.HandleListEvents)
 			cameras.GET("/:id/faces", faceH.HandleListFaceEvents)
+			cameras.DELETE("/:id/faces", faceH.HandleClearFaceEvents)
 		}
 		faces := api.Group("/faces")
 		{

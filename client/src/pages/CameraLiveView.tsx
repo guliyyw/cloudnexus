@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs } from 'antd'
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm } from 'antd'
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent } from '../services/camera'
-import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace } from '../services/camera'
+import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents } from '../services/camera'
 import { detectFaces, embeddingToArray, loadModels } from '../utils/faceDetection'
 import { VideoRecorder } from '../utils/videoRecorder'
 import { FaceTracker } from '../utils/faceTracker'
@@ -107,6 +107,15 @@ export default function CameraLiveView() {
       setFaceEvents(res.items)
     } catch { /* ignore */ }
   }, [id])
+
+  const handleClearFaceEvents = async () => {
+    if (!id) return
+    try {
+      const count = await clearFaceEvents(id)
+      message.success(`已清空 ${count} 条人脸识别记录`)
+      setFaceEvents([])
+    } catch { message.error('清空失败') }
+  }
 
   useEffect(() => { fetchCamera(); fetchEvents(); fetchFaceEvents() }, [fetchCamera, fetchEvents, fetchFaceEvents])
 
@@ -469,14 +478,23 @@ export default function CameraLiveView() {
       key: 'face',
       label: '人脸识别',
       children: (
-        <Table
-          dataSource={faceEvents}
-          columns={faceEventColumns}
-          rowKey="id"
-          size="small"
-          pagination={{ pageSize: 10, size: 'small' }}
-          locale={{ emptyText: '暂无人脸识别事件' }}
-        />
+        <div>
+          {faceEvents.length > 0 && (
+            <div style={{ marginBottom: 8, textAlign: 'right' }}>
+              <Popconfirm title="确定清空此摄像头所有识别记录？考勤记录不受影响" onConfirm={handleClearFaceEvents}>
+                <Button size="small" icon={<DeleteOutlined />} danger>清空</Button>
+              </Popconfirm>
+            </div>
+          )}
+          <Table
+            dataSource={faceEvents}
+            columns={faceEventColumns}
+            rowKey="id"
+            size="small"
+            pagination={{ pageSize: 10, size: 'small' }}
+            locale={{ emptyText: '暂无人脸识别事件' }}
+          />
+        </div>
       ),
     },
   ]

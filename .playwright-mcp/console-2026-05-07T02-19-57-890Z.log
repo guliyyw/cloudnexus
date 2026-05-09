@@ -1,0 +1,1 @@
+[   24918ms] [ERROR] Failed to load resource: the server responded with a status of 409 (Conflict) @ http://localhost/api/v1/admin/nodes/minio:0

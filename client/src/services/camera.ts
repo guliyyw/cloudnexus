@@ -182,6 +182,11 @@ export async function getFaceEvents(
   return data.data
 }
 
+export async function clearFaceEvents(cameraId: string): Promise<number> {
+  const { data } = await api.delete(`/cameras/${cameraId}/faces`)
+  return data.data.deleted
+}
+
 // --- Attendance ---
 
 export interface DailyAttendanceItem {

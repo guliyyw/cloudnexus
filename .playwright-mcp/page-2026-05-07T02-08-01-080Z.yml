@@ -1,0 +1,300 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]: CloudNexus
+      - menu [ref=e8]:
+        - menuitem "cloud 文件管理" [ref=e9] [cursor=pointer]:
+          - img "cloud" [ref=e10]:
+            - img [ref=e11]
+          - generic [ref=e13]: 文件管理
+        - menuitem "share-alt 我的分享" [ref=e14] [cursor=pointer]:
+          - img "share-alt" [ref=e15]:
+            - img [ref=e16]
+          - generic [ref=e18]: 我的分享
+        - menuitem "message 即时通讯" [ref=e19] [cursor=pointer]:
+          - img "message" [ref=e20]:
+            - img [ref=e21]
+          - generic [ref=e23]: 即时通讯
+        - menuitem "team 好友" [ref=e24] [cursor=pointer]:
+          - img "team" [ref=e25]:
+            - img [ref=e26]
+          - generic [ref=e28]: 好友
+        - menuitem "container Docker 管理" [ref=e29] [cursor=pointer]:
+          - img "container" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: Docker 管理
+        - menuitem "setting 管理后台" [ref=e34] [cursor=pointer]:
+          - img "setting" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 管理后台
+  - generic [ref=e39]:
+    - banner [ref=e40]:
+      - button "menu-fold" [ref=e41] [cursor=pointer]:
+        - img "menu-fold" [ref=e43]:
+          - img [ref=e44]
+      - generic [ref=e46]:
+        - button "user admin" [ref=e47] [cursor=pointer]:
+          - img "user" [ref=e49]:
+            - img [ref=e50]
+          - generic [ref=e52]: admin
+        - button "logout 退出" [ref=e53] [cursor=pointer]:
+          - img "logout" [ref=e55]:
+            - img [ref=e56]
+          - generic [ref=e58]: 退出
+    - main [ref=e59]:
+      - generic [ref=e60]:
+        - generic [ref=e62]:
+          - img "environment" [ref=e64]:
+            - img [ref=e65]
+          - generic [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]:
+              - generic [ref=e70]:
+                - text: local
+                - generic [ref=e71]: (unix:///var/run/docker.sock)
+                - generic [ref=e72]: healthy
+              - combobox [ref=e73]
+            - img "down" [ref=e75]:
+              - img [ref=e76]
+          - button "reload" [ref=e79] [cursor=pointer]:
+            - img "reload" [ref=e81]:
+              - img [ref=e82]
+        - generic [ref=e84]:
+          - tablist [ref=e85]:
+            - generic [ref=e87]:
+              - tab "容器" [selected] [ref=e89] [cursor=pointer]
+              - tab "镜像" [ref=e91] [cursor=pointer]
+          - tabpanel "容器" [ref=e94]:
+            - generic [ref=e95]:
+              - generic [ref=e96]:
+                - button "plus 创建容器" [ref=e98] [cursor=pointer]:
+                  - img "plus" [ref=e100]:
+                    - img [ref=e101]
+                  - generic [ref=e104]: 创建容器
+                - button "reload 刷新" [ref=e106] [cursor=pointer]:
+                  - img "reload" [ref=e108]:
+                    - img [ref=e109]
+                  - generic [ref=e111]: 刷新
+              - generic [ref=e112]:
+                - generic [ref=e113]: 显示全部
+                - switch [ref=e115] [cursor=pointer]
+            - table [ref=e124]:
+              - rowgroup [ref=e133]:
+                - row "名称 镜像 容器ID 状态 创建时间 操作" [ref=e134]:
+                  - columnheader [ref=e135]
+                  - columnheader "名称" [ref=e136]
+                  - columnheader "镜像" [ref=e137]
+                  - columnheader "容器ID" [ref=e138]
+                  - columnheader "状态" [ref=e139]
+                  - columnheader "创建时间" [ref=e140]
+                  - columnheader "操作" [ref=e141]
+              - rowgroup [ref=e142]:
+                - row "deploy-docker-svc-1 deploy-docker-svc 9b5a3aeea2f0 Up 2 minutes (healthy) 2026/5/7 10:05:42 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e143]:
+                  - cell [ref=e144]
+                  - cell "deploy-docker-svc-1" [ref=e145]
+                  - cell "deploy-docker-svc" [ref=e146]
+                  - cell "9b5a3aeea2f0" [ref=e147]:
+                    - code [ref=e149]: 9b5a3aeea2f0
+                  - cell "Up 2 minutes (healthy)" [ref=e150]:
+                    - generic [ref=e151]: Up 2 minutes (healthy)
+                  - cell "2026/5/7 10:05:42" [ref=e152]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e153]:
+                    - generic [ref=e154]:
+                      - button "pause-circle 停止" [ref=e156] [cursor=pointer]:
+                        - img "pause-circle" [ref=e158]:
+                          - img [ref=e159]
+                        - generic [ref=e161]: 停止
+                      - button "sync 重启" [ref=e163] [cursor=pointer]:
+                        - img "sync" [ref=e165]:
+                          - img [ref=e166]
+                        - generic [ref=e168]: 重启
+                      - button "file-text 日志" [ref=e170] [cursor=pointer]:
+                        - img "file-text" [ref=e172]:
+                          - img [ref=e173]
+                        - generic [ref=e175]: 日志
+                      - button "block 监控" [ref=e177] [cursor=pointer]:
+                        - img "block" [ref=e179]:
+                          - img [ref=e180]
+                        - generic [ref=e182]: 监控
+                      - button "delete" [ref=e184] [cursor=pointer]:
+                        - img "delete" [ref=e186]:
+                          - img [ref=e187]
+                - row "deploy-user-file-svc-1 deploy-user-file-svc 51130151728e Up 2 minutes (healthy) 2026/5/7 10:05:42 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e189]:
+                  - cell [ref=e190]
+                  - cell "deploy-user-file-svc-1" [ref=e191]
+                  - cell "deploy-user-file-svc" [ref=e192]
+                  - cell "51130151728e" [ref=e193]:
+                    - code [ref=e195]: 51130151728e
+                  - cell "Up 2 minutes (healthy)" [ref=e196]:
+                    - generic [ref=e197]: Up 2 minutes (healthy)
+                  - cell "2026/5/7 10:05:42" [ref=e198]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e199]:
+                    - generic [ref=e200]:
+                      - button "pause-circle 停止" [ref=e202] [cursor=pointer]:
+                        - img "pause-circle" [ref=e204]:
+                          - img [ref=e205]
+                        - generic [ref=e207]: 停止
+                      - button "sync 重启" [ref=e209] [cursor=pointer]:
+                        - img "sync" [ref=e211]:
+                          - img [ref=e212]
+                        - generic [ref=e214]: 重启
+                      - button "file-text 日志" [ref=e216] [cursor=pointer]:
+                        - img "file-text" [ref=e218]:
+                          - img [ref=e219]
+                        - generic [ref=e221]: 日志
+                      - button "block 监控" [ref=e223] [cursor=pointer]:
+                        - img "block" [ref=e225]:
+                          - img [ref=e226]
+                        - generic [ref=e228]: 监控
+                      - button "delete" [ref=e230] [cursor=pointer]:
+                        - img "delete" [ref=e232]:
+                          - img [ref=e233]
+                - row "deploy-im-svc-1 deploy-im-svc 2150d6ccfeed Up 55 minutes (healthy) 2026/5/7 00:15:13 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e235]:
+                  - cell [ref=e236]
+                  - cell "deploy-im-svc-1" [ref=e237]
+                  - cell "deploy-im-svc" [ref=e238]
+                  - cell "2150d6ccfeed" [ref=e239]:
+                    - code [ref=e241]: 2150d6ccfeed
+                  - cell "Up 55 minutes (healthy)" [ref=e242]:
+                    - generic [ref=e243]: Up 55 minutes (healthy)
+                  - cell "2026/5/7 00:15:13" [ref=e244]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e245]:
+                    - generic [ref=e246]:
+                      - button "pause-circle 停止" [ref=e248] [cursor=pointer]:
+                        - img "pause-circle" [ref=e250]:
+                          - img [ref=e251]
+                        - generic [ref=e253]: 停止
+                      - button "sync 重启" [ref=e255] [cursor=pointer]:
+                        - img "sync" [ref=e257]:
+                          - img [ref=e258]
+                        - generic [ref=e260]: 重启
+                      - button "file-text 日志" [ref=e262] [cursor=pointer]:
+                        - img "file-text" [ref=e264]:
+                          - img [ref=e265]
+                        - generic [ref=e267]: 日志
+                      - button "block 监控" [ref=e269] [cursor=pointer]:
+                        - img "block" [ref=e271]:
+                          - img [ref=e272]
+                        - generic [ref=e274]: 监控
+                      - button "delete" [ref=e276] [cursor=pointer]:
+                        - img "delete" [ref=e278]:
+                          - img [ref=e279]
+                - row "deploy-nginx-1 nginx:alpine d2dd477bb63b Up 55 minutes 2026/5/4 16:38:34 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e281]:
+                  - cell [ref=e282]
+                  - cell "deploy-nginx-1" [ref=e283]
+                  - cell "nginx:alpine" [ref=e284]
+                  - cell "d2dd477bb63b" [ref=e285]:
+                    - code [ref=e287]: d2dd477bb63b
+                  - cell "Up 55 minutes" [ref=e288]:
+                    - generic [ref=e289]: Up 55 minutes
+                  - cell "2026/5/4 16:38:34" [ref=e290]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e291]:
+                    - generic [ref=e292]:
+                      - button "pause-circle 停止" [ref=e294] [cursor=pointer]:
+                        - img "pause-circle" [ref=e296]:
+                          - img [ref=e297]
+                        - generic [ref=e299]: 停止
+                      - button "sync 重启" [ref=e301] [cursor=pointer]:
+                        - img "sync" [ref=e303]:
+                          - img [ref=e304]
+                        - generic [ref=e306]: 重启
+                      - button "file-text 日志" [ref=e308] [cursor=pointer]:
+                        - img "file-text" [ref=e310]:
+                          - img [ref=e311]
+                        - generic [ref=e313]: 日志
+                      - button "block 监控" [ref=e315] [cursor=pointer]:
+                        - img "block" [ref=e317]:
+                          - img [ref=e318]
+                        - generic [ref=e320]: 监控
+                      - button "delete" [ref=e322] [cursor=pointer]:
+                        - img "delete" [ref=e324]:
+                          - img [ref=e325]
+                - row "deploy-minio-1 minio/minio:latest 93702236b130 Up 55 minutes (healthy) 2026/5/4 16:38:34 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e327]:
+                  - cell [ref=e328]
+                  - cell "deploy-minio-1" [ref=e329]
+                  - cell "minio/minio:latest" [ref=e330]
+                  - cell "93702236b130" [ref=e331]:
+                    - code [ref=e333]: 93702236b130
+                  - cell "Up 55 minutes (healthy)" [ref=e334]:
+                    - generic [ref=e335]: Up 55 minutes (healthy)
+                  - cell "2026/5/4 16:38:34" [ref=e336]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e337]:
+                    - generic [ref=e338]:
+                      - button "pause-circle 停止" [ref=e340] [cursor=pointer]:
+                        - img "pause-circle" [ref=e342]:
+                          - img [ref=e343]
+                        - generic [ref=e345]: 停止
+                      - button "sync 重启" [ref=e347] [cursor=pointer]:
+                        - img "sync" [ref=e349]:
+                          - img [ref=e350]
+                        - generic [ref=e352]: 重启
+                      - button "file-text 日志" [ref=e354] [cursor=pointer]:
+                        - img "file-text" [ref=e356]:
+                          - img [ref=e357]
+                        - generic [ref=e359]: 日志
+                      - button "block 监控" [ref=e361] [cursor=pointer]:
+                        - img "block" [ref=e363]:
+                          - img [ref=e364]
+                        - generic [ref=e366]: 监控
+                      - button "delete" [ref=e368] [cursor=pointer]:
+                        - img "delete" [ref=e370]:
+                          - img [ref=e371]
+                - row "deploy-postgres-1 postgres:15-alpine b6ca27c96d55 Up 55 minutes (healthy) 2026/5/4 16:38:34 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e373]:
+                  - cell [ref=e374]
+                  - cell "deploy-postgres-1" [ref=e375]
+                  - cell "postgres:15-alpine" [ref=e376]
+                  - cell "b6ca27c96d55" [ref=e377]:
+                    - code [ref=e379]: b6ca27c96d55
+                  - cell "Up 55 minutes (healthy)" [ref=e380]:
+                    - generic [ref=e381]: Up 55 minutes (healthy)
+                  - cell "2026/5/4 16:38:34" [ref=e382]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e383]:
+                    - generic [ref=e384]:
+                      - button "pause-circle 停止" [ref=e386] [cursor=pointer]:
+                        - img "pause-circle" [ref=e388]:
+                          - img [ref=e389]
+                        - generic [ref=e391]: 停止
+                      - button "sync 重启" [ref=e393] [cursor=pointer]:
+                        - img "sync" [ref=e395]:
+                          - img [ref=e396]
+                        - generic [ref=e398]: 重启
+                      - button "file-text 日志" [ref=e400] [cursor=pointer]:
+                        - img "file-text" [ref=e402]:
+                          - img [ref=e403]
+                        - generic [ref=e405]: 日志
+                      - button "block 监控" [ref=e407] [cursor=pointer]:
+                        - img "block" [ref=e409]:
+                          - img [ref=e410]
+                        - generic [ref=e412]: 监控
+                      - button "delete" [ref=e414] [cursor=pointer]:
+                        - img "delete" [ref=e416]:
+                          - img [ref=e417]
+                - row "deploy-redis-1 redis:7-alpine 9dcaa536c89f Up 55 minutes (healthy) 2026/5/4 16:38:34 pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e419]:
+                  - cell [ref=e420]
+                  - cell "deploy-redis-1" [ref=e421]
+                  - cell "redis:7-alpine" [ref=e422]
+                  - cell "9dcaa536c89f" [ref=e423]:
+                    - code [ref=e425]: 9dcaa536c89f
+                  - cell "Up 55 minutes (healthy)" [ref=e426]:
+                    - generic [ref=e427]: Up 55 minutes (healthy)
+                  - cell "2026/5/4 16:38:34" [ref=e428]
+                  - cell "pause-circle 停止 sync 重启 file-text 日志 block 监控 delete" [ref=e429]:
+                    - generic [ref=e430]:
+                      - button "pause-circle 停止" [ref=e432] [cursor=pointer]:
+                        - img "pause-circle" [ref=e434]:
+                          - img [ref=e435]
+                        - generic [ref=e437]: 停止
+                      - button "sync 重启" [ref=e439] [cursor=pointer]:
+                        - img "sync" [ref=e441]:
+                          - img [ref=e442]
+                        - generic [ref=e444]: 重启
+                      - button "file-text 日志" [ref=e446] [cursor=pointer]:
+                        - img "file-text" [ref=e448]:
+                          - img [ref=e449]
+                        - generic [ref=e451]: 日志
+                      - button "block 监控" [ref=e453] [cursor=pointer]:
+                        - img "block" [ref=e455]:
+                          - img [ref=e456]
+                        - generic [ref=e458]: 监控
+                      - button "delete" [ref=e460] [cursor=pointer]:
+                        - img "delete" [ref=e462]:
+                          - img [ref=e463]

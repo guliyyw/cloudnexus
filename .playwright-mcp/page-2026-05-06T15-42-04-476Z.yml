@@ -1,0 +1,442 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]: CloudNexus
+      - menu [ref=e8]:
+        - menuitem "cloud 文件管理" [ref=e9] [cursor=pointer]:
+          - img "cloud" [ref=e10]:
+            - img [ref=e11]
+          - generic [ref=e13]: 文件管理
+        - menuitem "share-alt 我的分享" [ref=e14] [cursor=pointer]:
+          - img "share-alt" [ref=e15]:
+            - img [ref=e16]
+          - generic [ref=e18]: 我的分享
+        - menuitem "message 即时通讯" [ref=e19] [cursor=pointer]:
+          - img "message" [ref=e20]:
+            - img [ref=e21]
+          - generic [ref=e23]: 即时通讯
+        - menuitem "team 好友" [ref=e24] [cursor=pointer]:
+          - img "team" [ref=e25]:
+            - img [ref=e26]
+          - generic [ref=e28]: 好友
+        - menuitem "container Docker 管理" [ref=e29] [cursor=pointer]:
+          - img "container" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: Docker 管理
+        - menuitem "setting 管理后台" [ref=e34] [cursor=pointer]:
+          - img "setting" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 管理后台
+  - generic [ref=e39]:
+    - banner [ref=e40]:
+      - button "menu-fold" [ref=e41] [cursor=pointer]:
+        - img "menu-fold" [ref=e43]:
+          - img [ref=e44]
+      - generic [ref=e46]:
+        - button "user admin" [ref=e47] [cursor=pointer]:
+          - img "user" [ref=e49]:
+            - img [ref=e50]
+          - generic [ref=e52]: admin
+        - button "logout 退出" [ref=e53] [cursor=pointer]:
+          - img "logout" [ref=e55]:
+            - img [ref=e56]
+          - generic [ref=e58]: 退出
+    - main [ref=e59]:
+      - generic [ref=e60]:
+        - tablist [ref=e61]:
+          - generic [ref=e63]:
+            - tab "user 用户管理" [selected] [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]:
+                - img "user" [ref=e67]:
+                  - img [ref=e68]
+                - text: 用户管理
+            - tab "dashboard 系统状态" [ref=e71] [cursor=pointer]:
+              - generic [ref=e72]:
+                - img "dashboard" [ref=e73]:
+                  - img [ref=e74]
+                - text: 系统状态
+            - tab "cluster 集群节点" [ref=e77] [cursor=pointer]:
+              - generic [ref=e78]:
+                - img "cluster" [ref=e79]:
+                  - img [ref=e80]
+                - text: 集群节点
+            - tab "area-chart 历史指标" [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]:
+                - img "area-chart" [ref=e85]:
+                  - img [ref=e86]
+                - text: 历史指标
+            - tab "file-text 服务器日志" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]:
+                - img "file-text" [ref=e91]:
+                  - img [ref=e92]
+                - text: 服务器日志
+        - tabpanel "user 用户管理" [ref=e96]:
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - generic [ref=e102]:
+                - generic [ref=e104]: 用户总数
+                - generic [ref=e105]:
+                  - img "user" [ref=e107]:
+                    - img [ref=e108]
+                  - generic [ref=e110]: "12"
+              - generic [ref=e114]:
+                - generic [ref=e116]: 活跃用户
+                - generic [ref=e117]:
+                  - img "check-circle" [ref=e119]:
+                    - img [ref=e120]
+                  - generic [ref=e123]: "12"
+              - generic [ref=e127]:
+                - generic [ref=e129]: 管理员
+                - generic [ref=e130]:
+                  - img "user" [ref=e132]:
+                    - img [ref=e133]
+                  - generic [ref=e135]: "4"
+            - generic [ref=e136]:
+              - strong [ref=e138]: 用户管理
+              - button "reload 刷新" [ref=e139] [cursor=pointer]:
+                - img "reload" [ref=e141]:
+                  - img [ref=e142]
+                - generic [ref=e144]: 刷新
+            - generic [ref=e146]:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - table:
+                        - rowgroup:
+                          - row "ID 用户名 邮箱 角色 状态 注册时间 操作":
+                            - columnheader "ID"
+                            - columnheader "用户名"
+                            - columnheader "邮箱"
+                            - columnheader "角色"
+                            - columnheader "状态"
+                            - columnheader "注册时间"
+                            - columnheader "操作"
+                            - columnheader
+                    - generic:
+                      - table:
+                        - rowgroup:
+                          - row "23328000 复制 testuser test@test.com 用户 check-circle 正常 2026/5/4 13:43:31 设为管理员 禁 用":
+                            - cell "23328000 复制":
+                              - generic:
+                                - text: "23328000"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "testuser"
+                            - cell "test@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 13:43:31"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "19801600 复制 alice alice@test.com 用户 check-circle 正常 2026/5/4 13:43:41 设为管理员 禁 用":
+                            - cell "19801600 复制":
+                              - generic:
+                                - text: "19801600"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "alice"
+                            - cell "alice@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 13:43:41"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "67928832 复制 bob bob@test.com 用户 check-circle 正常 2026/5/4 13:43:41 设为管理员 禁 用":
+                            - cell "67928832 复制":
+                              - generic:
+                                - text: "67928832"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "bob"
+                            - cell "bob@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 13:43:41"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "90142976 复制 1436197526@qq.com 1436197526@qq.com 管理员 check-circle 正常 2026/5/4 13:52:52 取消管理员 禁 用":
+                            - cell "90142976 复制":
+                              - generic:
+                                - text: "90142976"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "1436197526@qq.com"
+                            - cell "1436197526@qq.com"
+                            - cell "管理员":
+                              - generic: 管理员
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 13:52:52"
+                            - cell "取消管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "取消管理员":
+                                    - generic: 取消管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "03969280 复制 testuser2 test2@test.com 用户 check-circle 正常 2026/5/4 14:04:15 设为管理员 禁 用":
+                            - cell "03969280 复制":
+                              - generic:
+                                - text: "03969280"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "testuser2"
+                            - cell "test2@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 14:04:15"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "60555520 复制 alice2 alice2@test.com 用户 check-circle 正常 2026/5/4 14:06:09 设为管理员 禁 用":
+                            - cell "60555520 复制":
+                              - generic:
+                                - text: "60555520"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "alice2"
+                            - cell "alice2@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 14:06:09"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "21265664 复制 bob2 bob2@test.com 用户 check-circle 正常 2026/5/4 14:06:09 设为管理员 禁 用":
+                            - cell "21265664 复制":
+                              - generic:
+                                - text: "21265664"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "bob2"
+                            - cell "bob2@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 14:06:09"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "52405248 复制 admin admin@cloudnexus.dev 管理员 check-circle 正常 2026/5/4 16:38:56 取消管理员 禁 用":
+                            - cell "52405248 复制":
+                              - generic:
+                                - text: "52405248"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "admin"
+                            - cell "admin@cloudnexus.dev"
+                            - cell "管理员":
+                              - generic: 管理员
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 16:38:56"
+                            - cell "取消管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "取消管理员":
+                                    - generic: 取消管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "77076992 复制 testuser1 test1@test.com 管理员 check-circle 正常 2026/5/4 16:57:08 取消管理员 禁 用":
+                            - cell "77076992 复制":
+                              - generic:
+                                - text: "77076992"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "testuser1"
+                            - cell "test1@test.com"
+                            - cell "管理员":
+                              - generic: 管理员
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 16:57:08"
+                            - cell "取消管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "取消管理员":
+                                    - generic: 取消管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "33431040 复制 testuser3 test3@test.com 用户 check-circle 正常 2026/5/4 17:12:04 设为管理员 禁 用":
+                            - cell "33431040 复制":
+                              - generic:
+                                - text: "33431040"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "testuser3"
+                            - cell "test3@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 17:12:04"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "51082752 复制 admintest admintest@test.local 管理员 check-circle 正常 2026/5/4 19:11:42 取消管理员 禁 用":
+                            - cell "51082752 复制":
+                              - generic:
+                                - text: "51082752"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "admintest"
+                            - cell "admintest@test.local"
+                            - cell "管理员":
+                              - generic: 管理员
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/4 19:11:42"
+                            - cell "取消管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "取消管理员":
+                                    - generic: 取消管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "48189952 复制 tester42 tester42@test.com 用户 check-circle 正常 2026/5/6 13:45:27 设为管理员 禁 用":
+                            - cell "48189952 复制":
+                              - generic:
+                                - text: "48189952"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "tester42"
+                            - cell "tester42@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/6 13:45:27"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                - list:
+                  - listitem: 共 12 用户
+                  - listitem "上一页":
+                    - button "left" [disabled]:
+                      - img "left":
+                        - img
+                  - listitem "1":
+                    - generic: "1"
+                  - listitem "下一页":
+                    - button "right" [disabled]:
+                      - img "right":
+                        - img

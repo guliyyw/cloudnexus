@@ -217,3 +217,19 @@ func (h *FaceHandler) HandleListFaceEvents(c *gin.Context) {
 		"page_size": pageSize,
 	}))
 }
+
+// HandleClearFaceEvents deletes all face recognition events for a camera.
+// Only clears recognition records, NOT attendance data.
+func (h *FaceHandler) HandleClearFaceEvents(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
+		return
+	}
+	count, err := h.svc.ClearFaceEvents(id)
+	if err != nil {
+		c.JSON(500, response.Error(500, "清空人脸识别记录失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))
+}

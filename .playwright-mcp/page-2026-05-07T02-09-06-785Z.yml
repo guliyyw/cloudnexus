@@ -1,0 +1,338 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]: CloudNexus
+      - menu [ref=e8]:
+        - menuitem "cloud 文件管理" [ref=e9] [cursor=pointer]:
+          - img "cloud" [ref=e10]:
+            - img [ref=e11]
+          - generic [ref=e13]: 文件管理
+        - menuitem "share-alt 我的分享" [ref=e14] [cursor=pointer]:
+          - img "share-alt" [ref=e15]:
+            - img [ref=e16]
+          - generic [ref=e18]: 我的分享
+        - menuitem "message 即时通讯" [ref=e19] [cursor=pointer]:
+          - img "message" [ref=e20]:
+            - img [ref=e21]
+          - generic [ref=e23]: 即时通讯
+        - menuitem "team 好友" [ref=e24] [cursor=pointer]:
+          - img "team" [ref=e25]:
+            - img [ref=e26]
+          - generic [ref=e28]: 好友
+        - menuitem "container Docker 管理" [ref=e29] [cursor=pointer]:
+          - img "container" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: Docker 管理
+        - menuitem "setting 管理后台" [ref=e34] [cursor=pointer]:
+          - img "setting" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 管理后台
+  - generic [ref=e39]:
+    - banner [ref=e40]:
+      - button "menu-fold" [ref=e41] [cursor=pointer]:
+        - img "menu-fold" [ref=e43]:
+          - img [ref=e44]
+      - generic [ref=e46]:
+        - button "user admin" [ref=e47] [cursor=pointer]:
+          - img "user" [ref=e49]:
+            - img [ref=e50]
+          - generic [ref=e52]: admin
+        - button "logout 退出" [ref=e53] [cursor=pointer]:
+          - img "logout" [ref=e55]:
+            - img [ref=e56]
+          - generic [ref=e58]: 退出
+    - main [ref=e59]:
+      - generic [ref=e60]:
+        - tablist [ref=e61]:
+          - generic [ref=e63]:
+            - tab "user 用户管理" [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]:
+                - img "user" [ref=e67]:
+                  - img [ref=e68]
+                - text: 用户管理
+            - tab "dashboard 系统状态" [ref=e71] [cursor=pointer]:
+              - generic [ref=e72]:
+                - img "dashboard" [ref=e73]:
+                  - img [ref=e74]
+                - text: 系统状态
+            - tab "cluster 集群节点" [active] [selected] [ref=e77] [cursor=pointer]:
+              - generic [ref=e78]:
+                - img "cluster" [ref=e79]:
+                  - img [ref=e80]
+                - text: 集群节点
+            - tab "area-chart 历史指标" [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]:
+                - img "area-chart" [ref=e85]:
+                  - img [ref=e86]
+                - text: 历史指标
+            - tab "file-text 服务器日志" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]:
+                - img "file-text" [ref=e91]:
+                  - img [ref=e92]
+                - text: 服务器日志
+        - tabpanel "cluster 集群节点" [ref=e154]:
+          - generic [ref=e155]:
+            - generic [ref=e156]:
+              - generic [ref=e160]:
+                - generic [ref=e162]: 在线节点
+                - generic [ref=e163]:
+                  - img "check-circle" [ref=e165]:
+                    - img [ref=e166]
+                  - generic [ref=e169]: "8"
+              - generic [ref=e173]:
+                - generic [ref=e175]: 历史节点
+                - generic [ref=e176]:
+                  - img "history" [ref=e178]:
+                    - img [ref=e179]
+                  - generic [ref=e181]: "1"
+              - generic [ref=e185]:
+                - generic [ref=e187]: 未响应
+                - generic [ref=e188]:
+                  - img "stop" [ref=e190]:
+                    - img [ref=e191]
+                  - generic [ref=e193]: "0"
+              - generic [ref=e197]:
+                - generic [ref=e199]: 节点总计
+                - generic [ref=e200]:
+                  - img "cloud-server" [ref=e202]:
+                    - img [ref=e203]
+                  - generic [ref=e207]: "9"
+            - generic [ref=e208]:
+              - strong [ref=e210]: 集群节点
+              - generic [ref=e211]:
+                - generic [ref=e213] [cursor=pointer]:
+                  - generic [ref=e214]:
+                    - generic: 服务
+                    - combobox [ref=e215]
+                  - img "down" [ref=e217]:
+                    - img [ref=e218]
+                - generic [ref=e221] [cursor=pointer]:
+                  - generic [ref=e222]:
+                    - generic: 主机
+                    - combobox [ref=e223]
+                  - img "down" [ref=e225]:
+                    - img [ref=e226]
+                - generic [ref=e229] [cursor=pointer]:
+                  - generic [ref=e230]:
+                    - generic: 类型
+                    - combobox [ref=e231]
+                  - img "down" [ref=e233]:
+                    - img [ref=e234]
+                - button "reload 刷新" [ref=e237] [cursor=pointer]:
+                  - img "reload" [ref=e239]:
+                    - img [ref=e240]
+                  - generic [ref=e242]: 刷新
+                - button "plus 添加节点" [ref=e244] [cursor=pointer]:
+                  - img "plus" [ref=e246]:
+                    - img [ref=e247]
+                  - generic [ref=e250]: 添加节点
+            - generic [ref=e252]:
+              - img "check-circle" [ref=e253]:
+                - img [ref=e254]
+              - text: 当前在线 / 未响应
+            - table [ref=e263]:
+              - rowgroup [ref=e272]:
+                - row "节点名称 类型 服务 状态 累计在线 本次上线 主机:端口" [ref=e273]:
+                  - columnheader "节点名称" [ref=e274]
+                  - columnheader "类型" [ref=e275]
+                  - columnheader "服务" [ref=e276]
+                  - columnheader "状态" [ref=e277]
+                  - columnheader "累计在线" [ref=e278]
+                  - columnheader "本次上线" [ref=e279]
+                  - columnheader "主机:端口" [ref=e280]
+              - rowgroup [ref=e281]:
+                - row "2150d6ccfeed 服务 im-svc check-circle 在线 clock-circle 9h 53m 2026/5/7 00:15:34 localhost:8082" [ref=e282]:
+                  - cell "2150d6ccfeed" [ref=e283]
+                  - cell "服务" [ref=e284]:
+                    - generic [ref=e285]: 服务
+                  - cell "im-svc" [ref=e286]:
+                    - generic [ref=e287]: im-svc
+                  - cell "check-circle 在线" [ref=e288]:
+                    - generic [ref=e289]:
+                      - img "check-circle" [ref=e290]:
+                        - img [ref=e291]
+                      - text: 在线
+                  - cell "clock-circle 9h 53m" [ref=e294]:
+                    - generic [ref=e295]:
+                      - img "clock-circle" [ref=e296]:
+                        - img [ref=e297]
+                      - text: 9h 53m
+                  - cell "2026/5/7 00:15:34" [ref=e300]
+                  - cell "localhost:8082" [ref=e301]:
+                    - generic [ref=e302]: localhost:8082
+                - row "51130151728e 服务 user-file-svc check-circle 在线 clock-circle 3m 2026/5/7 10:05:48 localhost:8081" [ref=e303]:
+                  - cell "51130151728e" [ref=e304]
+                  - cell "服务" [ref=e305]:
+                    - generic [ref=e306]: 服务
+                  - cell "user-file-svc" [ref=e307]:
+                    - generic [ref=e308]: user-file-svc
+                  - cell "check-circle 在线" [ref=e309]:
+                    - generic [ref=e310]:
+                      - img "check-circle" [ref=e311]:
+                        - img [ref=e312]
+                      - text: 在线
+                  - cell "clock-circle 3m" [ref=e315]:
+                    - generic [ref=e316]:
+                      - img "clock-circle" [ref=e317]:
+                        - img [ref=e318]
+                      - text: 3m
+                  - cell "2026/5/7 10:05:48" [ref=e321]
+                  - cell "localhost:8081" [ref=e322]:
+                    - generic [ref=e323]: localhost:8081
+                - row "9b5a3aeea2f0 服务 docker-svc check-circle 在线 clock-circle 3m 2026/5/7 10:05:45 localhost:8083" [ref=e324]:
+                  - cell "9b5a3aeea2f0" [ref=e325]
+                  - cell "服务" [ref=e326]:
+                    - generic [ref=e327]: 服务
+                  - cell "docker-svc" [ref=e328]:
+                    - generic [ref=e329]: docker-svc
+                  - cell "check-circle 在线" [ref=e330]:
+                    - generic [ref=e331]:
+                      - img "check-circle" [ref=e332]:
+                        - img [ref=e333]
+                      - text: 在线
+                  - cell "clock-circle 3m" [ref=e336]:
+                    - generic [ref=e337]:
+                      - img "clock-circle" [ref=e338]:
+                        - img [ref=e339]
+                      - text: 3m
+                  - cell "2026/5/7 10:05:45" [ref=e342]
+                  - cell "localhost:8083" [ref=e343]:
+                    - generic [ref=e344]: localhost:8083
+                - row "a9133fb6ff23 服务 user-file-svc check-circle 在线 clock-circle 9h 53m 2026/5/7 10:08:57 localhost:8081" [ref=e345]:
+                  - cell "a9133fb6ff23" [ref=e346]
+                  - cell "服务" [ref=e347]:
+                    - generic [ref=e348]: 服务
+                  - cell "user-file-svc" [ref=e349]:
+                    - generic [ref=e350]: user-file-svc
+                  - cell "check-circle 在线" [ref=e351]:
+                    - generic [ref=e352]:
+                      - img "check-circle" [ref=e353]:
+                        - img [ref=e354]
+                      - text: 在线
+                  - cell "clock-circle 9h 53m" [ref=e357]:
+                    - generic [ref=e358]:
+                      - img "clock-circle" [ref=e359]:
+                        - img [ref=e360]
+                      - text: 9h 53m
+                  - cell "2026/5/7 10:08:57" [ref=e363]
+                  - cell "localhost:8081" [ref=e364]:
+                    - generic [ref=e365]: localhost:8081
+                - row "minio 基础设施 minio check-circle 在线 clock-circle 9h 54m 2026/5/7 00:14:11 localhost:9000" [ref=e366]:
+                  - cell "minio" [ref=e367]
+                  - cell "基础设施" [ref=e368]:
+                    - generic [ref=e369]: 基础设施
+                  - cell "minio" [ref=e370]:
+                    - generic [ref=e371]: minio
+                  - cell "check-circle 在线" [ref=e372]:
+                    - generic [ref=e373]:
+                      - img "check-circle" [ref=e374]:
+                        - img [ref=e375]
+                      - text: 在线
+                  - cell "clock-circle 9h 54m" [ref=e378]:
+                    - generic [ref=e379]:
+                      - img "clock-circle" [ref=e380]:
+                        - img [ref=e381]
+                      - text: 9h 54m
+                  - cell "2026/5/7 00:14:11" [ref=e384]
+                  - cell "localhost:9000" [ref=e385]:
+                    - generic [ref=e386]: localhost:9000
+                - row "nginx 服务 user-file-svc check-circle 在线 clock-circle 9h 43m 2026/5/7 00:25:13 localhost:80" [ref=e387]:
+                  - cell "nginx" [ref=e388]
+                  - cell "服务" [ref=e389]:
+                    - generic [ref=e390]: 服务
+                  - cell "user-file-svc" [ref=e391]:
+                    - generic [ref=e392]: user-file-svc
+                  - cell "check-circle 在线" [ref=e393]:
+                    - generic [ref=e394]:
+                      - img "check-circle" [ref=e395]:
+                        - img [ref=e396]
+                      - text: 在线
+                  - cell "clock-circle 9h 43m" [ref=e399]:
+                    - generic [ref=e400]:
+                      - img "clock-circle" [ref=e401]:
+                        - img [ref=e402]
+                      - text: 9h 43m
+                  - cell "2026/5/7 00:25:13" [ref=e405]
+                  - cell "localhost:80" [ref=e406]:
+                    - generic [ref=e407]: localhost:80
+                - row "postgres 基础设施 postgres check-circle 在线 clock-circle 9h 54m 2026/5/7 00:14:11 localhost:5432" [ref=e408]:
+                  - cell "postgres" [ref=e409]
+                  - cell "基础设施" [ref=e410]:
+                    - generic [ref=e411]: 基础设施
+                  - cell "postgres" [ref=e412]:
+                    - generic [ref=e413]: postgres
+                  - cell "check-circle 在线" [ref=e414]:
+                    - generic [ref=e415]:
+                      - img "check-circle" [ref=e416]:
+                        - img [ref=e417]
+                      - text: 在线
+                  - cell "clock-circle 9h 54m" [ref=e420]:
+                    - generic [ref=e421]:
+                      - img "clock-circle" [ref=e422]:
+                        - img [ref=e423]
+                      - text: 9h 54m
+                  - cell "2026/5/7 00:14:11" [ref=e426]
+                  - cell "localhost:5432" [ref=e427]:
+                    - generic [ref=e428]: localhost:5432
+                - row "redis 基础设施 redis check-circle 在线 clock-circle 9h 54m 2026/5/7 00:14:11 localhost:6379" [ref=e429]:
+                  - cell "redis" [ref=e430]
+                  - cell "基础设施" [ref=e431]:
+                    - generic [ref=e432]: 基础设施
+                  - cell "redis" [ref=e433]:
+                    - generic [ref=e434]: redis
+                  - cell "check-circle 在线" [ref=e435]:
+                    - generic [ref=e436]:
+                      - img "check-circle" [ref=e437]:
+                        - img [ref=e438]
+                      - text: 在线
+                  - cell "clock-circle 9h 54m" [ref=e441]:
+                    - generic [ref=e442]:
+                      - img "clock-circle" [ref=e443]:
+                        - img [ref=e444]
+                      - text: 9h 54m
+                  - cell "2026/5/7 00:14:11" [ref=e447]
+                  - cell "localhost:6379" [ref=e448]:
+                    - generic [ref=e449]: localhost:6379
+            - generic [ref=e451]:
+              - img "history" [ref=e452]:
+                - img [ref=e453]
+              - text: 历史节点
+            - table [ref=e461]:
+              - rowgroup [ref=e472]:
+                - row "节点名称 类型 服务 状态 累计在线 下线时间 首次注册 操作" [ref=e473]:
+                  - columnheader [ref=e474]
+                  - columnheader "节点名称" [ref=e475]
+                  - columnheader "类型" [ref=e476]
+                  - columnheader "服务" [ref=e477]
+                  - columnheader "状态" [ref=e478]
+                  - columnheader "累计在线" [ref=e479]
+                  - columnheader "下线时间" [ref=e480]
+                  - columnheader "首次注册" [ref=e481]
+                  - columnheader "操作" [ref=e482]
+              - rowgroup [ref=e483]:
+                - row "clock-circle aab7c928d372 服务 docker-svc stop 离线 clock-circle 9h 50m 2026/5/7 10:05:44 2026/5/7 00:15:14 delete" [ref=e484]:
+                  - cell "clock-circle" [ref=e485]:
+                    - button "clock-circle" [ref=e486] [cursor=pointer]:
+                      - img "clock-circle" [ref=e488]:
+                        - img [ref=e489]
+                  - cell "aab7c928d372" [ref=e492]
+                  - cell "服务" [ref=e493]:
+                    - generic [ref=e494]: 服务
+                  - cell "docker-svc" [ref=e495]:
+                    - generic [ref=e496]: docker-svc
+                  - cell "stop 离线" [ref=e497]:
+                    - generic [ref=e498]:
+                      - img "stop" [ref=e499]:
+                        - img [ref=e500]
+                      - text: 离线
+                  - cell "clock-circle 9h 50m" [ref=e502]:
+                    - generic [ref=e503]:
+                      - img "clock-circle" [ref=e504]:
+                        - img [ref=e505]
+                      - text: 9h 50m
+                  - cell "2026/5/7 10:05:44" [ref=e508]
+                  - cell "2026/5/7 00:15:14" [ref=e509]
+                  - cell "delete" [ref=e510]:
+                    - button "delete" [ref=e511] [cursor=pointer]:
+                      - img "delete" [ref=e513]:
+                        - img [ref=e514]

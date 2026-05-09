@@ -1,0 +1,187 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]: CloudNexus
+      - menu [ref=e8]:
+        - menuitem "cloud 文件管理" [ref=e9] [cursor=pointer]:
+          - img "cloud" [ref=e10]:
+            - img [ref=e11]
+          - generic [ref=e13]: 文件管理
+        - menuitem "share-alt 我的分享" [ref=e14] [cursor=pointer]:
+          - img "share-alt" [ref=e15]:
+            - img [ref=e16]
+          - generic [ref=e18]: 我的分享
+        - menuitem "message 即时通讯" [ref=e19] [cursor=pointer]:
+          - img "message" [ref=e20]:
+            - img [ref=e21]
+          - generic [ref=e23]: 即时通讯
+        - menuitem "team 好友" [ref=e24] [cursor=pointer]:
+          - img "team" [ref=e25]:
+            - img [ref=e26]
+          - generic [ref=e28]: 好友
+        - menuitem "container Docker 管理" [ref=e29] [cursor=pointer]:
+          - img "container" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: Docker 管理
+        - menuitem "setting 管理后台" [ref=e34] [cursor=pointer]:
+          - img "setting" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 管理后台
+  - generic [ref=e39]:
+    - banner [ref=e40]:
+      - button "menu-fold" [ref=e41] [cursor=pointer]:
+        - img "menu-fold" [ref=e43]:
+          - img [ref=e44]
+      - generic [ref=e46]:
+        - button "user admin" [ref=e47] [cursor=pointer]:
+          - img "user" [ref=e49]:
+            - img [ref=e50]
+          - generic [ref=e52]: admin
+        - button "logout 退出" [ref=e53] [cursor=pointer]:
+          - img "logout" [ref=e55]:
+            - img [ref=e56]
+          - generic [ref=e58]: 退出
+    - main [ref=e59]:
+      - generic [ref=e60]:
+        - tablist [ref=e61]:
+          - generic [ref=e63]:
+            - tab "user 用户管理" [selected] [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]:
+                - img "user" [ref=e67]:
+                  - img [ref=e68]
+                - text: 用户管理
+            - tab "dashboard 系统状态" [ref=e71] [cursor=pointer]:
+              - generic [ref=e72]:
+                - img "dashboard" [ref=e73]:
+                  - img [ref=e74]
+                - text: 系统状态
+            - tab "cluster 集群节点" [ref=e77] [cursor=pointer]:
+              - generic [ref=e78]:
+                - img "cluster" [ref=e79]:
+                  - img [ref=e80]
+                - text: 集群节点
+            - tab "bell 告警规则" [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]:
+                - img "bell" [ref=e85]:
+                  - img [ref=e86]
+                - text: 告警规则
+            - tab "area-chart 历史指标" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]:
+                - img "area-chart" [ref=e91]:
+                  - img [ref=e92]
+                - text: 历史指标
+            - tab "file-text 服务器日志" [ref=e95] [cursor=pointer]:
+              - generic [ref=e96]:
+                - img "file-text" [ref=e97]:
+                  - img [ref=e98]
+                - text: 服务器日志
+        - tabpanel "user 用户管理" [ref=e102]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e108]:
+                - generic [ref=e110]: 用户总数
+                - generic [ref=e111]:
+                  - img "user" [ref=e113]:
+                    - img [ref=e114]
+                  - generic [ref=e116]: "2"
+              - generic [ref=e120]:
+                - generic [ref=e122]: 活跃用户
+                - generic [ref=e123]:
+                  - img "check-circle" [ref=e125]:
+                    - img [ref=e126]
+                  - generic [ref=e129]: "2"
+              - generic [ref=e133]:
+                - generic [ref=e135]: 管理员
+                - generic [ref=e136]:
+                  - img "user" [ref=e138]:
+                    - img [ref=e139]
+                  - generic [ref=e141]: "1"
+            - generic [ref=e142]:
+              - strong [ref=e144]: 用户管理
+              - button "reload 刷新" [ref=e145] [cursor=pointer]:
+                - img "reload" [ref=e147]:
+                  - img [ref=e148]
+                - generic [ref=e150]: 刷新
+            - generic [ref=e152]:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - table:
+                        - rowgroup:
+                          - row "ID 用户名 邮箱 角色 状态 注册时间 操作":
+                            - columnheader "ID"
+                            - columnheader "用户名"
+                            - columnheader "邮箱"
+                            - columnheader "角色"
+                            - columnheader "状态"
+                            - columnheader "注册时间"
+                            - columnheader "操作"
+                            - columnheader
+                    - generic:
+                      - table:
+                        - rowgroup:
+                          - row "03561216 复制 admin admin@cloudnexus.local 管理员 check-circle 正常 2026/5/7 12:22:21 取消管理员 禁 用":
+                            - cell "03561216 复制":
+                              - generic:
+                                - text: "03561216"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "admin"
+                            - cell "admin@cloudnexus.local"
+                            - cell "管理员":
+                              - generic: 管理员
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/7 12:22:21"
+                            - cell "取消管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "取消管理员":
+                                    - generic: 取消管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                          - row "41582848 复制 perftest perf@test.com 用户 check-circle 正常 2026/5/7 14:56:25 设为管理员 禁 用":
+                            - cell "41582848 复制":
+                              - generic:
+                                - text: "41582848"
+                                - generic:
+                                  - button "复制":
+                                    - img "copy":
+                                      - img
+                            - cell "perftest"
+                            - cell "perf@test.com"
+                            - cell "用户":
+                              - generic: 用户
+                            - cell "check-circle 正常":
+                              - generic:
+                                - img "check-circle":
+                                  - img
+                                - text: 正常
+                            - cell "2026/5/7 14:56:25"
+                            - cell "设为管理员 禁 用":
+                              - generic:
+                                - generic:
+                                  - button "设为管理员":
+                                    - generic: 设为管理员
+                                - generic:
+                                  - button "禁 用":
+                                    - generic: 禁 用
+                - list:
+                  - listitem: 共 2 用户
+                  - listitem "上一页":
+                    - button "left" [disabled]:
+                      - img "left":
+                        - img
+                  - listitem "1":
+                    - generic: "1"
+                  - listitem "下一页":
+                    - button "right" [disabled]:
+                      - img "right":
+                        - img

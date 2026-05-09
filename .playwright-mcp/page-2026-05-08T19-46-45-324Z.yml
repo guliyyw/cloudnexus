@@ -1,0 +1,103 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e45]:
+    - complementary [ref=e46]:
+      - generic [ref=e47]:
+        - generic [ref=e49]: CloudNexus
+        - menu [ref=e50]:
+          - menuitem "cloud 文件管理" [ref=e51] [cursor=pointer]:
+            - img "cloud" [ref=e52]:
+              - img [ref=e53]
+            - generic [ref=e55]: 文件管理
+          - menuitem "share-alt 我的分享" [ref=e56] [cursor=pointer]:
+            - img "share-alt" [ref=e57]:
+              - img [ref=e58]
+            - generic [ref=e60]: 我的分享
+          - menuitem "message 即时通讯" [ref=e61] [cursor=pointer]:
+            - img "message" [ref=e62]:
+              - img [ref=e63]
+            - generic [ref=e65]: 即时通讯
+          - menuitem "team 好友" [ref=e66] [cursor=pointer]:
+            - img "team" [ref=e67]:
+              - img [ref=e68]
+            - generic [ref=e70]: 好友
+          - menuitem "container Docker 管理" [ref=e71] [cursor=pointer]:
+            - img "container" [ref=e72]:
+              - img [ref=e73]
+            - generic [ref=e75]: Docker 管理
+          - menuitem "video-camera 摄像头" [ref=e76] [cursor=pointer]:
+            - img "video-camera" [ref=e77]:
+              - img [ref=e78]
+            - generic [ref=e80]: 摄像头
+          - menuitem "smile 人脸库" [ref=e81] [cursor=pointer]:
+            - img "smile" [ref=e82]:
+              - img [ref=e83]
+            - generic [ref=e85]: 人脸库
+          - menuitem "setting 管理后台" [ref=e86] [cursor=pointer]:
+            - img "setting" [ref=e87]:
+              - img [ref=e88]
+            - generic [ref=e90]: 管理后台
+    - generic [ref=e91]:
+      - banner [ref=e92]:
+        - button "menu-fold" [ref=e93] [cursor=pointer]:
+          - img "menu-fold" [ref=e95]:
+            - img [ref=e96]
+        - generic [ref=e98]:
+          - button "user admin" [ref=e99] [cursor=pointer]:
+            - img "user" [ref=e101]:
+              - img [ref=e102]
+            - generic [ref=e104]: admin
+          - button "logout 退出" [ref=e105] [cursor=pointer]:
+            - img "logout" [ref=e107]:
+              - img [ref=e108]
+            - generic [ref=e110]: 退出
+      - main [ref=e111]:
+        - generic [ref=e112]:
+          - generic [ref=e113]:
+            - generic [ref=e114]:
+              - button "upload 上传文件" [ref=e116] [cursor=pointer]:
+                - img "upload" [ref=e118]:
+                  - img [ref=e119]
+                - generic [ref=e121]: 上传文件
+              - button "folder-add 新建目录" [ref=e123] [cursor=pointer]:
+                - img "folder-add" [ref=e125]:
+                  - img [ref=e126]
+                - generic [ref=e128]: 新建目录
+              - button "reload 刷新" [ref=e130] [cursor=pointer]:
+                - img "reload" [ref=e132]:
+                  - img [ref=e133]
+                - generic [ref=e135]: 刷新
+              - generic [ref=e136]: 拖拽文件到目录名即可上传到该目录
+            - generic [ref=e139]:
+              - searchbox "搜索文件..." [ref=e141]
+              - button "search" [ref=e143] [cursor=pointer]:
+                - img "search" [ref=e144]:
+                  - img [ref=e145]
+          - navigation [ref=e147]:
+            - list [ref=e148]:
+              - listitem [ref=e149]:
+                - generic [ref=e150]:
+                  - img "home" [ref=e151]:
+                    - img [ref=e152]
+                  - text: 根目录
+          - table [ref=e160]:
+            - rowgroup [ref=e168]:
+              - row "Select all 名称 大小 类型 更新时间 操作" [ref=e169]:
+                - columnheader "Select all" [ref=e170]:
+                  - generic [ref=e172]:
+                    - generic:
+                      - checkbox "Select all" [disabled]
+                - columnheader "名称" [ref=e173]
+                - columnheader "大小" [ref=e174]
+                - columnheader "类型" [ref=e175]
+                - columnheader "更新时间" [ref=e176]
+                - columnheader "操作" [ref=e177]
+            - rowgroup [ref=e178]:
+              - row "暂无数据 暂无数据" [ref=e179]:
+                - cell "暂无数据 暂无数据" [ref=e180]:
+                  - generic [ref=e181]:
+                    - img "暂无数据" [ref=e183]
+                    - generic [ref=e189]: 暂无数据
+  - generic [ref=e191]:
+    - img "check-circle" [ref=e192]:
+      - img [ref=e193]
+    - generic [ref=e195]: 登录成功

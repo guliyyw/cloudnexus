@@ -124,6 +124,11 @@ func (r *CameraRepository) ListFaceEvents(cameraID uint64, offset, limit int) ([
 	return events, total, nil
 }
 
+func (r *CameraRepository) DeleteFaceEventsByCamera(cameraID uint64) (int64, error) {
+	result := r.db.Where("camera_id = ?", cameraID).Delete(&model.FaceRecognitionEvent{})
+	return result.RowsAffected, result.Error
+}
+
 // --- FaceAttendanceSession ---
 
 func (r *CameraRepository) FindActiveAttendanceSession(faceID, cameraID uint64, date string) (*model.FaceAttendanceSession, error) {

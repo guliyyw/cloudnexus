@@ -1,0 +1,21 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - heading "CloudNexus" [level=3] [ref=e7]
+    - text: 自托管协作平台
+  - generic [ref=e8]:
+    - generic [ref=e14]:
+      - img "user" [ref=e16]:
+        - img [ref=e17]
+      - textbox "用户名" [ref=e19]
+    - generic [ref=e25]:
+      - img "lock" [ref=e27]:
+        - img [ref=e28]
+      - textbox "密码" [ref=e30]
+      - img "eye-invisible" [ref=e32] [cursor=pointer]:
+        - img [ref=e33]
+    - button "登 录" [ref=e41] [cursor=pointer]:
+      - generic [ref=e42]: 登 录
+    - generic [ref=e43]:
+      - text: 还没有账号？
+      - link "立即注册" [ref=e44] [cursor=pointer]:
+        - /url: /register

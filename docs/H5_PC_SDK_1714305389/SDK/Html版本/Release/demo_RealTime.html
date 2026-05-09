@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RealTime Demo</title>
+</head>
+<body>
+<div>
+    <div id="mReady">
+        <span style="color:red;">服务程序未运行&nbsp;&nbsp;</span>
+        <a type="warning" href="https://doraemon.camera666.com/WebViewer" target="_blank">
+            下载</a>
+        &nbsp;&nbsp;
+        <a type="warning" href="WebViewer://" target="_self">运行</a>
+    </div>
+    <div>
+		使用 小鹰看看 账号：
+        账号：<input name="testUserID" value=""/>
+        密码：<input name="testUserPwd" value=""/>
+		<button name="Login">登录</button>
+		<div class=devList></div>
+		<p/>
+		不使用账号系统：
+        VUID：<input name="testDevID" value="VC0638342HJIK"/>
+        密码：<input name="testDevPwd" value="12345678"/>
+        <button name="connectDev">连接设备</button>
+
+        <p/>
+        <button name="Listen">监听</button>
+        <button name="Talk">对讲</button>
+        <button name="ActiveVideo">全屏显示</button>
+		<button name="TransCGI">CGI</button>
+        <button name="disconnectDev">删除设备</button>
+		<button name="StartSaveMp4">开始保存Mp4</button>
+		<button name="StopSaveMp4">停止保存Mp4</button>
+		
+		<button name="showVideo1">显示视频</button>
+		<button name="showVideo2">停止视频</button>
+		
+
+        <p/>
+        <img id="videoimg0" src='' style="width: 640px; height: 360px"/>
+		<br/>状态：<span id="statusbar"></span>
+		</div>
+</div>
+
+<script src="./wsSocket.js"></script>
+<script src="./strings_zh.js"></script>
+<script>
+    const instance = new Instance()
+	
+	const userInfo=
+	{
+	    userID: '',//平台账号，如果不使用平台方式，可以填入一个随机值
+	    userPwd: '',//平台密码		
+	};
+	const dev=//摄像机信息，支持可以添加多台摄像机
+	{
+	    devID: '',//设备VUID
+	    devPwd: '',//设备明文密码
+		session:'A615-47A9ABF3145C', //连接Session，可以是一个固定的随机数，生成后固定下来。
+
+		bTalk:false,//当前是否对讲
+		bListen:false,//当前是否监听
+	};
+
+    function ShowVideo(session,szDev) {
+      //  setTimeout(function () {//motion jpeg地址为  http://localhost:813/session/DevID/video.cgi
+      //      $("#videoimg0").attr("src", 'http://localhost:813/' + session + '/' + szDev + '/video.cgi?lens=0')
+       // }, 500);
+    }
+	instance.onCommand(message => {
+		const sHead=message.substring(0,3);
+		console.log('收到消息', message);
+		if(sHead=='LGN'){
+			if(message.substring(3,6)=='IDO'){//成功
+				const sData=message.substring(6);
+				const obj = JSON.parse(sData);
+				console.log('devList',obj,obj.Devs.length);
+                $('.devList').text('');
+				for(var i=0;i<obj.Devs.length;i++){
+					$('.devList').append("<span style='cursor:pointer;color:blue' onclick='AddDevByAcc(\"" + obj.Devs[i].uid + "\")'>" + obj.Devs[i].name + "</span></br>");			   
+				}
+				$('#statusbar').text('登录成功');
+			}
+			else{
+				const sData=message.substring(3);
+				$('#statusbar').text(getStr(sData));
+				console.log('登录消息', sData);
+			}
+		}
+		else if(sHead=='ADD'){//添加设备
+			const sData=message.substring(3);
+			$('#statusbar').text(getStr(sData));
+		}
+		else if(sHead=='STA'){//连接状态信息
+			const sData=message.substring(3);
+			const sShowText=getStr(sData);
+			$('#statusbar').text(sShowText != ""?sShowText:sData);
+		}
+		else if(sHead=='NDV')
+			$('#statusbar').text('先连接设备');
+	})
+	
+	//连接设备
+	function AddDevByAcc(sDevID) {
+		dev.devID=sDevID;
+		dev.devPwd='';//账号登录的方式，devPwd为空。
+	    instance.connectDev(dev);
+		ShowVideo(dev.session,dev.devID);
+		$('#statusbar').text('连接中...');
+	};
+	//websocket的连接回调
+	instance.onSocketStatus((status, message) => {
+		if (status) {//连接成功
+		    $("#mReady").hide();
+		} else {//连接失败
+		    $("#mReady").show();	
+			console.log('WebSocket异常', message);
+		}
+	})
+
+    instance.InitSocket()
+
+</script>
+<script src="./jquery.min.js"></script>
+
+<script type="text/javascript">
+    $(function () {
+		//登录账号
+		$("button[name='Login']").click(function () {
+			userInfo.userID=$('input[name="testUserID"]').val();
+			userInfo.userPwd=$('input[name="testUserPwd"]').val();
+		    instance.Login(userInfo);
+			$('#statusbar').text('登录中...');
+		});
+        //添加设备
+        $("button[name='connectDev']").click(function () {
+			dev.devID=$('input[name="testDevID"]').val();
+			dev.devPwd=$('input[name="testDevPwd"]').val();
+            instance.connectDev(dev);
+			ShowVideo(dev.session,dev.devID);
+			$('#statusbar').text('连接中...');
+        });
+        //删除设备
+        $("button[name='disconnectDev']").click(function () {
+            instance.disconnectDev(dev.session,dev.devID)
+        });
+        //监听
+        $("button[name='Listen']").click(function () {
+            // (!instance.mListen);instance.mListen=!instance.mListen
+			dev.bListen=!dev.bListen;
+            instance.Listen(dev.session,dev.devID,!dev.bListen)
+        });
+        //对讲
+        $("button[name='Talk']").click(function () {
+            // (!instance.mTalk);instance.mTalk=!instance.mTalk
+			dev.bTalk=!dev.bTalk;
+            instance.Talk(dev.session,dev.devID,!dev.bTalk)
+        });
+
+        //全屏显示视频
+        $("button[name='ActiveVideo']").click(function () {
+            instance.ActiveVideo(dev.session,dev.devID,1)
+        });
+		//双击画面
+		$("#videoimg0").on("dblclick",function (e){
+			instance.ActiveVideo(dev.session,dev.devID,0);
+		});
+		//开始保存Mp4
+		$("button[name='StartSaveMp4']").click(function () {
+            instance.StartSaveMP4(dev.session,dev.devID)
+        });
+		//停止保存Mp4
+		$("button[name='StopSaveMp4']").click(function () {
+            instance.StopSaveMP4(dev.session,dev.devID)
+        });
+		
+		
+		$("button[name='showVideo1']").click(function () {
+							var randomNumber = Math.random();  
+             $("#videoimg0").attr("src", 'http://localhost:813/' + dev.session + '/' + dev.devID + '/video.cgi?lens=0&' + randomNumber);
+        });
+		$("button[name='showVideo2']").click(function () {
+		     $("#videoimg0").attr("src", '');
+		});
+		
+		
+		//调用设备CGI
+		$("button[name='TransCGI']").click(function () {
+			instance.TransCGI(dev.session,dev.devID,'/get_status.cgi');
+		});
+        $("#videoimg0").error(function () {
+            setTimeout(function () {
+                console.log('error of video')
+            }, 500);
+        });
+
+    });
+
+</script>
+
+</body>
+</html>

@@ -213,6 +213,10 @@ func (s *FaceService) ListEvents(cameraID uint64, offset, limit int) ([]model.Fa
 	return s.repo.ListFaceEvents(cameraID, offset, limit)
 }
 
+func (s *FaceService) ClearFaceEvents(cameraID uint64) (int64, error) {
+	return s.repo.DeleteFaceEventsByCamera(cameraID)
+}
+
 // --- Attendance ---
 
 const attendanceGracePeriod = 5 * time.Minute
