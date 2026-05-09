@@ -206,6 +206,22 @@ export default function FileListPage() {
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as string[]),
   }
 
+  const handleCreateCollab = async () => {
+    if (!collabTitle.trim()) return
+    setCreatingCollab(true)
+    try {
+      const file = await createCollabDoc(collabTitle.trim(), currentParentId)
+      message.success('协作文档已创建')
+      setCollabTitle('')
+      setCollabVisible(false)
+      navigate(`/files/${file.id}/edit`)
+    } catch {
+      message.error('创建失败')
+    } finally {
+      setCreatingCollab(false)
+    }
+  }
+
   const columns: ColumnsType<FileItem> = [
     {
       title: '名称', dataIndex: 'name', key: 'name', width: 300,
@@ -426,21 +442,7 @@ export default function FileListPage() {
       <Modal
         title="新建协作文档"
         open={collabVisible}
-        onOk={async () => {
-          if (!collabTitle.trim()) return
-          setCreatingCollab(true)
-          try {
-            const file = await createCollabDoc(collabTitle.trim(), currentParentId)
-            message.success('协作文档已创建')
-            setCollabTitle('')
-            setCollabVisible(false)
-            navigate(`/files/${file.id}/edit`)
-          } catch {
-            message.error('创建失败')
-          } finally {
-            setCreatingCollab(false)
-          }
-        }}
+        onOk={handleCreateCollab}
         onCancel={() => { setCollabVisible(false); setCollabTitle('') }}
         confirmLoading={creatingCollab}
         okText="创建"
@@ -450,20 +452,7 @@ export default function FileListPage() {
           placeholder="输入文档标题"
           value={collabTitle}
           onChange={(e) => setCollabTitle(e.target.value)}
-          onPressEnter={() => {
-            if (collabTitle.trim()) {
-              setCreatingCollab(true)
-              createCollabDoc(collabTitle.trim(), currentParentId)
-                .then(file => {
-                  message.success('协作文档已创建')
-                  setCollabTitle('')
-                  setCollabVisible(false)
-                  navigate(`/files/${file.id}/edit`)
-                })
-                .catch(() => message.error('创建失败'))
-                .finally(() => setCreatingCollab(false))
-            }
-          }}
+          onPressEnter={handleCreateCollab}
           autoFocus
         />
       </Modal>

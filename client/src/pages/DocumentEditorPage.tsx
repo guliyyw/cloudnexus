@@ -33,6 +33,7 @@ export default function DocumentEditorPage() {
   }, [id])
 
   // 建立 Yjs WebSocket 连接
+  // ydoc 通过 useMemo 保持引用稳定，可以安全放入 deps
   useEffect(() => {
     if (!id || loading) return
 
@@ -48,7 +49,7 @@ export default function DocumentEditorPage() {
     return () => {
       provider.disconnect()
     }
-  }, [id, loading])
+  }, [id, loading, ydoc])
 
   const editor = useEditor({
     extensions: [

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -121,27 +120,25 @@ func (c *DocClient) sendMsg(wsType int, data []byte) {
 	select {
 	case c.send <- msg:
 	default:
+		log.Printf("collab: dropping message type %d for user %d on doc %d (send buffer full)", wsType, c.UserID, c.docID)
 	}
 }
 
 // --- DocRoom ---
 
 type DocRoom struct {
-	docID       uint64
-	clients     map[uint64]*DocClient
-	updateCount int
-	lastPersist time.Time
-	register    chan *DocClient
-	unregister  chan *DocClient
-	mu          sync.Mutex
-	hub         *DocHub
+	docID      uint64
+	clients    map[uint64]*DocClient
+	register   chan *DocClient
+	unregister chan *DocClient
+	mu         sync.Mutex
+	hub        *DocHub
 }
 
 func newDocRoom(docID uint64, hub *DocHub) *DocRoom {
 	return &DocRoom{
 		docID:       docID,
 		clients:     make(map[uint64]*DocClient),
-		lastPersist: time.Now(),
 		register:    make(chan *DocClient),
 		unregister:  make(chan *DocClient),
 		hub:         hub,
@@ -169,11 +166,6 @@ func (r *DocRoom) run() {
 			remaining := len(r.clients)
 			r.mu.Unlock()
 			log.Printf("collab: user %d left doc %d (%d remaining)", client.UserID, r.docID, remaining)
-			if remaining == 0 {
-				r.mu.Lock()
-				r.updateCount = 0
-				r.mu.Unlock()
-			}
 		}
 	}
 }
@@ -193,6 +185,11 @@ func (r *DocRoom) respondSyncStep1(client *DocClient) {
 		return
 	}
 
+	// 防御：如果已存数据包含协议帧头（msgSync），剥离
+	if len(data) >= 2 && data[0] == msgSync {
+		data = data[2:]
+	}
+
 	// 发送 SyncStep2: [msgSync, yjsSyncStep2, ...data]
 	reply := append([]byte{msgSync, yjsSyncStep2}, data...)
 	client.sendMsg(websocket.BinaryMessage, reply)
@@ -200,12 +197,6 @@ func (r *DocRoom) respondSyncStep1(client *DocClient) {
 }
 
 func (r *DocRoom) relay(sender *DocClient, wsType int, data []byte) {
-	if wsType == websocket.BinaryMessage {
-		r.mu.Lock()
-		r.updateCount++
-		r.mu.Unlock()
-	}
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, c := range r.clients {
@@ -224,23 +215,6 @@ func (r *DocRoom) broadcastAll(wsType int, data []byte) {
 	defer r.mu.Unlock()
 	for _, c := range r.clients {
 		c.sendMsg(wsType, data)
-	}
-}
-
-func (r *DocRoom) maybePersist(lastEditor uint64, data []byte) {
-	r.mu.Lock()
-	count := r.updateCount
-	elapsed := time.Since(r.lastPersist)
-	r.mu.Unlock()
-
-	if count >= 50 || elapsed > 5*time.Second {
-		r.mu.Lock()
-		if r.updateCount > 0 {
-			r.hub.persist(r.docID, data, lastEditor)
-			r.updateCount = 0
-			r.lastPersist = time.Now()
-		}
-		r.mu.Unlock()
 	}
 }
 
@@ -367,15 +341,5 @@ func (h *DocHub) runRedisRelay() {
 			continue
 		}
 		room.broadcastAll(websocket.BinaryMessage, data)
-	}
-}
-
-func (h *DocHub) persist(docID uint64, content []byte, lastEditor uint64) {
-	storageKey := fmt.Sprintf("collab/%d/ydoc.bin", docID)
-	_, err := h.minio.PutObject(context.Background(), h.bucket, storageKey,
-		bytes.NewReader(content), int64(len(content)),
-		minio.PutObjectOptions{ContentType: "application/octet-stream"})
-	if err != nil {
-		log.Printf("collab: persist doc %d to minio: %v", docID, err)
 	}
 }

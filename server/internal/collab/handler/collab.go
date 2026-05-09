@@ -15,6 +15,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// TODO: 生产环境应限制 CheckOrigin 为受信任的域名，避免跨站 WebSocket 劫持
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 

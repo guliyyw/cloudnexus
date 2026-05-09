@@ -15,7 +15,6 @@ import (
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/migration"
-	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	"github.com/cloudnexus/server/pkg/storage"
 	"github.com/cloudnexus/server/pkg/system"
@@ -56,11 +55,7 @@ func main() {
 	if err := migration.Up(db); err != nil {
 		logger.Log.Warn("SQL migration skipped", zap.Error(err))
 	}
-	if err := db.AutoMigrate(
-		&model.File{},
-	); err != nil {
-		logger.Log.Fatal("数据库 AutoMigrate 失败", zap.Error(err))
-	}
+	// collab-svc 只读取 files 表，不执行 AutoMigrate
 
 	minioClient, err := storage.NewMinIO(storage.Config{
 		Endpoint:  cfg.MinIO.Endpoint,
