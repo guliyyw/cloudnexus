@@ -630,6 +630,162 @@ components:
           type: string
           nullable: true
 
+    FaceProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        owner_id:
+          type: string
+        name:
+          type: string
+        embedding:
+          type: string
+          description: JSON 数组，128 维特征向量
+        thumbnail_url:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FaceProfileCreateRequest:
+      type: object
+      required: [name, embedding]
+      properties:
+        name:
+          type: string
+        embedding:
+          type: array
+          items:
+            type: number
+        thumbnail_url:
+          type: string
+
+    MatchResult:
+      type: object
+      properties:
+        matched:
+          type: boolean
+        face_id:
+          type: string
+        name:
+          type: string
+        confidence:
+          type: number
+
+    FaceRecognitionEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        camera_id:
+          type: string
+        face_id:
+          type: string
+        face_name:
+          type: string
+        confidence:
+          type: number
+        snapshot_url:
+          type: string
+        bbox_json:
+          type: string
+          description: 人脸框坐标 JSON
+        created_at:
+          type: string
+          format: date-time
+
+    FaceEventListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FaceRecognitionEvent'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    DailyAttendanceItem:
+      type: object
+      properties:
+        face_id:
+          type: string
+        face_name:
+          type: string
+        date:
+          type: string
+        check_in:
+          type: string
+          format: date-time
+        check_out:
+          type: string
+          format: date-time
+        session_count:
+          type: integer
+
+    AttendanceSession:
+      type: object
+      properties:
+        id:
+          type: string
+        face_id:
+          type: string
+        face_name:
+          type: string
+        camera_id:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        date:
+          type: string
+
+    AttendanceStatusItem:
+      type: object
+      properties:
+        face_id:
+          type: string
+        face_name:
+          type: string
+        signed_in:
+          type: boolean
+        check_in:
+          type: string
+          format: date-time
+          nullable: true
+        check_out:
+          type: string
+          format: date-time
+          nullable: true
+        session_count:
+          type: integer
+
+    AttendanceStatusResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendanceStatusItem'
+        date:
+          type: string
+        total:
+          type: integer
+        signed_count:
+          type: integer
+        unsigned_count:
+          type: integer
+
     # ── Admin ──
     AdminUser:
       type: object
@@ -2032,6 +2188,308 @@ paths:
                         items:
                           $ref: '#/components/schemas/DetectedObject'
 
+  # ════════════════════════════════════════════════════
+  # Paths — Face Library & Attendance (camera-svc)
+  # ════════════════════════════════════════════════════
+
+  /api/v1/faces:
+    get:
+      tags: [人脸库]
+      summary: 获取人脸库列表
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          profiles:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/FaceProfile'
+    post:
+      tags: [人脸库]
+      summary: 注册新人脸
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceProfileCreateRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          profile:
+                            $ref: '#/components/schemas/FaceProfile'
+
+  /api/v1/faces/{id}:
+    put:
+      tags: [人脸库]
+      summary: 修改人脸姓名
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+    delete:
+      tags: [人脸库]
+      summary: 删除人脸
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/faces/{id}/thumbnail:
+    get:
+      tags: [人脸库]
+      summary: 获取人脸缩略图（支持 query token 认证）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: JWT access token（兼容 img 标签）
+      responses:
+        '200':
+          description: 图片二进制
+          content:
+            image/jpeg: {}
+            image/png: {}
+
+  /api/v1/faces/match:
+    post:
+      tags: [人脸识别]
+      summary: 人脸匹配
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [embedding]
+              properties:
+                embedding:
+                  type: array
+                  items:
+                    type: number
+                camera_id:
+                  type: string
+      responses:
+        '200':
+          description: 匹配结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MatchResult'
+
+  /api/v1/cameras/{id}/faces:
+    get:
+      tags: [人脸识别]
+      summary: 获取摄像头人脸识别事件列表
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/FaceEventListResponse'
+    delete:
+      tags: [人脸识别]
+      summary: 清空摄像头人脸识别事件（保留考勤数据）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已清空
+
+  /api/v1/faces/attendance:
+    get:
+      tags: [考勤]
+      summary: 按人脸查询考勤记录
+      parameters:
+        - name: face_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AttendanceSession'
+    delete:
+      tags: [考勤]
+      summary: 清除指定人脸指定日期的考勤记录
+      parameters:
+        - name: face_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 已清除
+
+  /api/v1/faces/attendance/{id}:
+    delete:
+      tags: [考勤]
+      summary: 删除单条考勤记录
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /api/v1/faces/attendance/daily:
+    get:
+      tags: [考勤]
+      summary: 获取每日考勤汇总
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/DailyAttendanceItem'
+                          date:
+                            type: string
+
+  /api/v1/faces/attendance/status:
+    get:
+      tags: [考勤]
+      summary: 获取全员签到状态（含未签到人员）
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/AttendanceStatusResponse'
   # ════════════════════════════════════════════════════
   # Paths — Admin (user-file-svc)
   # ════════════════════════════════════════════════════
