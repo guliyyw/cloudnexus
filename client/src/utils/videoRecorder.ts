@@ -48,6 +48,45 @@ export class VideoRecorder {
     this.animId = requestAnimationFrame(draw)
   }
 
+  startFromCanvas(source: HTMLCanvasElement): void {
+    if (this._recording) return
+
+    this.canvas = document.createElement('canvas')
+    this.canvas.width = source.width || 640
+    this.canvas.height = source.height || 360
+    this.ctx = this.canvas.getContext('2d')!
+
+    const stream = this.canvas.captureStream(30)
+    this.mediaRecorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm',
+    })
+
+    this.chunks = []
+
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        this.chunks.push(e.data)
+        if (this.chunks.length > this.maxChunks) {
+          URL.revokeObjectURL(URL.createObjectURL(this.chunks.shift()!))
+        }
+      }
+    }
+
+    this.mediaRecorder.start(5000)
+
+    const draw = () => {
+      if (!this._recording) return
+      if (this.ctx && this.canvas && source.width > 0) {
+        this.ctx.drawImage(source, 0, 0, this.canvas.width, this.canvas.height)
+      }
+      this.animId = requestAnimationFrame(draw)
+    }
+    this._recording = true
+    this.animId = requestAnimationFrame(draw)
+  }
+
   stop(): Blob | null {
     this._recording = false
     cancelAnimationFrame(this.animId)

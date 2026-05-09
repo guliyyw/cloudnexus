@@ -115,7 +115,7 @@ export default function CameraLiveView() {
   // Track actual display size of video/canvas for overlay alignment
   useEffect(() => {
     if (!playing) return
-    const el = mjpegMode ? displayCanvasRef.current : videoRef.current
+    const el = (mjpegMode && !historyPlaying) ? displayCanvasRef.current : videoRef.current
     if (!el) return
     const update = () => {
       const w = el.clientWidth || canvasSizeRef.current.w
@@ -126,7 +126,7 @@ export default function CameraLiveView() {
     const ro = new ResizeObserver(update)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [playing, mjpegMode])
+  }, [playing, mjpegMode, historyPlaying])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -377,13 +377,8 @@ export default function CameraLiveView() {
     if (checked) {
       const rec = new VideoRecorder()
       if (mjpegMode) {
-        // In MJPEG mode, record from the display canvas
         const dc = displayCanvasRef.current
-        if (dc) {
-          // Create a hidden video to feed the recorder (it expects video element)
-          // Actually, VideoRecorder uses canvas internally, so we can feed canvas directly
-          rec.start(dc as unknown as HTMLVideoElement)
-        }
+        if (dc) rec.startFromCanvas(dc)
       } else if (video) {
         rec.start(video)
       }
@@ -404,15 +399,21 @@ export default function CameraLiveView() {
 
   const handlePlayHistory = () => {
     if (!recorderRef.current) return
-    const video = videoRef.current
-    if (!video) return
 
     if (historyPlaying) {
+      const video = videoRef.current
+      if (video) {
+        video.pause()
+        video.src = ''
+      }
       if (hlsRef.current && !mjpegMode) {
-        hlsRef.current.attachMedia(video)
+        hlsRef.current.attachMedia(video!)
       }
       setHistoryPlaying(false)
     } else {
+      // Ensure video element exists for playback
+      const video = videoRef.current
+      if (!video) return
       const url = recorderRef.current.getBlobUrl()
       recordedUrlRef.current = url
       if (hlsRef.current && !mjpegMode) {
@@ -539,11 +540,14 @@ export default function CameraLiveView() {
                     alt=""
                   />
                   <div style={{ position: 'relative', lineHeight: 0 }}>
-                    {mjpegMode && (
+                    {mjpegMode && !historyPlaying && (
                       <canvas
                         ref={displayCanvasRef}
                         style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }}
                       />
+                    )}
+                    {(mjpegMode && historyPlaying) && (
+                      <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
                     )}
                     {!mjpegMode && (
                       <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />

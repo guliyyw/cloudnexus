@@ -67,10 +67,10 @@ export class FaceTracker {
       if (!trackMatched.has(i)) this.tracks[i].unmatchedFrames++
     }
 
-    this.tracks = this.tracks.filter((t) => t.unmatchedFrames < 5)
+    this.tracks = this.tracks.filter((t) => t.unmatchedFrames < 2)
 
     return {
-      tracks: this.tracks.filter((t) => t.age >= 3),
+      tracks: this.tracks.filter((t) => t.age >= 2),
       newTrackIds,
       newTrackDetIdx,
     }
