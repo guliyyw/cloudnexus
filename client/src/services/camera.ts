@@ -111,6 +111,32 @@ export async function detectImage(file: File): Promise<DetectedObject[]> {
   return data.data.objects
 }
 
+export interface VideoDetection {
+  time: number
+  objects: DetectedObject[]
+}
+
+export interface VideoDetectResponse {
+  video_duration: number
+  fps: number
+  frames_analyzed: number
+  detections: VideoDetection[]
+}
+
+export async function detectVideo(
+  file: File,
+  interval = 2,
+): Promise<VideoDetectResponse> {
+  const form = new FormData()
+  form.append('video', file)
+  const { data } = await api.post('/detect-video', form, {
+    params: { interval },
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000, // 5 min timeout for video processing
+  })
+  return data.data
+}
+
 // --- Face ---
 
 export interface FaceProfile {

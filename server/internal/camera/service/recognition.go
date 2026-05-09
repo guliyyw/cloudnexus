@@ -195,3 +195,47 @@ func (s *RecognitionService) DetectImage(imageBytes []byte) ([]DetectedObject, e
 	return s.sendToInference(imageBytes)
 }
 
+// VideoDetection groups objects detected at a specific timestamp.
+type VideoDetection struct {
+	Time    float64         `json:"time"`
+	Objects []DetectedObject `json:"objects"`
+}
+
+// VideoDetectResponse wraps the /detect-video inference result.
+type VideoDetectResponse struct {
+	Error          string           `json:"error,omitempty"`
+	VideoDuration  float64          `json:"video_duration"`
+	FPS            float64          `json:"fps"`
+	FramesAnalyzed int              `json:"frames_analyzed"`
+	Detections     []VideoDetection `json:"detections"`
+}
+
+// DetectVideo sends a video file to the AI inference service for frame-by-frame analysis.
+func (s *RecognitionService) DetectVideo(videoBytes []byte, filename string, interval float64) (*VideoDetectResponse, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("video", filename)
+	if err != nil {
+		return nil, err
+	}
+	part.Write(videoBytes)
+	w.Close()
+
+	url := fmt.Sprintf("%s/detect-video?interval=%.1f", s.inferenceURL, interval)
+	resp, err := http.Post(url, w.FormDataContentType(), &buf)
+	if err != nil {
+		return nil, fmt.Errorf("视频分析请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result VideoDetectResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("视频分析结果解析失败: %w", err)
+	}
+	if result.Error != "" {
+		return nil, fmt.Errorf("视频分析错误: %s", result.Error)
+	}
+	return &result, nil
+}
+

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, message, Tag, Popconfirm, List, Progress, Alert } from 'antd'
-import { PlusOutlined, VideoCameraOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, VideoCameraOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined, ExperimentOutlined } from '@ant-design/icons'
 import type { Camera } from '../services/camera'
 import { getCameras, createCamera, updateCamera, deleteCamera, discoverCameras } from '../services/camera'
 import { detectLocalIP, generateSubnetIPs, discoverCamerasLocally, subnetFromIP, type LocalDiscoveredCamera } from '../utils/cameraDiscovery'
+import VideoAnalysisPanel from '../components/VideoAnalysisPanel'
 
 export default function CameraListPage() {
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -80,6 +81,7 @@ export default function CameraListPage() {
   const [discoveredCameras, setDiscoveredCameras] = useState<LocalDiscoveredCamera[]>([])
   const [discoverProgress, setDiscoverProgress] = useState({ scanned: 0, total: 0 })
   const [discoverSource, setDiscoverSource] = useState<'client' | 'server'>('client')
+  const [showVideoAnalysis, setShowVideoAnalysis] = useState(false)
 
   const openDiscover = async () => {
     const ip = await detectLocalIP()
@@ -204,6 +206,13 @@ export default function CameraListPage() {
           <Space>
             <Button icon={<ReloadOutlined />} onClick={fetchCameras}>刷新</Button>
             <Button icon={<SearchOutlined />} onClick={openDiscover}>发现摄像头</Button>
+            <Button
+              icon={<ExperimentOutlined />}
+              onClick={() => setShowVideoAnalysis(!showVideoAnalysis)}
+              type={showVideoAnalysis ? 'primary' : 'default'}
+            >
+              AI 视频分析
+            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>添加摄像头</Button>
           </Space>
         }
@@ -252,6 +261,8 @@ export default function CameraListPage() {
           rtsp://admin:888888@IP:554/udp/av0_1 (子码流)
         </div>
       </Modal>
+
+      {showVideoAnalysis && <VideoAnalysisPanel open={showVideoAnalysis} />}
 
       {/* Discovery Modal */}
       <Modal

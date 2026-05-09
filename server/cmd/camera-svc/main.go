@@ -141,6 +141,7 @@ func main() {
 			faces.DELETE("/attendance", faceH.HandleClearAttendance)
 		}
 		api.POST("/detect-image", camH.HandleDetectImage)
+		api.POST("/detect-video", camH.HandleDetectVideo)
 	}
 
 	r.GET("/healthz", system.HealthzHandler("camera-svc",

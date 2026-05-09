@@ -265,3 +265,38 @@ func (h *CameraHandler) HandleDetectImage(c *gin.Context) {
 	}
 	c.JSON(200, response.OKWithData(gin.H{"objects": objects}))
 }
+
+// HandleDetectVideo performs AI object detection on an uploaded video file.
+func (h *CameraHandler) HandleDetectVideo(c *gin.Context) {
+	file, err := c.FormFile("video")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请上传视频文件"))
+		return
+	}
+	f, err := file.Open()
+	if err != nil {
+		c.JSON(500, response.Error(500, "读取视频失败"))
+		return
+	}
+	defer f.Close()
+	buf := make([]byte, file.Size)
+	f.Read(buf)
+
+	interval, _ := strconv.ParseFloat(c.DefaultQuery("interval", "2"), 64)
+	if interval < 0.5 {
+		interval = 0.5
+	}
+	if interval > 60 {
+		interval = 60
+	}
+
+	result, err := h.rec.DetectVideo(buf, file.Filename, interval)
+	if err != nil {
+		c.JSON(500, response.Error(500, "视频分析失败: "+err.Error()))
+		return
+	}
+	if result.Detections == nil {
+		result.Detections = []service.VideoDetection{}
+	}
+	c.JSON(200, response.OKWithData(result))
+}
