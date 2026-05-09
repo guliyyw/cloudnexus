@@ -513,12 +513,12 @@ export default function CameraLiveView() {
                   {mjpegMode && (
                     <canvas
                       ref={displayCanvasRef}
-                      style={{ width: '100%', maxHeight: 480, display: 'block' }}
+                      style={{ maxWidth: '100%', maxHeight: 480, display: 'block', margin: '0 auto' }}
                     />
                   )}
                   {/* Video element for HLS mode */}
                   {!mjpegMode && (
-                    <video ref={videoRef} controls autoPlay muted style={{ width: '100%', maxHeight: 480 }} />
+                    <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, margin: '0 auto' }} />
                   )}
                   {faceRecognizing && (
                     <FaceOverlay
@@ -561,7 +561,7 @@ export default function CameraLiveView() {
 
       <FaceRegisterModal
         open={registerModalOpen}
-        videoEl={mjpegMode ? (displayCanvasRef.current as unknown as HTMLVideoElement) : videoRef.current}
+        videoEl={mjpegMode ? displayCanvasRef.current : videoRef.current}
         onClose={() => setRegisterModalOpen(false)}
         onRegister={async (name, embedding, thumbnailDataUrl) => {
           const { createFaceProfile } = await import('../services/camera')

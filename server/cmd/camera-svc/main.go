@@ -59,6 +59,7 @@ func main() {
 		&model.RecognitionEvent{},
 		&model.FaceProfile{},
 		&model.FaceRecognitionEvent{},
+		&model.FaceAttendanceSession{},
 	); err != nil {
 		logger.Log.Fatal("数据库 AutoMigrate 失败", zap.Error(err))
 	}
@@ -119,6 +120,8 @@ func main() {
 			faces.PUT("/:id", faceH.HandleUpdateProfile)
 			faces.DELETE("/:id", faceH.HandleDeleteProfile)
 			faces.POST("/match", faceH.HandleMatchFace)
+			faces.GET("/attendance", faceH.HandleGetAttendanceByFace)
+			faces.GET("/attendance/daily", faceH.HandleGetDailyAttendance)
 		}
 		api.POST("/detect-image", camH.HandleDetectImage)
 	}

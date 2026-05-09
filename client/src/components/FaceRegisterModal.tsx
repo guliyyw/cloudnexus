@@ -4,7 +4,7 @@ import { detectFaces, embeddingToArray } from '../utils/faceDetection'
 
 interface Props {
   open: boolean
-  videoEl: HTMLVideoElement | null
+  videoEl: HTMLVideoElement | HTMLCanvasElement | null
   onClose: () => void
   onRegister: (name: string, embedding: number[], thumbnailDataUrl: string) => Promise<void>
 }
@@ -34,10 +34,16 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
     try {
       const canvas = canvasRef.current
       if (!canvas) return
-      canvas.width = videoEl.videoWidth || 640
-      canvas.height = videoEl.videoHeight || 360
+      // Support both video and canvas sources
+      const isVideo = videoEl instanceof HTMLVideoElement
+      canvas.width = isVideo ? (videoEl as HTMLVideoElement).videoWidth : (videoEl as HTMLCanvasElement).width
+      canvas.height = isVideo ? (videoEl as HTMLVideoElement).videoHeight : (videoEl as HTMLCanvasElement).height
+      if (!canvas.width || !canvas.height) {
+        canvas.width = 640
+        canvas.height = 360
+      }
       const ctx = canvas.getContext('2d')!
-      ctx.drawImage(videoEl, 0, 0)
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height)
 
       const faces = await detectFaces(canvas)
       if (faces.length === 0) {

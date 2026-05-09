@@ -118,10 +118,55 @@ func (h *FaceHandler) HandleMatchFace(c *gin.Context) {
 		camID, _ := strconv.ParseUint(req.CameraID, 10, 64)
 		if camID > 0 {
 			h.svc.RecordEvent(camID, result, nil)
+			// Also record attendance session
+			h.svc.RecordAttendance(camID, result)
 		}
 	}
 
 	c.JSON(200, response.OKWithData(result))
+}
+
+// HandleGetDailyAttendance returns daily check-in/check-out summary.
+func (h *FaceHandler) HandleGetDailyAttendance(c *gin.Context) {
+	date := c.DefaultQuery("date", "")
+	if date == "" {
+		c.JSON(400, response.Error(400, "date 参数必填"))
+		return
+	}
+	attendance, err := h.svc.GetDailyAttendance(date)
+	if err != nil {
+		c.JSON(500, response.Error(500, "查询考勤失败"))
+		return
+	}
+	if attendance == nil {
+		attendance = []service.DailyAttendance{}
+	}
+	c.JSON(200, response.OKWithData(gin.H{
+		"items": attendance,
+		"date":  date,
+	}))
+}
+
+// HandleGetAttendanceByFace returns attendance sessions for a specific face.
+func (h *FaceHandler) HandleGetAttendanceByFace(c *gin.Context) {
+	faceID, err := strconv.ParseUint(c.Query("face_id"), 10, 64)
+	if err != nil || faceID == 0 {
+		c.JSON(400, response.Error(400, "face_id 参数必填"))
+		return
+	}
+	dateFrom := c.DefaultQuery("date_from", "")
+	dateTo := c.DefaultQuery("date_to", "")
+	sessions, err := h.svc.GetAttendanceByFace(faceID, dateFrom, dateTo)
+	if err != nil {
+		c.JSON(500, response.Error(500, "查询考勤失败"))
+		return
+	}
+	if sessions == nil {
+		sessions = []model.FaceAttendanceSession{}
+	}
+	c.JSON(200, response.OKWithData(gin.H{
+		"items": sessions,
+	}))
 }
 
 // HandleListFaceEvents returns face recognition events for a camera.

@@ -181,3 +181,40 @@ export async function getFaceEvents(
   })
   return data.data
 }
+
+// --- Attendance ---
+
+export interface DailyAttendanceItem {
+  face_id: string
+  face_name: string
+  date: string
+  check_in: string
+  check_out: string
+  session_count: number
+}
+
+export interface AttendanceSession {
+  id: string
+  face_id: string
+  face_name: string
+  camera_id: string
+  start_time: string
+  end_time: string
+  date: string
+}
+
+export async function getDailyAttendance(date: string): Promise<DailyAttendanceItem[]> {
+  const { data } = await api.get('/faces/attendance/daily', { params: { date } })
+  return data.data.items
+}
+
+export async function getAttendanceByFace(
+  faceId: string,
+  dateFrom?: string,
+  dateTo?: string,
+): Promise<AttendanceSession[]> {
+  const { data } = await api.get('/faces/attendance', {
+    params: { face_id: faceId, date_from: dateFrom, date_to: dateTo },
+  })
+  return data.data.items
+}

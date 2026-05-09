@@ -123,3 +123,43 @@ func (r *CameraRepository) ListFaceEvents(cameraID uint64, offset, limit int) ([
 	}
 	return events, total, nil
 }
+
+// --- FaceAttendanceSession ---
+
+func (r *CameraRepository) FindActiveAttendanceSession(faceID, cameraID uint64, date string) (*model.FaceAttendanceSession, error) {
+	var s model.FaceAttendanceSession
+	err := r.db.Where("face_id = ? AND camera_id = ? AND date = ?", faceID, cameraID, date).
+		Order("end_time DESC").First(&s).Error
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *CameraRepository) UpsertAttendanceSession(s *model.FaceAttendanceSession) error {
+	// Try insert; if conflict on unique constraint, update end_time
+	return r.db.Where("face_id = ? AND camera_id = ? AND date = ? AND start_time = ?",
+		s.FaceID, s.CameraID, s.Date, s.StartTime).
+		Assign(map[string]interface{}{"end_time": s.EndTime}).
+		FirstOrCreate(s).Error
+}
+
+func (r *CameraRepository) ListAttendanceByFace(faceID uint64, dateFrom, dateTo string) ([]model.FaceAttendanceSession, error) {
+	var sessions []model.FaceAttendanceSession
+	err := r.db.Where("face_id = ? AND date >= ? AND date <= ?", faceID, dateFrom, dateTo).
+		Order("start_time ASC").Find(&sessions).Error
+	return sessions, err
+}
+
+func (r *CameraRepository) ListAttendanceByDate(date string) ([]model.FaceAttendanceSession, error) {
+	var sessions []model.FaceAttendanceSession
+	err := r.db.Where("date = ?", date).Order("start_time ASC").Find(&sessions).Error
+	return sessions, err
+}
+
+func (r *CameraRepository) ListAttendanceByCamera(cameraID uint64, date string) ([]model.FaceAttendanceSession, error) {
+	var sessions []model.FaceAttendanceSession
+	err := r.db.Where("camera_id = ? AND date = ?", cameraID, date).
+		Order("start_time ASC").Find(&sessions).Error
+	return sessions, err
+}

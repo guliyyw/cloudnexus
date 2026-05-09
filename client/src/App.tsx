@@ -16,6 +16,7 @@ import UserSettingsPage from './pages/UserSettingsPage'
 import CameraListPage from './pages/CameraListPage'
 import CameraLiveView from './pages/CameraLiveView'
 import FaceLibraryPage from './pages/FaceLibraryPage'
+import FaceAttendancePage from './pages/FaceAttendancePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/cameras" element={<CameraListPage />} />
             <Route path="/cameras/:id" element={<CameraLiveView />} />
             <Route path="/faces" element={<FaceLibraryPage />} />
+            <Route path="/attendance" element={<FaceAttendancePage />} />
             <Route path="/settings" element={<UserSettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />

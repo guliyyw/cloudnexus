@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"math"
+	"time"
 
 	"github.com/cloudnexus/server/internal/camera/repository"
 	"github.com/cloudnexus/server/pkg/model"
@@ -149,4 +150,117 @@ func (s *FaceService) RecordEvent(cameraID uint64, result *MatchResult, bbox map
 
 func (s *FaceService) ListEvents(cameraID uint64, offset, limit int) ([]model.FaceRecognitionEvent, int64, error) {
 	return s.repo.ListFaceEvents(cameraID, offset, limit)
+}
+
+// --- Attendance ---
+
+const attendanceGracePeriod = 5 * time.Minute
+
+// RecordAttendance upserts an attendance session for a matched face.
+// If the same face was seen within the grace period, extend the existing session.
+// Otherwise, create a new session.
+func (s *FaceService) RecordAttendance(cameraID uint64, match *MatchResult) (*model.FaceAttendanceSession, error) {
+	if !match.Matched || match.FaceID == nil {
+		return nil, nil
+	}
+	now := time.Now()
+	date := now.Format("2006-01-02")
+
+	existing, err := s.repo.FindActiveAttendanceSession(*match.FaceID, cameraID, date)
+	if err == nil && existing != nil {
+		// Extend if within grace period
+		if now.Sub(existing.EndTime) <= attendanceGracePeriod {
+			existing.EndTime = now
+			if err := s.repo.UpsertAttendanceSession(existing); err != nil {
+				return nil, err
+			}
+			return existing, nil
+		}
+	}
+
+	// New session
+	session := &model.FaceAttendanceSession{
+		ID:        snowflake.Uint64(),
+		FaceID:    *match.FaceID,
+		FaceName:  match.Name,
+		CameraID:  cameraID,
+		StartTime: now,
+		EndTime:   now,
+		Date:      date,
+	}
+	if err := s.repo.UpsertAttendanceSession(session); err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+// DailyAttendance summarizes check-in/check-out for all faces on a date.
+type DailyAttendance struct {
+	FaceID     uint64    `json:"face_id,string"`
+	FaceName   string    `json:"face_name"`
+	Date       string    `json:"date"`
+	CheckIn    time.Time `json:"check_in"`  // earliest session start
+	CheckOut   time.Time `json:"check_out"` // latest session end
+	SessionCount int     `json:"session_count"`
+}
+
+func (s *FaceService) GetDailyAttendance(date string) ([]DailyAttendance, error) {
+	sessions, err := s.repo.ListAttendanceByDate(date)
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by face_id: min start_time = check-in, max end_time = check-out
+	type agg struct {
+		faceName string
+		checkIn  time.Time
+		checkOut time.Time
+		count    int
+	}
+	grouped := make(map[uint64]*agg)
+	for i := range sessions {
+		s := &sessions[i]
+		a, ok := grouped[s.FaceID]
+		if !ok {
+			a = &agg{faceName: s.FaceName, checkIn: s.StartTime, checkOut: s.EndTime, count: 0}
+			grouped[s.FaceID] = a
+		}
+		if s.StartTime.Before(a.checkIn) {
+			a.checkIn = s.StartTime
+		}
+		if s.EndTime.After(a.checkOut) {
+			a.checkOut = s.EndTime
+		}
+		a.count++
+	}
+
+	result := make([]DailyAttendance, 0, len(grouped))
+	for faceID, a := range grouped {
+		result = append(result, DailyAttendance{
+			FaceID:       faceID,
+			FaceName:     a.faceName,
+			Date:         date,
+			CheckIn:      a.checkIn,
+			CheckOut:     a.checkOut,
+			SessionCount: a.count,
+		})
+	}
+	return result, nil
+}
+
+func (s *FaceService) GetAttendanceByFace(faceID uint64, dateFrom, dateTo string) ([]model.FaceAttendanceSession, error) {
+	if dateFrom == "" {
+		dateFrom = time.Now().Format("2006-01-02")
+	}
+	if dateTo == "" {
+		dateTo = dateFrom
+	}
+	return s.repo.ListAttendanceByFace(faceID, dateFrom, dateTo)
+}
+
+func (s *FaceService) GetAttendanceByCamera(cameraID uint64, date string) ([]model.FaceAttendanceSession, error) {
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	return s.repo.ListAttendanceByCamera(cameraID, date)
 }
