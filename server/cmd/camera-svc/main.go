@@ -16,6 +16,7 @@ import (
 	"github.com/cloudnexus/server/pkg/migration"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
+	"github.com/cloudnexus/server/pkg/storage"
 	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
@@ -86,9 +87,20 @@ func main() {
 		inferenceURL = "http://ai-inference:8000"
 	}
 
+	minioClient, err := storage.NewMinIO(storage.Config{
+		Endpoint:  cfg.MinIO.Endpoint,
+		AccessKey: cfg.MinIO.AccessKey,
+		SecretKey: cfg.MinIO.SecretKey,
+		UseSSL:    cfg.MinIO.UseSSL,
+		Bucket:    cfg.MinIO.Bucket,
+	})
+	if err != nil {
+		logger.Log.Fatal("连接 MinIO 失败", zap.Error(err))
+	}
+
 	camSvc := service.NewCameraService(repo, mediamtxURL)
 	recSvc := service.NewRecognitionService(repo, inferenceURL)
-	faceSvc := service.NewFaceService(repo)
+	faceSvc := service.NewFaceService(repo, minioClient, cfg.MinIO.Bucket)
 	camH := handler.NewCameraHandler(camSvc, recSvc)
 	faceH := handler.NewFaceHandler(faceSvc)
 
@@ -120,6 +132,7 @@ func main() {
 			faces.PUT("/:id", faceH.HandleUpdateProfile)
 			faces.DELETE("/:id", faceH.HandleDeleteProfile)
 			faces.POST("/match", faceH.HandleMatchFace)
+			faces.GET("/:id/thumbnail", faceH.HandleGetThumbnail)
 			faces.GET("/attendance", faceH.HandleGetAttendanceByFace)
 			faces.GET("/attendance/daily", faceH.HandleGetDailyAttendance)
 		}

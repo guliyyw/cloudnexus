@@ -20,7 +20,7 @@ export interface DetectedFace {
 }
 
 export async function detectFaces(
-  input: HTMLVideoElement | HTMLCanvasElement,
+  input: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement,
 ): Promise<DetectedFace[]> {
   if (!loaded) await loadModels()
 

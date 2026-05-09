@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Card, Table, Button, Modal, Input, Space, message, Popconfirm } from 'antd'
-import { ReloadOutlined, SmileOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Modal, Input, Space, message, Popconfirm, Avatar } from 'antd'
+import { ReloadOutlined, SmileOutlined, UserOutlined } from '@ant-design/icons'
 import type { FaceProfile } from '../services/camera'
 import { getFaceProfiles, updateFaceProfile, deleteFaceProfile } from '../services/camera'
 
@@ -47,6 +47,16 @@ export default function FaceLibraryPage() {
   }
 
   const columns = [
+    {
+      title: '照片', dataIndex: 'thumbnail_url', key: 'thumbnail', width: 64,
+      render: (_: string, r: FaceProfile) => {
+        const token = localStorage.getItem('access_token')
+        const src = r.thumbnail_url
+          ? `/api/v1/faces/${r.id}/thumbnail?token=${token}`
+          : undefined
+        return <Avatar shape="square" size={48} src={src} icon={<UserOutlined />} />
+      },
+    },
     { title: '姓名', dataIndex: 'name', key: 'name' },
     {
       title: '注册时间', dataIndex: 'created_at', key: 'created_at', width: 180,

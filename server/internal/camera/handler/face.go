@@ -18,6 +18,22 @@ func NewFaceHandler(svc *service.FaceService) *FaceHandler {
 	return &FaceHandler{svc: svc}
 }
 
+// HandleGetThumbnail serves a face profile's thumbnail image from MinIO.
+// Uses query token auth for <img> tag compatibility.
+func (h *FaceHandler) HandleGetThumbnail(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(400, response.Error(400, "无效的人脸 ID"))
+		return
+	}
+	data, contentType, err := h.svc.GetThumbnail(id)
+	if err != nil {
+		c.JSON(404, response.Error(404, "缩略图不存在"))
+		return
+	}
+	c.Data(200, contentType, data)
+}
+
 // HandleListProfiles returns all face profiles for the current user.
 func (h *FaceHandler) HandleListProfiles(c *gin.Context) {
 	profiles, err := h.svc.ListProfiles(getUserID(c))

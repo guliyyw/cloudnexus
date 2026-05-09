@@ -1,23 +1,31 @@
 package service
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/internal/camera/repository"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/minio/minio-go/v7"
 )
 
 // FaceService handles face profile CRUD and similarity matching.
 type FaceService struct {
-	repo *repository.CameraRepository
+	repo       *repository.CameraRepository
+	minio      *minio.Client
+	bucket     string
 }
 
-func NewFaceService(repo *repository.CameraRepository) *FaceService {
-	return &FaceService{repo: repo}
+func NewFaceService(repo *repository.CameraRepository, minio *minio.Client, bucket string) *FaceService {
+	return &FaceService{repo: repo, minio: minio, bucket: bucket}
 }
 
 // --- Profile CRUD ---
@@ -26,22 +34,66 @@ func (s *FaceService) ListProfiles(ownerID uint64) ([]model.FaceProfile, error) 
 	return s.repo.ListFaceProfiles(ownerID)
 }
 
-func (s *FaceService) CreateProfile(ownerID uint64, name string, embedding []float64, thumbnailURL string) (*model.FaceProfile, error) {
+func (s *FaceService) CreateProfile(ownerID uint64, name string, embedding []float64, thumbnailDataURL string) (*model.FaceProfile, error) {
 	embJSON, err := json.Marshal(embedding)
 	if err != nil {
 		return nil, apperrors.NewAppError(400, "embedding 格式错误", apperrors.ErrBadRequest)
 	}
+
 	p := &model.FaceProfile{
-		OwnerID:      ownerID,
-		Name:         name,
-		Embedding:    string(embJSON),
-		ThumbnailURL: thumbnailURL,
+		OwnerID:   ownerID,
+		Name:      name,
+		Embedding: string(embJSON),
 	}
 	p.ID = snowflake.Uint64()
+
+	// Upload thumbnail to MinIO if it's a base64 data URL
+	if strings.HasPrefix(thumbnailDataURL, "data:image/") {
+		key := fmt.Sprintf("faces/%d.jpg", p.ID)
+		parts := strings.SplitN(thumbnailDataURL, ",", 2)
+		if len(parts) == 2 {
+			imgData, err := base64.StdEncoding.DecodeString(parts[1])
+			if err == nil {
+				contentType := "image/jpeg"
+				if strings.HasPrefix(thumbnailDataURL, "data:image/png") {
+					contentType = "image/png"
+				}
+				_, err = s.minio.PutObject(context.Background(), s.bucket, key,
+					bytes.NewReader(imgData), int64(len(imgData)),
+					minio.PutObjectOptions{ContentType: contentType})
+				if err == nil {
+					p.ThumbnailURL = key
+				}
+			}
+		}
+	}
+
 	if err := s.repo.CreateFaceProfile(p); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// GetThumbnail returns the image data for a face profile's thumbnail.
+func (s *FaceService) GetThumbnail(id uint64) ([]byte, string, error) {
+	p, err := s.repo.FindFaceProfileByID(id)
+	if err != nil {
+		return nil, "", apperrors.NewAppError(404, "人脸不存在", apperrors.ErrNotFound)
+	}
+	if p.ThumbnailURL == "" {
+		return nil, "", apperrors.NewAppError(404, "无缩略图", apperrors.ErrNotFound)
+	}
+	obj, err := s.minio.GetObject(context.Background(), s.bucket, p.ThumbnailURL, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", err
+	}
+	defer obj.Close()
+	buf := new(bytes.Buffer)
+	if _, err := buf.ReadFrom(obj); err != nil {
+		return nil, "", err
+	}
+	contentType := "image/jpeg"
+	return buf.Bytes(), contentType, nil
 }
 
 func (s *FaceService) UpdateProfile(id, ownerID uint64, name string) error {
