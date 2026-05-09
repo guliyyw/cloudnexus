@@ -14,7 +14,9 @@ import (
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/minio/minio-go/v7"
+	"go.uber.org/zap"
 )
 
 // FaceService handles face profile CRUD and similarity matching.
@@ -51,9 +53,13 @@ func (s *FaceService) CreateProfile(ownerID uint64, name string, embedding []flo
 	if strings.HasPrefix(thumbnailDataURL, "data:image/") {
 		key := fmt.Sprintf("faces/%d.jpg", p.ID)
 		parts := strings.SplitN(thumbnailDataURL, ",", 2)
-		if len(parts) == 2 {
+		if len(parts) != 2 {
+			logger.Log.Warn("thumbnail base64 split failed", zap.Int("parts", len(parts)))
+		} else {
 			imgData, err := base64.StdEncoding.DecodeString(parts[1])
-			if err == nil {
+			if err != nil {
+				logger.Log.Warn("thumbnail base64 decode failed", zap.Error(err))
+			} else {
 				contentType := "image/jpeg"
 				if strings.HasPrefix(thumbnailDataURL, "data:image/png") {
 					contentType = "image/png"
@@ -61,8 +67,11 @@ func (s *FaceService) CreateProfile(ownerID uint64, name string, embedding []flo
 				_, err = s.minio.PutObject(context.Background(), s.bucket, key,
 					bytes.NewReader(imgData), int64(len(imgData)),
 					minio.PutObjectOptions{ContentType: contentType})
-				if err == nil {
+				if err != nil {
+					logger.Log.Warn("thumbnail MinIO upload failed", zap.Error(err), zap.String("bucket", s.bucket), zap.String("key", key))
+				} else {
 					p.ThumbnailURL = key
+					logger.Log.Info("thumbnail uploaded to MinIO", zap.String("key", key))
 				}
 			}
 		}
