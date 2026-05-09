@@ -68,9 +68,9 @@
 
 | # | 功能 | 优先级 | 状态 | 备注 |
 |---|------|--------|------|------|
-| E1 | 文档 CRUD | P1 | ⬜ | 创建/编辑/删除/列表 |
-| E2 | 协作编辑 | P1 | ⬜ | Yjs CRDT + TipTap 富文本 |
-| E3 | 实时同步 | P1 | ⬜ | WebSocket + Redis Pub/Sub 跨节点 |
+| E1 | 文档 CRUD | P1 | ✅ 已完成 | 集成到文件管理系统，统一入口 |
+| E2 | 协作编辑 | P1 | ✅ 已完成 | Yjs CRDT + TipTap 富文本 |
+| E3 | 实时同步 | P1 | ✅ 已完成 | WebSocket + Redis Pub/Sub 跨节点 |
 
 ### 1.4 前端 (client/)
 
@@ -219,10 +219,10 @@
 | 前端 | 摄像头列表页 + 实时播放页 | 1.5d | ✅ |
 | 后端 | 文件版本管理 — FileVersion 模型 + 版本 CRUD | 1d | ✅ |
 | 前端 | 文件版本面板 — 版本历史 + 恢复 + 下载 | 0.5d | ✅ |
-| 后端 | collab-svc 微服务 — 文档 CRUD + Yjs WebSocket Hub | 1.5d | ⬜ |
-| 后端 | 协作同步 — Redis Pub/Sub 跨节点 | 0.5d | ⬜ |
-| 前端 | 文档列表页 + TipTap/Yjs 协作编辑器 | 1.5d | ⬜ |
-| 集成 | 端到端测试 | 1d | ⬜ |
+| 后端 | collab-svc 微服务 — Yjs WebSocket Hub + MinIO 存储 | 1.5d | ✅ |
+| 后端 | 协作同步 — Redis Pub/Sub 跨节点 | 0.5d | ✅ |
+| 前端 | 文件管理集成 + TipTap/Yjs 协作编辑器 | 1.5d | ✅ |
+| 集成 | 端到端测试 | 1d | ✅ |
 
 **预计总工时：** 约 12 人天
 
