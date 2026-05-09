@@ -6,6 +6,7 @@ import type { Camera, RecognitionEvent, FaceRecognitionEvent } from '../services
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace } from '../services/camera'
 import { detectFaces, embeddingToArray, loadModels } from '../utils/faceDetection'
 import { VideoRecorder } from '../utils/videoRecorder'
+import { FaceTracker } from '../utils/faceTracker'
 import FaceOverlay, { type FaceBox } from '../components/FaceOverlay'
 import FaceRegisterModal from '../components/FaceRegisterModal'
 import Hls from 'hls.js'
@@ -69,6 +70,8 @@ export default function CameraLiveView() {
   const [registerModalOpen, setRegisterModalOpen] = useState(false)
   const faceTimerRef = useRef<number>(0)
   const faceModelsReady = useRef(false)
+  const facePauseRef = useRef(false)  // pause main loop while register modal is open
+  const trackerRef = useRef(new FaceTracker())
 
   // Recording
   const [recording, setRecording] = useState(false)
@@ -76,8 +79,11 @@ export default function CameraLiveView() {
   const recordedUrlRef = useRef('')
   const [historyPlaying, setHistoryPlaying] = useState(false)
 
-  // Canvas dimensions for face detection input
+  // Canvas dimensions for face detection input + display size for overlay scaling
   const canvasSizeRef = useRef({ w: 640, h: 360 })
+  const [displaySize, setDisplaySize] = useState({ w: 640, h: 360 })
+  const displaySizeRef = useRef(displaySize)
+  useEffect(() => { displaySizeRef.current = displaySize }, [displaySize])
 
   const fetchCamera = useCallback(async () => {
     if (!id) return
@@ -105,6 +111,22 @@ export default function CameraLiveView() {
   }, [id])
 
   useEffect(() => { fetchCamera(); fetchEvents(); fetchFaceEvents() }, [fetchCamera, fetchEvents, fetchFaceEvents])
+
+  // Track actual display size of video/canvas for overlay alignment
+  useEffect(() => {
+    if (!playing) return
+    const el = mjpegMode ? displayCanvasRef.current : videoRef.current
+    if (!el) return
+    const update = () => {
+      const w = el.clientWidth || canvasSizeRef.current.w
+      const h = el.clientHeight || canvasSizeRef.current.h
+      if (w > 0 && h > 0) setDisplaySize({ w, h })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [playing, mjpegMode])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -309,24 +331,33 @@ export default function CameraLiveView() {
       } catch { message.error('人脸模型加载失败'); return }
       setFaceRecognizing(true)
       message.success('人脸识别已开启')
+      trackerRef.current.reset()
 
       faceTimerRef.current = window.setInterval(async () => {
         const source = getDisplaySource()
         if (!source) return
 
+        if (facePauseRef.current) return
         try {
           const faces = await detectFaces(source)
-          const boxes: FaceBox[] = []
+          const now = Date.now()
+          const { tracks, newTrackIds, newTrackDetIdx } = trackerRef.current.update(
+            faces.map((f) => f.box),
+            now,
+          )
 
-          for (const f of faces) {
-            const emb = embeddingToArray(f.descriptor)
-            let name: string | undefined
+          // Only call match API for new tracks (first appearance)
+          for (const trackId of newTrackIds) {
+            const detIdx = newTrackDetIdx.get(trackId)
+            if (detIdx === undefined) continue
+            const emb = embeddingToArray(faces[detIdx].descriptor)
             try {
-              const result = await matchFace({ embedding: emb, camera_id: id })
-              if (result.matched) name = result.name
+              const result = await matchFace({ embedding: emb, camera_id: id! })
+              trackerRef.current.setName(trackId, result.matched ? result.name : undefined)
             } catch { /* match failed */ }
-            boxes.push({ ...f.box, name })
           }
+
+          const boxes: FaceBox[] = tracks.map((t) => ({ ...t.box, name: t.name }))
           setDetectedFaces(boxes)
         } catch { /* detection failed, skip frame */ }
       }, 2500)
@@ -470,7 +501,7 @@ export default function CameraLiveView() {
             <span>人脸识别: <Switch checked={faceRecognizing} onChange={handleToggleFaceRecognition} disabled={!playing} /></span>
             <span>保留历史: <Switch checked={recording} onChange={handleToggleRecording} disabled={!playing} /></span>
             {faceRecognizing && (
-              <Button type="link" icon={<SmileOutlined />} onClick={() => setRegisterModalOpen(true)} size="small">
+              <Button type="link" icon={<SmileOutlined />} onClick={() => { facePauseRef.current = true; setRegisterModalOpen(true) }} size="small">
                 注册人脸
               </Button>
             )}
@@ -498,35 +529,35 @@ export default function CameraLiveView() {
             <div ref={videoContainerRef} style={{
               background: '#1e1e1e', borderRadius: 12, overflow: 'hidden',
               minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              position: 'relative',
             }}>
               {playing ? (
                 <>
-                  {/* Hidden img for MJPEG source */}
                   <img
                     ref={mjpegImgRef}
                     crossOrigin="anonymous"
-                    style={{ display: mjpegMode ? 'none' : 'none' }}
+                    style={{ display: 'none' }}
                     alt=""
                   />
-                  {/* Display canvas for MJPEG mode */}
-                  {mjpegMode && (
-                    <canvas
-                      ref={displayCanvasRef}
-                      style={{ maxWidth: '100%', maxHeight: 480, display: 'block', margin: '0 auto' }}
-                    />
-                  )}
-                  {/* Video element for HLS mode */}
-                  {!mjpegMode && (
-                    <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, margin: '0 auto' }} />
-                  )}
-                  {faceRecognizing && (
-                    <FaceOverlay
-                      faces={detectedFaces}
-                      videoWidth={canvasSizeRef.current.w}
-                      videoHeight={canvasSizeRef.current.h}
-                    />
-                  )}
+                  <div style={{ position: 'relative', lineHeight: 0 }}>
+                    {mjpegMode && (
+                      <canvas
+                        ref={displayCanvasRef}
+                        style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }}
+                      />
+                    )}
+                    {!mjpegMode && (
+                      <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
+                    )}
+                    {faceRecognizing && (
+                      <FaceOverlay
+                        faces={detectedFaces}
+                        videoWidth={canvasSizeRef.current.w}
+                        videoHeight={canvasSizeRef.current.h}
+                        displayWidth={displaySize.w}
+                        displayHeight={displaySize.h}
+                      />
+                    )}
+                  </div>
                 </>
               ) : (
                 <Empty description="点击「播放」开始实时画面" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -562,7 +593,7 @@ export default function CameraLiveView() {
       <FaceRegisterModal
         open={registerModalOpen}
         videoEl={mjpegMode ? displayCanvasRef.current : videoRef.current}
-        onClose={() => setRegisterModalOpen(false)}
+        onClose={() => { facePauseRef.current = false; setRegisterModalOpen(false) }}
         onRegister={async (name, embedding, thumbnailDataUrl) => {
           const { createFaceProfile } = await import('../services/camera')
           await createFaceProfile({ name, embedding, thumbnail_url: thumbnailDataUrl })

@@ -10,24 +10,22 @@ export interface FaceBox {
 
 interface Props {
   faces: FaceBox[]
-  videoWidth?: number
-  videoHeight?: number
-  displayWidth?: number
-  displayHeight?: number
+  videoWidth: number
+  videoHeight: number
+  displayWidth: number
+  displayHeight: number
 }
 
 export default function FaceOverlay({
   faces,
-  videoWidth = 640,
-  videoHeight = 360,
+  videoWidth,
+  videoHeight,
   displayWidth,
   displayHeight,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const dw = displayWidth || videoWidth
-  const dh = displayHeight || videoHeight
-  const sx = dw / videoWidth
-  const sy = dh / videoHeight
+  const sx = displayWidth / videoWidth
+  const sy = displayHeight / videoHeight
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -47,14 +45,19 @@ export default function FaceOverlay({
       ctx.strokeRect(x, y, w, h)
 
       if (f.name) {
-        const label = `${f.name}`
-        ctx.font = '13px -apple-system, sans-serif'
+        const label = f.name
+        const fontSize = Math.max(12, Math.min(16, h * 0.25))
+        ctx.font = `${fontSize}px -apple-system, sans-serif`
         const tm = ctx.measureText(label)
         const lw = tm.width + 12
+        const lh = fontSize + 8
+        const lx = x
+        const ly = y + h + 2
+
         ctx.fillStyle = '#52c41a'
-        ctx.fillRect(x, y - 22, lw, 22)
+        ctx.fillRect(lx, ly, lw, lh)
         ctx.fillStyle = '#fff'
-        ctx.fillText(label, x + 6, y - 6)
+        ctx.fillText(label, lx + 6, ly + fontSize - 1)
       }
     }
   }, [faces, sx, sy])
@@ -62,14 +65,14 @@ export default function FaceOverlay({
   return (
     <canvas
       ref={canvasRef}
-      width={dw}
-      height={dh}
+      width={displayWidth}
+      height={displayHeight}
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
-        width: '100%',
-        height: '100%',
+        width: displayWidth,
+        height: displayHeight,
         pointerEvents: 'none',
       }}
     />

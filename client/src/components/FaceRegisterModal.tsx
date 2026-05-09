@@ -1,10 +1,17 @@
-import { useState, useRef, useEffect } from 'react'
-import { Modal, Input, message, Spin } from 'antd'
+import { useState, useEffect, useRef } from 'react'
+import { Modal, Input, message, Spin, Radio } from 'antd'
 import { detectFaces, embeddingToArray } from '../utils/faceDetection'
+
+interface DetectedPerson {
+  index: number
+  embedding: number[]
+  thumbnail: string
+  box: { x: number; y: number; width: number; height: number }
+}
 
 interface Props {
   open: boolean
-  videoEl: HTMLVideoElement | HTMLCanvasElement | null
+  videoEl: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement | null
   onClose: () => void
   onRegister: (name: string, embedding: number[], thumbnailDataUrl: string) => Promise<void>
 }
@@ -12,17 +19,15 @@ interface Props {
 export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }: Props) {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [detected, setDetected] = useState(false)
-  const [embedding, setEmbedding] = useState<number[] | null>(null)
-  const [thumbnail, setThumbnail] = useState<string>('')
+  const [people, setPeople] = useState<DetectedPerson[]>([])
+  const [selectedIdx, setSelectedIdx] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     if (!open) {
       setName('')
-      setDetected(false)
-      setEmbedding(null)
-      setThumbnail('')
+      setPeople([])
+      setSelectedIdx(0)
       return
     }
     detectFace()
@@ -31,32 +36,52 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
   const detectFace = async () => {
     if (!videoEl) return
     setLoading(true)
+    setPeople([])
     try {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      // Support both video and canvas sources
-      const isVideo = videoEl instanceof HTMLVideoElement
-      canvas.width = isVideo ? (videoEl as HTMLVideoElement).videoWidth : (videoEl as HTMLCanvasElement).width
-      canvas.height = isVideo ? (videoEl as HTMLVideoElement).videoHeight : (videoEl as HTMLCanvasElement).height
-      if (!canvas.width || !canvas.height) {
-        canvas.width = 640
-        canvas.height = 360
+      const faces = await detectFaces(videoEl)
+      if (faces.length === 0) {
+        message.warning('未检测到人脸，请面对摄像头')
+        setLoading(false)
+        return
       }
+
+      const canvas = canvasRef.current
+      if (!canvas) { setLoading(false); return }
+
+      const isVideo = videoEl instanceof HTMLVideoElement
+      const srcW = isVideo ? (videoEl as HTMLVideoElement).videoWidth : (videoEl as HTMLCanvasElement).width
+      const srcH = isVideo ? (videoEl as HTMLVideoElement).videoHeight : (videoEl as HTMLCanvasElement).height
+      canvas.width = srcW || 640
+      canvas.height = srcH || 360
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height)
 
-      const faces = await detectFaces(canvas)
-      if (faces.length === 0) {
-        message.warning('未检测到人脸，请面对摄像头')
-        setDetected(false)
-      } else {
-        // Draw face crop
-        const f = faces[0]
-        setEmbedding(embeddingToArray(f.descriptor))
-        setThumbnail(canvas.toDataURL('image/jpeg', 0.8))
-        setDetected(true)
+      const detected: DetectedPerson[] = []
+      for (let i = 0; i < faces.length; i++) {
+        const f = faces[i]
+        const b = f.box
+        const pad = 0.2
+        const px = Math.max(0, b.x - b.width * pad)
+        const py = Math.max(0, b.y - b.height * pad)
+        const pw = Math.min(canvas.width - px, b.width * (1 + pad * 2))
+        const ph = Math.min(canvas.height - py, b.height * (1 + pad * 2))
+
+        const faceCanvas = document.createElement('canvas')
+        faceCanvas.width = 128
+        faceCanvas.height = 128
+        const fctx = faceCanvas.getContext('2d')!
+        fctx.drawImage(canvas, px, py, pw, ph, 0, 0, 128, 128)
+        detected.push({
+          index: i,
+          embedding: embeddingToArray(f.descriptor),
+          thumbnail: faceCanvas.toDataURL('image/jpeg', 0.8),
+          box: b,
+        })
       }
-    } catch {
+      setPeople(detected)
+      setSelectedIdx(0)
+    } catch (e) {
+      console.error('Face detection error:', e)
       message.error('人脸检测失败')
     } finally {
       setLoading(false)
@@ -68,13 +93,14 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
       message.warning('请输入姓名')
       return
     }
-    if (!embedding) {
+    const person = people[selectedIdx]
+    if (!person) {
       message.warning('人脸特征提取失败，请重试')
       return
     }
     setLoading(true)
     try {
-      await onRegister(name.trim(), embedding, thumbnail)
+      await onRegister(name.trim(), person.embedding, person.thumbnail)
       message.success(`已注册: ${name}`)
       onClose()
     } catch {
@@ -83,6 +109,8 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
       setLoading(false)
     }
   }
+
+  const hasFaces = people.length > 0
 
   return (
     <Modal
@@ -95,30 +123,51 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
       cancelText="取消"
       destroyOnClose
     >
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
-        {detected ? (
-          <div style={{ width: 200, height: 200, margin: '0 auto', background: '#1e1e1e', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {thumbnail ? (
-              <img src={thumbnail} alt="人脸" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8 }} />
-            ) : (
-              <Spin />
-            )}
-          </div>
+        {hasFaces ? (
+          <>
+            <div style={{ marginBottom: 8, fontSize: 13, color: '#595959' }}>
+              检测到 {people.length} 人，请选择要注册的人脸
+            </div>
+            <Radio.Group
+              value={selectedIdx}
+              onChange={(e) => setSelectedIdx(e.target.value)}
+              style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}
+            >
+              {people.map((p) => (
+                <Radio.Button
+                  key={p.index}
+                  value={p.index}
+                  style={{
+                    width: 100, height: 110, padding: 0, overflow: 'hidden',
+                    border: selectedIdx === p.index ? '2px solid #e8964a' : '2px solid #d9d9d9',
+                    borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <img src={p.thumbnail} alt={`人脸 ${p.index + 1}`}
+                    style={{ width: 96, height: 106, objectFit: 'cover', borderRadius: 6 }} />
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </>
         ) : (
-          <div style={{ width: 200, height: 200, margin: '0 auto', background: '#1e1e1e', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{
+            width: 200, height: 200, margin: '0 auto', background: '#1e1e1e',
+            borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
             <span style={{ color: '#8c8c8c' }}>{loading ? <Spin /> : '等待检测...'}</span>
           </div>
         )}
         <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
-          {detected ? '已检测到人脸，请输入姓名' : '请面对摄像头，确保人脸清晰可见'}
+          {hasFaces ? '已检测到人脸，请输入姓名' : '请面对摄像头，确保人脸清晰可见'}
         </div>
       </div>
       <Input
         placeholder="输入姓名"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        disabled={!detected}
+        disabled={!hasFaces}
       />
     </Modal>
   )
