@@ -241,8 +241,12 @@ func (h *FaceHandler) HandleDeleteAttendanceSession(c *gin.Context) {
 		c.JSON(400, response.Error(400, "无效的考勤记录 ID"))
 		return
 	}
-	if err := h.svc.DeleteSession(id); err != nil {
-		c.JSON(500, response.Error(500, "删除考勤记录失败"))
+	if err := h.svc.DeleteSession(id, getUserID(c)); err != nil {
+		if appErr, ok := err.(interface{ Code() int }); ok {
+			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
+			return
+		}
+		c.JSON(500, response.Error(500, err.Error()))
 		return
 	}
 	c.JSON(200, response.OK("删除成功"))
@@ -260,9 +264,13 @@ func (h *FaceHandler) HandleClearAttendance(c *gin.Context) {
 		c.JSON(400, response.Error(400, "date 参数必填"))
 		return
 	}
-	count, err := h.svc.ClearAttendanceByFaceDate(faceID, date)
+	count, err := h.svc.ClearAttendanceByFaceDate(faceID, getUserID(c), date)
 	if err != nil {
-		c.JSON(500, response.Error(500, "删除考勤记录失败"))
+		if appErr, ok := err.(interface{ Code() int }); ok {
+			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
+			return
+		}
+		c.JSON(500, response.Error(500, err.Error()))
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))

@@ -36,3 +36,12 @@ deploy/data/
 
 # Screenshots
 screenshots/
+
+# MCP browser session files
+.playwright-mcp/
+
+# Bundle files
+*.bundle
+
+# Claude local settings (except project config)
+.claude/settings.local.json

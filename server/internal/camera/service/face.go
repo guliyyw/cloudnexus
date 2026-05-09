@@ -330,13 +330,32 @@ func (s *FaceService) GetAttendanceByCamera(cameraID uint64, date string) ([]mod
 	return s.repo.ListAttendanceByCamera(cameraID, date)
 }
 
-// DeleteSession deletes a single attendance session by ID.
-func (s *FaceService) DeleteSession(id uint64) error {
+// DeleteSession deletes a single attendance session after verifying ownership.
+func (s *FaceService) DeleteSession(id, ownerID uint64) error {
+	session, err := s.repo.FindAttendanceSessionByID(id)
+	if err != nil {
+		return apperrors.NewAppError(404, "考勤记录不存在", apperrors.ErrNotFound)
+	}
+	profile, err := s.repo.FindFaceProfileByID(session.FaceID)
+	if err != nil {
+		return apperrors.NewAppError(404, "人脸不存在", apperrors.ErrNotFound)
+	}
+	if profile.OwnerID != ownerID {
+		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
 	return s.repo.DeleteAttendanceSession(id)
 }
 
-// ClearAttendanceByFaceDate deletes all attendance sessions for a face on a date.
-func (s *FaceService) ClearAttendanceByFaceDate(faceID uint64, date string) (int64, error) {
+// ClearAttendanceByFaceDate deletes all attendance sessions for a face on a date,
+// after verifying the face profile belongs to the current user.
+func (s *FaceService) ClearAttendanceByFaceDate(faceID, ownerID uint64, date string) (int64, error) {
+	profile, err := s.repo.FindFaceProfileByID(faceID)
+	if err != nil {
+		return 0, apperrors.NewAppError(404, "人脸不存在", apperrors.ErrNotFound)
+	}
+	if profile.OwnerID != ownerID {
+		return 0, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
 	return s.repo.DeleteAttendanceByFaceDate(faceID, date)
 }
 
@@ -357,12 +376,19 @@ func (s *FaceService) GetAttendanceStatus(ownerID uint64, date string) ([]Attend
 		return nil, 0, 0, err
 	}
 
+	// Build set of face_ids owned by this user for session filtering
+	ownedFaceIDs := make(map[uint64]bool, len(profiles))
+	for _, p := range profiles {
+		ownedFaceIDs[p.ID] = true
+	}
+
 	sessions, err := s.repo.ListAttendanceByDate(date)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 
 	// Index sessions by face_id: min start = check_in, max end = check_out
+	// Only process sessions belonging to this user's face profiles
 	type agg struct {
 		checkIn  time.Time
 		checkOut time.Time
@@ -371,6 +397,9 @@ func (s *FaceService) GetAttendanceStatus(ownerID uint64, date string) ([]Attend
 	sessionMap := make(map[uint64]*agg)
 	for i := range sessions {
 		s := &sessions[i]
+		if !ownedFaceIDs[s.FaceID] {
+			continue
+		}
 		a, ok := sessionMap[s.FaceID]
 		if !ok {
 			a = &agg{checkIn: s.StartTime, checkOut: s.EndTime, count: 0}

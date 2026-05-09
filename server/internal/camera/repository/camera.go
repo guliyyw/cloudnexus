@@ -169,6 +169,14 @@ func (r *CameraRepository) ListAttendanceByCamera(cameraID uint64, date string) 
 	return sessions, err
 }
 
+func (r *CameraRepository) FindAttendanceSessionByID(id uint64) (*model.FaceAttendanceSession, error) {
+	var s model.FaceAttendanceSession
+	if err := r.db.First(&s, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (r *CameraRepository) DeleteAttendanceSession(id uint64) error {
 	return r.db.Delete(&model.FaceAttendanceSession{}, "id = ?", id).Error
 }
