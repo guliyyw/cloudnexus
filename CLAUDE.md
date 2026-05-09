@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-CloudNexus is a self-hosted collaboration platform with three Go microservices and a React frontend.
+CloudNexus is a self-hosted collaboration platform with four Go microservices, AI inference, media streaming, and a React frontend.
 
 ```
 client/                    React 18 + TypeScript + Vite + Ant Design 6 + Zustand 5
@@ -13,14 +13,16 @@ server/
     user-file-svc/         用户认证 + 文件管理 (port 8081)
     im-svc/                即时通讯 + WebSocket (port 8082)
     docker-svc/            Docker 容器管理 (port 8083)
+    camera-svc/            摄像头管理 + AI 识别 + 人脸考勤 (port 8085)
   internal/
     userfile/              handler → service → repository 三层
     im/                    handler → service → repository 三层 (含 WebSocket Hub)
     dockermgr/             handler → service → repository 三层
+    camera/                handler → service → repository 三层 (含人脸/考勤)
   pkg/                     跨服务共享库
     auth/                  JWT 生成与解析 (HS256)
     middleware/             AuthRequired (JWT), Logger, CORS
-    model/                 GORM 模型: User, File, Conversation, Message, Friend...
+    model/                 GORM 模型: User, File, Conversation, Message, Friend, Camera, FaceProfile...
     config/                YAML 配置加载
     database/              PostgreSQL 连接 (GORM)
     cache/                 Redis 连接
@@ -33,9 +35,14 @@ server/
     snowflake/              Twitter Snowflake ID 生成器
     system/                健康检查构建器 + 节点注册与心跳
   config/
-    config.single.yaml     单机配置 (DSN, Redis, MinIO, JWT)
-    config.cluster.yaml    集群配置
-deploy/                    Docker Compose (PostgreSQL + Redis + MinIO)
+    config.single.yaml     本机开发配置 (hostnames = localhost)
+    config.docker.yaml     Docker 部署配置 (hostnames = 容器名)
+deploy/
+  ai-inference/            YOLOv8 Python 推理服务 Dockerfile
+  mediamtx/                MediaMTX RTSP→HLS 流媒体配置
+  nginx/                   Nginx 反向代理 + 静态文件
+  docker-compose.single.yml  单机部署 (PostgreSQL + Redis + MinIO + 4 Go 服务 + AI + MediaMTX)
+  docker-compose.cluster.yml 集群部署模板
 docs/                      openapi.yaml, architecture.md, database.md, deployment.md, development.md, progress.md, test-data.md
 ```
 
@@ -54,7 +61,7 @@ docker compose -f docker-compose.single.yml up --build -d
 # Access at http://localhost (only port 80 exposed)
 ```
 
-All three Go services are built via multi-stage Docker builds from `server/Dockerfile` with a `SERVICE` build arg (e.g., `SERVICE=user-file-svc`). The Docker Compose file builds all three in parallel.
+All four Go services are built via multi-stage Docker builds from `server/Dockerfile` with a `SERVICE` build arg (e.g., `SERVICE=camera-svc`). The Docker Compose file builds all four in parallel.
 
 ### Individual services (host development)
 
@@ -63,6 +70,7 @@ cd server
 CONFIG_PATH=config/config.single.yaml go run ./cmd/user-file-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/im-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/docker-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/camera-svc &
 ```
 
 ### Infrastructure only
@@ -97,10 +105,11 @@ Every service follows the same pattern: `handler (HTTP) → service (business lo
 The frontend dev server proxies /api requests to the correct backend service based on path prefix:
 - `/api/v1/im/*` → `localhost:8082`
 - `/api/v1/docker/*` → `localhost:8083`
+- `/api/v1/cameras` → `localhost:8085`
+- `/api/v1/faces` → `localhost:8085`
+- `/api/v1/detect-image` → `localhost:8085`
 - `/api/*` → `localhost:8081` (catch-all, must be last)
 - `/ws` → `http://localhost:8082` (WebSocket; Vite target must be http://, not ws://)
-
-New IM or Docker endpoints automatically route correctly. New user-file endpoints on `/api/v1/...` also work.
 
 ### Frontend API client
 `client/src/services/api.ts` creates a shared axios instance (`/api/v1` base, 30s timeout). Two interceptors:
@@ -161,7 +170,7 @@ Message `msg_type` values: `text`, `image`, `video`, `file`, `system`.
 - On WebSocket message: `updateLastMessage` always called (updates sidebar preview for the conversation). If message is for a non-current conversation, `incrementUnread` is also called (real-time badge increment). Both methods update conversations array in Zustand store.
 
 ### ID generation
-All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2. Snowflake must be initialized before database connection.
+All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5. Snowflake must be initialized before database connection.
 
 **JSON serialization**: All `uint64` ID fields use `json:"id,string"` tags to serialize as JSON strings, preventing JavaScript `number` precision loss (JS `number` max safe integer is 2^53-1, while Snowflake uint64 can exceed this). All frontend TypeScript ID types are `string`.
 
@@ -169,9 +178,12 @@ All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `
 Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry point on **port 80** — the only port exposed to the host:
 - `/api/v1/im/*` → im-svc:8082 (Docker service name, not host IP)
 - `/api/v1/docker/*` → docker-svc:8083
-- `/api/*` → user-file-svc:8081
+- `/api/v1/cameras` → camera-svc:8085
+- `/api/v1/faces` → camera-svc:8085
+- `/api/v1/detect-image` → camera-svc:8085
+- `/api/*` → user-file-svc:8081 (catch-all, must be after more specific routes)
 - `/ws` → im-svc:8082 (WebSocket upgrade)
-- `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc}` for per-service probing
+- `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc,camera-svc}` for per-service probing
 - `/` → Serves `client/dist/` static files with SPA `try_files` fallback
 - `//api/*` → 308 redirect to `/api/*` (handles double-slash from misconfigured clients like Apifox)
 
@@ -188,8 +200,16 @@ The frontend connects to `window.location.host` for both API calls and WebSocket
 
 ### Config files
 - `config.single.yaml` — host development (all hostnames = `localhost`)
-- `config.docker.yaml` — Docker deployment (hostnames = `postgres`, `redis`, `minio`)
-- Set via `CONFIG_PATH` env var (each `main.go` reads it)
+- `config.docker.yaml` — Docker deployment (hostnames = container names: `postgres`, `redis`, `minio`)
+- Set via `CONFIG_PATH` env var (each `main.go` reads it). Docker Compose mounts `config.docker.yaml` into each service container at `/app/config/` and sets `CONFIG_PATH=/app/config/config.docker.yaml`.
+
+### Remote server deploy workflow
+The production server is accessed via SSH MCP tools (server ID: `cloudnexus-server`). Source tree is at `/home/user/cloudnexus/`. Deploy steps:
+1. Upload changed server files to the matching remote path
+2. `cd /home/user/cloudnexus/deploy && docker compose -f docker-compose.single.yml build <service>`
+3. `docker compose -f docker-compose.single.yml up -d <service>`
+4. For frontend: upload `client/dist` as `dist_new`, then `mv dist dist_old && mv dist_new dist` on the server
+5. `docker compose restart nginx` after swapping dist (bind mount follows inode, directory rename needs re-mount)
 
 ### Friend system
 Bidirectional `Friend` model with `uniqueIndex:idx_friend_pair` on `(user_id, friend_id)`. Status: `pending` → `accepted`. Auto-creates private conversation on accept. If both users send requests simultaneously, the second auto-accepts. Friend queries return `FriendInfo` (embeds Friend + `friend_username` from JOIN on users table) for display without extra queries.
@@ -217,7 +237,7 @@ Shares are created per-file with an optional password (bcrypt hashed) and expiry
 
 ### Frontend routing
 Public routes (no auth, no layout chrome): `/login`, `/register`, `/s/:code`
-Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/shares`, `/chat`, `/friends`, `/docker`, `/admin`
+Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/shares`, `/chat`, `/friends`, `/docker`, `/cameras`, `/faces`, `/attendance`, `/admin`
 Catch-all redirects to `/files`
 
 ### Docker permission model
@@ -238,8 +258,9 @@ Per-service checks:
 - **user-file-svc**: database (PostgreSQL ping), minio (ListBuckets)
 - **im-svc**: database (PostgreSQL ping), redis (Ping)
 - **docker-svc**: docker (GET /_ping on Docker Engine API)
+- **camera-svc**: database (PostgreSQL ping)
 
-Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/user-file-svc`, `/healthz/im-svc`, `/healthz/docker-svc` for per-service probing.
+Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc,camera-svc}` for per-service probing.
 
 ### Node registration & heartbeat
 `pkg/system/nodereg.go` — `NodeRegistrar` manages lifecycle in `docker_nodes` table:
@@ -281,6 +302,30 @@ Registered via `HealthAggregator.RegisterInfra()` in user-file-svc:
 - Routes: `GET /api/v1/docker/endpoints` (list), `GET /api/v1/docker/ping?endpoint=` (ping specific)
 - Frontend `DockerPage` has `Select` host selector showing endpoint name, host:port, and status tag
 
+### Camera service & AI pipeline
+
+camera-svc (port 8085) manages camera CRUD, streams, AI recognition, face library, and attendance. It depends on two external services:
+
+- **MediaMTX** (`mediamtx:8888`): RTSP→HLS proxy. camera-svc controls streams via MediaMTX's HTTP API (`:8889`). HLS segments served directly from MediaMTX on port 8888.
+- **AI Inference** (`ai-inference:8000`): Python YOLOv8 service. camera-svc sends frames for object detection; the service returns bounding boxes + classes.
+
+**Stream lifecycle**: `POST /cameras/:id/stream/start` → camera-svc calls MediaMTX API to start proxying the camera's RTSP URL → returns `hls_url` to frontend. `POST /cameras/:id/stream/stop` tears down the proxy.
+
+**Object detection**: `POST /cameras/:id/recognition/start` → camera-svc spawns a goroutine that reads frames via ffmpeg, sends to AI inference, and stores `RecognitionEvent` rows (class, confidence, bbox, snapshot_url).
+
+### Face recognition & attendance
+
+Face recognition is a **browser + backend** split:
+
+- **Browser (face-api.js)**: loads TinyFaceDetector + FaceLandmark68Net + FaceRecognitionNet from `/models/`. Every 2-3s, captures a frame from `<video>`, detects faces, extracts 128-dim embeddings, sends to backend.
+- **Backend (Go cosine similarity)**: `POST /faces/match` compares the embedding against all profiles in the user's face library using pure Go math (`dot(a,b) / (norm(a)*norm(b))`). Best match ≥ 0.6 threshold returned with name and confidence.
+
+**Face profiles** (`face_profiles` table): name + JSON embedding + MinIO thumbnail. CRUD at `/api/v1/faces`.
+
+**Attendance** (`face_attendance_sessions` table): when a face is matched with `camera_id` provided, `RecordAttendance` upserts a session. Sessions within 5-minute gap are merged (extend `end_time`). Daily summary at `GET /faces/attendance/daily` aggregates per face: min start_time = check_in, max end_time = check_out. Personnel status at `GET /faces/attendance/status` cross-references all face profiles with the day's sessions to show signed_in/not.
+
+**Important**: Delete operations on attendance must verify face profile ownership via `FindFaceProfileByID()` before deleting, as the face profile carries the `owner_id`.
+
 ### Nginx load balancing
 `deploy/nginx/nginx.conf` — upstream blocks for multi-server deployment:
 - `user_file_backend`: user-file-svc instances (default: single server, add more for multi-server)
@@ -306,4 +351,7 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 - **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.
 - **WebSocket stale closures**: `useWebSocket` uses `handlerRef` pattern. Always use the ref to access current React state inside WebSocket callbacks — never close over state directly in `useEffect([], [])`.
 - **Nginx config is volume-mounted**: Changes to `deploy/nginx/nginx.conf` only need `docker compose restart nginx`, not a full rebuild.
-- **Node registration**: All three services register themselves as nodes via `NodeRegistrar`. Node host is auto-detected via `detectHostIP()` (first private IPv4) unless overridden by `NODE_HOST` env var. Heartbeat upsert does NOT overwrite `status` — only `host`, `port`, `last_heartbeat`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
+- **Node registration**: All four services register themselves as nodes via `NodeRegistrar`. Node host is auto-detected via `detectHostIP()` (first private IPv4) unless overridden by `NODE_HOST` env var. Heartbeat upsert does NOT overwrite `status` — only `host`, `port`, `last_heartbeat`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
+- **camera-svc depends on MediaMTX + AI inference**: ensure both are running before testing camera features. MediaMTX API at `:8889`, HLS at `:8888`. AI inference at `:8000`.
+- **Face recognition requires face-api.js models**: model weights must be in `client/public/models/`. Without them, face detection silently produces no results.
+- **MinIO thumbnail storage**: `FaceProfile.thumbnail_url` stores the object key (e.g., `faces/123.jpg`), not a full URL. Access via `GET /api/v1/faces/:id/thumbnail?token=`. Old profiles from before MinIO deployment may have `data:image/...` URLs that return 404 from the thumbnail API.
