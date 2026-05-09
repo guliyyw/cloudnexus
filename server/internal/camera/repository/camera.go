@@ -168,3 +168,12 @@ func (r *CameraRepository) ListAttendanceByCamera(cameraID uint64, date string) 
 		Order("start_time ASC").Find(&sessions).Error
 	return sessions, err
 }
+
+func (r *CameraRepository) DeleteAttendanceSession(id uint64) error {
+	return r.db.Delete(&model.FaceAttendanceSession{}, "id = ?", id).Error
+}
+
+func (r *CameraRepository) DeleteAttendanceByFaceDate(faceID uint64, date string) (int64, error) {
+	result := r.db.Where("face_id = ? AND date = ?", faceID, date).Delete(&model.FaceAttendanceSession{})
+	return result.RowsAffected, result.Error
+}

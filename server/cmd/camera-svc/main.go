@@ -136,6 +136,9 @@ func main() {
 			faces.GET("/:id/thumbnail", faceH.HandleGetThumbnail)
 			faces.GET("/attendance", faceH.HandleGetAttendanceByFace)
 			faces.GET("/attendance/daily", faceH.HandleGetDailyAttendance)
+			faces.GET("/attendance/status", faceH.HandleGetAttendanceStatus)
+			faces.DELETE("/attendance/:id", faceH.HandleDeleteAttendanceSession)
+			faces.DELETE("/attendance", faceH.HandleClearAttendance)
 		}
 		api.POST("/detect-image", camH.HandleDetectImage)
 	}

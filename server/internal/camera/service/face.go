@@ -329,3 +329,78 @@ func (s *FaceService) GetAttendanceByCamera(cameraID uint64, date string) ([]mod
 	}
 	return s.repo.ListAttendanceByCamera(cameraID, date)
 }
+
+// DeleteSession deletes a single attendance session by ID.
+func (s *FaceService) DeleteSession(id uint64) error {
+	return s.repo.DeleteAttendanceSession(id)
+}
+
+// ClearAttendanceByFaceDate deletes all attendance sessions for a face on a date.
+func (s *FaceService) ClearAttendanceByFaceDate(faceID uint64, date string) (int64, error) {
+	return s.repo.DeleteAttendanceByFaceDate(faceID, date)
+}
+
+// AttendanceStatusItem represents a personnel's check-in status for a given date.
+type AttendanceStatusItem struct {
+	FaceID       uint64     `json:"face_id,string"`
+	FaceName     string     `json:"face_name"`
+	SignedIn     bool       `json:"signed_in"`
+	CheckIn      *time.Time `json:"check_in"`
+	CheckOut     *time.Time `json:"check_out"`
+	SessionCount int        `json:"session_count"`
+}
+
+// GetAttendanceStatus returns all face profiles with their attendance status for a date.
+func (s *FaceService) GetAttendanceStatus(ownerID uint64, date string) ([]AttendanceStatusItem, int, int, error) {
+	profiles, err := s.repo.AllFaceProfiles(ownerID)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	sessions, err := s.repo.ListAttendanceByDate(date)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	// Index sessions by face_id: min start = check_in, max end = check_out
+	type agg struct {
+		checkIn  time.Time
+		checkOut time.Time
+		count    int
+	}
+	sessionMap := make(map[uint64]*agg)
+	for i := range sessions {
+		s := &sessions[i]
+		a, ok := sessionMap[s.FaceID]
+		if !ok {
+			a = &agg{checkIn: s.StartTime, checkOut: s.EndTime, count: 0}
+			sessionMap[s.FaceID] = a
+		}
+		if s.StartTime.Before(a.checkIn) {
+			a.checkIn = s.StartTime
+		}
+		if s.EndTime.After(a.checkOut) {
+			a.checkOut = s.EndTime
+		}
+		a.count++
+	}
+
+	signedCount := 0
+	items := make([]AttendanceStatusItem, 0, len(profiles))
+	for _, p := range profiles {
+		item := AttendanceStatusItem{
+			FaceID:   p.ID,
+			FaceName: p.Name,
+		}
+		if a, ok := sessionMap[p.ID]; ok {
+			item.SignedIn = true
+			item.CheckIn = &a.checkIn
+			item.CheckOut = &a.checkOut
+			item.SessionCount = a.count
+			signedCount++
+		}
+		items = append(items, item)
+	}
+
+	return items, signedCount, len(profiles) - signedCount, nil
+}

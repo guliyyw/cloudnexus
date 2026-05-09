@@ -223,3 +223,34 @@ export async function getAttendanceByFace(
   })
   return data.data.items
 }
+
+export interface AttendanceStatusItem {
+  face_id: string
+  face_name: string
+  signed_in: boolean
+  check_in: string | null
+  check_out: string | null
+  session_count: number
+}
+
+export interface AttendanceStatusResponse {
+  items: AttendanceStatusItem[]
+  date: string
+  total: number
+  signed_count: number
+  unsigned_count: number
+}
+
+export async function getAttendanceStatus(date: string): Promise<AttendanceStatusResponse> {
+  const { data } = await api.get('/faces/attendance/status', { params: { date } })
+  return data.data
+}
+
+export async function deleteAttendanceSession(id: string): Promise<void> {
+  await api.delete(`/faces/attendance/${id}`)
+}
+
+export async function clearAttendanceByFaceDate(faceId: string, date: string): Promise<number> {
+  const { data } = await api.delete('/faces/attendance', { params: { face_id: faceId, date } })
+  return data.data.deleted
+}

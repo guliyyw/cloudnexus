@@ -233,3 +233,61 @@ func (h *FaceHandler) HandleClearFaceEvents(c *gin.Context) {
 	}
 	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))
 }
+
+// HandleDeleteAttendanceSession deletes a single attendance session.
+func (h *FaceHandler) HandleDeleteAttendanceSession(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(400, response.Error(400, "无效的考勤记录 ID"))
+		return
+	}
+	if err := h.svc.DeleteSession(id); err != nil {
+		c.JSON(500, response.Error(500, "删除考勤记录失败"))
+		return
+	}
+	c.JSON(200, response.OK("删除成功"))
+}
+
+// HandleClearAttendance deletes all attendance sessions for a face on a date.
+func (h *FaceHandler) HandleClearAttendance(c *gin.Context) {
+	faceID, err := strconv.ParseUint(c.Query("face_id"), 10, 64)
+	if err != nil || faceID == 0 {
+		c.JSON(400, response.Error(400, "face_id 参数必填"))
+		return
+	}
+	date := c.Query("date")
+	if date == "" {
+		c.JSON(400, response.Error(400, "date 参数必填"))
+		return
+	}
+	count, err := h.svc.ClearAttendanceByFaceDate(faceID, date)
+	if err != nil {
+		c.JSON(500, response.Error(500, "删除考勤记录失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))
+}
+
+// HandleGetAttendanceStatus returns all personnel with check-in status for a date.
+func (h *FaceHandler) HandleGetAttendanceStatus(c *gin.Context) {
+	date := c.DefaultQuery("date", "")
+	if date == "" {
+		c.JSON(400, response.Error(400, "date 参数必填"))
+		return
+	}
+	items, signedCount, unsignedCount, err := h.svc.GetAttendanceStatus(getUserID(c), date)
+	if err != nil {
+		c.JSON(500, response.Error(500, "查询考勤状态失败"))
+		return
+	}
+	if items == nil {
+		items = []service.AttendanceStatusItem{}
+	}
+	c.JSON(200, response.OKWithData(gin.H{
+		"items":         items,
+		"date":          date,
+		"total":         len(items),
+		"signed_count":  signedCount,
+		"unsigned_count": unsignedCount,
+	}))
+}
