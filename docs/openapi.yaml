@@ -607,6 +607,34 @@ components:
         y2:
           type: number
 
+    VideoDetection:
+      type: object
+      properties:
+        time:
+          type: number
+          description: 帧时间戳（秒）
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectedObject'
+
+    VideoDetectResponse:
+      type: object
+      properties:
+        video_duration:
+          type: number
+          description: 视频总时长（秒）
+        fps:
+          type: number
+          description: 视频帧率
+        frames_analyzed:
+          type: integer
+          description: 实际分析的帧数
+        detections:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoDetection'
+
     CameraListResponse:
       type: object
       properties:
@@ -2187,6 +2215,43 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/DetectedObject'
+
+  /api/v1/detect-video:
+    post:
+      tags: [AI 识别]
+      summary: 视频文件智能分析
+      description: 上传视频文件，按指定间隔提取帧并进行 YOLO 目标检测，返回时间轴检测结果
+      parameters:
+        - name: interval
+          in: query
+          schema:
+            type: number
+            default: 2
+            minimum: 0.5
+            maximum: 60
+          description: 采样间隔（秒）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 视频分析结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/VideoDetectResponse'
 
   # ════════════════════════════════════════════════════
   # Paths — Face Library & Attendance (camera-svc)

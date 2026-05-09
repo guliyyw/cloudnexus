@@ -108,6 +108,7 @@ The frontend dev server proxies /api requests to the correct backend service bas
 - `/api/v1/cameras` → `localhost:8085`
 - `/api/v1/faces` → `localhost:8085`
 - `/api/v1/detect-image` → `localhost:8085`
+- `/api/v1/detect-video` → `localhost:8085`
 - `/api/*` → `localhost:8081` (catch-all, must be last)
 - `/ws` → `http://localhost:8082` (WebSocket; Vite target must be http://, not ws://)
 
@@ -181,6 +182,7 @@ Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry po
 - `/api/v1/cameras` → camera-svc:8085
 - `/api/v1/faces` → camera-svc:8085
 - `/api/v1/detect-image` → camera-svc:8085
+- `/api/v1/detect-video` → camera-svc:8085
 - `/api/*` → user-file-svc:8081 (catch-all, must be after more specific routes)
 - `/ws` → im-svc:8082 (WebSocket upgrade)
 - `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc,camera-svc}` for per-service probing
