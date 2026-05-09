@@ -11,37 +11,10 @@ export class VideoRecorder {
 
   start(video: HTMLVideoElement): void {
     if (this._recording) return
-
-    this.canvas = document.createElement('canvas')
-    this.canvas.width = video.videoWidth || 640
-    this.canvas.height = video.videoHeight || 360
-    this.ctx = this.canvas.getContext('2d')!
-
-    const stream = this.canvas.captureStream(30)
-    this.mediaRecorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9'
-        : 'video/webm',
-    })
-
-    this.chunks = []
-
-    this.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        this.chunks.push(e.data)
-        if (this.chunks.length > this.maxChunks) {
-          URL.revokeObjectURL(URL.createObjectURL(this.chunks.shift()!))
-        }
-      }
-    }
-
-    this.mediaRecorder.start(5000) // 5s segments
-
+    this._setup(video.videoWidth || 640, video.videoHeight || 360)
     const draw = () => {
       if (!this._recording) return
-      if (this.ctx && this.canvas && video.readyState >= 2) {
-        this.ctx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
-      }
+      if (video.readyState >= 2) this.ctx!.drawImage(video, 0, 0)
       this.animId = requestAnimationFrame(draw)
     }
     this._recording = true
@@ -50,21 +23,28 @@ export class VideoRecorder {
 
   startFromCanvas(source: HTMLCanvasElement): void {
     if (this._recording) return
+    this._setup(source.width || 640, source.height || 360)
+    const draw = () => {
+      if (!this._recording) return
+      if (source.width > 0) this.ctx!.drawImage(source, 0, 0)
+      this.animId = requestAnimationFrame(draw)
+    }
+    this._recording = true
+    this.animId = requestAnimationFrame(draw)
+  }
 
+  private _setup(w: number, h: number): void {
     this.canvas = document.createElement('canvas')
-    this.canvas.width = source.width || 640
-    this.canvas.height = source.height || 360
+    this.canvas.width = w
+    this.canvas.height = h
     this.ctx = this.canvas.getContext('2d')!
-
+    this.chunks = []
     const stream = this.canvas.captureStream(30)
     this.mediaRecorder = new MediaRecorder(stream, {
       mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
         ? 'video/webm;codecs=vp9'
         : 'video/webm',
     })
-
-    this.chunks = []
-
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         this.chunks.push(e.data)
@@ -73,18 +53,7 @@ export class VideoRecorder {
         }
       }
     }
-
     this.mediaRecorder.start(5000)
-
-    const draw = () => {
-      if (!this._recording) return
-      if (this.ctx && this.canvas && source.width > 0) {
-        this.ctx.drawImage(source, 0, 0, this.canvas.width, this.canvas.height)
-      }
-      this.animId = requestAnimationFrame(draw)
-    }
-    this._recording = true
-    this.animId = requestAnimationFrame(draw)
   }
 
   stop(): Blob | null {

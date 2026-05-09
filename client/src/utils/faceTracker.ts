@@ -50,6 +50,8 @@ export class FaceTracker {
     const newTrackDetIdx = new Map<number, number>()
     for (let j = 0; j < m; j++) {
       if (!detMatched.has(j)) {
+        // Cycle IDs to avoid overflow on long-running sessions
+        if (this.nextId > 1_000_000) this.nextId = 1
         const id = this.nextId++
         this.tracks.push({
           id,
@@ -59,6 +61,8 @@ export class FaceTracker {
           unmatchedFrames: 0,
         })
         newTrackIds.push(id)
+        // detIdx maps new track ID → detection array index for the caller
+        // to pair with the corresponding descriptor from detectFaces()
         newTrackDetIdx.set(id, j)
       }
     }

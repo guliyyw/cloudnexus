@@ -82,8 +82,6 @@ export default function CameraLiveView() {
   // Canvas dimensions for face detection input + display size for overlay scaling
   const canvasSizeRef = useRef({ w: 640, h: 360 })
   const [displaySize, setDisplaySize] = useState({ w: 640, h: 360 })
-  const displaySizeRef = useRef(displaySize)
-  useEffect(() => { displaySizeRef.current = displaySize }, [displaySize])
 
   const fetchCamera = useCallback(async () => {
     if (!id) return
