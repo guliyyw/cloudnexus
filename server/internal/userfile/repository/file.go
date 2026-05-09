@@ -91,6 +91,10 @@ func (r *FileRepository) BatchCreate(files []*model.File) error {
 	return r.db.Create(&files).Error
 }
 
+func (r *FileRepository) ForceDelete(id uint64) error {
+	return r.db.Unscoped().Delete(&model.File{}, id).Error
+}
+
 // ── 文件版本 ──
 
 func (r *FileRepository) CreateVersion(v *model.FileVersion) error {

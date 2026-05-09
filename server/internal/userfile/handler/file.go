@@ -288,6 +288,47 @@ func (h *FileHandler) HandleSearch(c *gin.Context) {
 	}))
 }
 
+// ── 协作文档 ──
+
+type createCollabReq struct {
+	Title      string `json:"title" binding:"required"`
+	ParentID   uint64 `json:"parent_id,string"`
+	CollabType string `json:"collab_type"`
+}
+
+func (h *FileHandler) HandleCreateCollab(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req createCollabReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误：请提供 title"))
+		return
+	}
+	if req.CollabType == "" {
+		req.CollabType = "doc"
+	}
+	file, err := h.svc.CreateCollab(userID, req.ParentID, req.Title, req.CollabType)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleGetFileMeta(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的文件 ID"))
+		return
+	}
+	file, err := h.svc.GetFileMeta(userID, fileID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
 // ── 文件版本 ──
 
 func (h *FileHandler) HandleListVersions(c *gin.Context) {

@@ -15,6 +15,7 @@ import {
   VideoCameraOutlined,
   SmileOutlined,
   ClockCircleOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
 
@@ -44,6 +45,7 @@ export default function AppLayout() {
     { key: '/cameras', icon: <VideoCameraOutlined />, label: '摄像头' },
     { key: '/faces', icon: <SmileOutlined />, label: '人脸库' },
     { key: '/attendance', icon: <ClockCircleOutlined />, label: '考勤记录' },
+    { key: '/documents', icon: <FileTextOutlined />, label: '在线文档' },
     ...(user?.is_admin ? [{ key: '/admin', icon: <SettingOutlined />, label: '管理后台' }] : []),
   ]
 

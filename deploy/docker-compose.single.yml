@@ -171,6 +171,32 @@ services:
       retries: 3
       start_period: 10s
 
+  collab-svc:
+    build:
+      context: ../server
+      args:
+        SERVICE: collab-svc
+    environment:
+      - CONFIG_PATH=/app/config/config.docker.yaml
+      - SERVICE_VERSION=latest
+      - SNOWFLAKE_NODE_ID=6
+    ports:
+      - "8086:8086"
+    volumes:
+      - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
+      - logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   nginx:
     image: nginx:alpine
     command: /bin/sh -c "rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
@@ -185,6 +211,8 @@ services:
       im-svc:
         condition: service_healthy
       docker-svc:
+        condition: service_healthy
+      collab-svc:
         condition: service_healthy
 
 volumes:

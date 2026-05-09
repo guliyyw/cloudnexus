@@ -341,6 +341,54 @@ func (s *FileService) copyRecursive(userID uint64, src *model.File, targetParent
 	return newDir, nil
 }
 
+// ── 协作文档 ──
+
+func (s *FileService) GetFileMeta(userID, fileID uint64) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+	}
+	return file, nil
+}
+
+func (s *FileService) CreateCollab(userID, parentID uint64, name, collabType string) (*model.File, error) {
+	// Check for duplicate name
+	existing, err := s.repo.FindByNameAndParent(userID, parentID, name+".clouddoc")
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "检查重名失败", err)
+	}
+	if existing != nil {
+		return nil, apperrors.NewAppError(409, "已存在同名协作文档", apperrors.ErrConflict)
+	}
+
+	mimeType := "application/x-collab-" + collabType
+	file := &model.File{
+		UserID:     userID,
+		Name:       name + ".clouddoc",
+		ParentID:   parentID,
+		Size:       1,
+		MimeType:   mimeType,
+		CollabType: collabType,
+		StorageKey: "", // set after ID is generated
+	}
+	if err := s.repo.Create(file); err != nil {
+		return nil, apperrors.NewAppError(500, "创建文件记录失败", err)
+	}
+
+	// Set deterministic storage key (MinIO object written on first persist)
+	storageKey := fmt.Sprintf("collab/%d/ydoc.bin", file.ID)
+	file.StorageKey = storageKey
+	file.Size = 0
+
+	if err := s.repo.Update(file); err != nil {
+		return nil, apperrors.NewAppError(500, "更新存储路径失败", err)
+	}
+	return file, nil
+}
+
 // ── 文件版本管理 ──
 
 func (s *FileService) ListVersions(userID, fileID uint64, page, pageSize int) ([]model.FileVersion, int64, error) {

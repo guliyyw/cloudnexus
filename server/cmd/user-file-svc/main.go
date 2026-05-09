@@ -151,10 +151,12 @@ func main() {
 			file.POST("/batch-download", fileH.HandleBatchDownload)
 			file.POST("/move", fileH.HandleMove)
 			file.POST("/copy", fileH.HandleCopy)
+			file.POST("/collab", fileH.HandleCreateCollab)
 			// 文件版本
 			file.GET("/:id/versions", fileH.HandleListVersions)
 			file.POST("/:id/versions/:versionId/restore", fileH.HandleRestoreVersion)
 			file.GET("/:id/versions/:versionId/download", fileH.HandleDownloadVersion)
+			file.GET("/:id/meta", fileH.HandleGetFileMeta)
 			file.POST("/:id/share", shareH.HandleCreateShare)
 			file.GET("/:id/shares", shareH.HandleListSharesByFile)
 		}

@@ -17,6 +17,8 @@ import CameraListPage from './pages/CameraListPage'
 import CameraLiveView from './pages/CameraLiveView'
 import FaceLibraryPage from './pages/FaceLibraryPage'
 import FaceAttendancePage from './pages/FaceAttendancePage'
+import DocumentListPage from './pages/DocumentListPage'
+import DocumentEditorPage from './pages/DocumentEditorPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -85,6 +87,7 @@ export default function App() {
             }
           >
             <Route path="/files" element={<FileListPage />} />
+            <Route path="/files/:id/edit" element={<DocumentEditorPage />} />
             <Route path="/shares" element={<MySharesPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/friends" element={<FriendPage />} />
@@ -94,6 +97,8 @@ export default function App() {
             <Route path="/cameras/:id" element={<CameraLiveView />} />
             <Route path="/faces" element={<FaceLibraryPage />} />
             <Route path="/attendance" element={<FaceAttendancePage />} />
+            <Route path="/documents" element={<DocumentListPage />} />
+            <Route path="/documents/:id" element={<DocumentEditorPage />} />
             <Route path="/settings" element={<UserSettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />

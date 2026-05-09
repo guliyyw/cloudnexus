@@ -12,7 +12,8 @@ type File struct {
 	MimeType      string `json:"mime_type" gorm:"size:128"`
 	StorageKey    string `json:"storage_key" gorm:"size:512"`
 	StorageSHA256 string `json:"storage_sha256" gorm:"size:64"`
-	IsShared      bool   `json:"is_shared" gorm:"default:false"`
+	IsShared      bool       `json:"is_shared" gorm:"default:false"`
+	CollabType    string     `json:"collab_type" gorm:"size:16;default:''"`
 	DeletedAt     *time.Time
 }
 

@@ -10,6 +10,10 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.2",
+    "@tiptap/extension-collaboration": "^3.23.1",
+    "@tiptap/extension-collaboration-cursor": "^3.0.0",
+    "@tiptap/react": "^3.23.1",
+    "@tiptap/starter-kit": "^3.23.1",
     "antd": "^6.3.7",
     "axios": "^1.16.0",
     "dayjs": "^1.11.20",
@@ -19,6 +23,9 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.14.2",
     "recharts": "^3.8.1",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

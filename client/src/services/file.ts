@@ -12,6 +12,7 @@ export interface FileItem {
   storage_key: string
   storage_sha256: string
   is_shared: boolean
+  collab_type: string
   created_at: string
   updated_at: string
 }
@@ -184,6 +185,18 @@ export function getSharePreviewUrl(code: string, password?: string): string {
   params.set('inline', 'true')
   if (password) params.set('password', password)
   return `/api/v1/share/${code}/download?${params.toString()}`
+}
+
+// ── 协作文档 ──
+
+export async function createCollabDoc(title: string, parentId: string, collabType: string = 'doc'): Promise<FileItem> {
+  const res = await api.post('/file/collab', { title, parent_id: parentId, collab_type: collabType })
+  return res.data.data
+}
+
+export async function getFileMeta(id: string): Promise<FileItem> {
+  const res = await api.get(`/file/${id}/meta`)
+  return res.data.data
 }
 
 // ── 文件版本 ──

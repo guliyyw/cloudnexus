@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Table, Button, Modal, Input, Breadcrumb, Popconfirm,
   Space, message, Tag, Typography, Tooltip, Card,
@@ -9,7 +10,7 @@ import {
   FileOutlined, HomeOutlined, ReloadOutlined, UploadOutlined,
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined, ShareAltOutlined,
-  SwapOutlined, CopyOutlined, HistoryOutlined,
+  SwapOutlined, CopyOutlined, HistoryOutlined, FileTextOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
 import UploadModal from '../components/UploadModal'
@@ -18,12 +19,13 @@ import ShareModal from '../components/ShareModal'
 import DirectoryPickerModal from '../components/DirectoryPickerModal'
 import FileVersionPanel from '../components/FileVersionPanel'
 import { isPreviewable } from '../utils/preview'
-import { getDownloadUrl } from '../services/file'
+import { getDownloadUrl, createCollabDoc } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
 
-function getFileIcon(mimeType: string, isDir: boolean) {
+function getFileIcon(mimeType: string, isDir: boolean, collabType?: string) {
   if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />
+  if (collabType === 'doc') return <FileTextOutlined style={{ color: '#e8964a' }} />
   if (!mimeType) return <FileOutlined />
   if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: '#52c41a' }} />
   if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#5b8def' }} />
@@ -45,6 +47,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function FileListPage() {
+  const navigate = useNavigate()
   const {
     files, total, page, pageSize, breadcrumb, loading, searchMode, searchKeyword,
     fetchFiles, remove, batchRemove, batchDownload, moveItem, copyItem, mkdir, search, navigateTo, setPage, currentParentId,
@@ -52,6 +55,9 @@ export default function FileListPage() {
 
   const [mkdirVisible, setMkdirVisible] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
+  const [collabVisible, setCollabVisible] = useState(false)
+  const [collabTitle, setCollabTitle] = useState('')
+  const [creatingCollab, setCreatingCollab] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadTargetDir, setUploadTargetDir] = useState({ id: '0', name: '根目录' })
@@ -205,7 +211,7 @@ export default function FileListPage() {
       title: '名称', dataIndex: 'name', key: 'name', width: 300,
       render: (name: string, record: FileItem) => (
         <Space>
-          {getFileIcon(record.mime_type, record.is_dir)}
+          {getFileIcon(record.mime_type, record.is_dir, record.collab_type)}
           {record.is_dir ? (
             <a
               onClick={() => navigateTo(record.id, record.name)}
@@ -219,6 +225,10 @@ export default function FileListPage() {
                 outline: dropDirId === record.id ? '2px dashed #e8964a' : undefined,
               }}
             >
+              {name}
+            </a>
+          ) : record.collab_type === 'doc' ? (
+            <a onClick={() => navigate(`/files/${record.id}/edit`)} style={{ fontWeight: 500 }}>
               {name}
             </a>
           ) : isPreviewable(record.mime_type) ? (
@@ -235,7 +245,11 @@ export default function FileListPage() {
     },
     {
       title: '类型', dataIndex: 'mime_type', key: 'mime_type', width: 150,
-      render: (v: string, r: FileItem) => r.is_dir ? <Tag>目录</Tag> : <Text type="secondary">{v || '-'}</Text>,
+      render: (v: string, r: FileItem) => {
+        if (r.is_dir) return <Tag>目录</Tag>
+        if (r.collab_type === 'doc') return <Tag color="orange">协作文档</Tag>
+        return <Text type="secondary">{v || '-'}</Text>
+      },
     },
     {
       title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180,
@@ -288,6 +302,7 @@ export default function FileListPage() {
             上传文件
           </Button>
           <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
+          <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建协作文档</Button>
           <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
           <Text type="secondary" style={{ marginLeft: 8 }}>
             拖拽文件到目录名即可上传到该目录
@@ -406,6 +421,51 @@ export default function FileListPage() {
         onCancel={() => setMkdirVisible(false)}
       >
         <Input placeholder="目录名称" value={mkdirName} onChange={(e) => setMkdirName(e.target.value)} />
+      </Modal>
+
+      <Modal
+        title="新建协作文档"
+        open={collabVisible}
+        onOk={async () => {
+          if (!collabTitle.trim()) return
+          setCreatingCollab(true)
+          try {
+            const file = await createCollabDoc(collabTitle.trim(), currentParentId)
+            message.success('协作文档已创建')
+            setCollabTitle('')
+            setCollabVisible(false)
+            navigate(`/files/${file.id}/edit`)
+          } catch {
+            message.error('创建失败')
+          } finally {
+            setCreatingCollab(false)
+          }
+        }}
+        onCancel={() => { setCollabVisible(false); setCollabTitle('') }}
+        confirmLoading={creatingCollab}
+        okText="创建"
+        cancelText="取消"
+      >
+        <Input
+          placeholder="输入文档标题"
+          value={collabTitle}
+          onChange={(e) => setCollabTitle(e.target.value)}
+          onPressEnter={() => {
+            if (collabTitle.trim()) {
+              setCreatingCollab(true)
+              createCollabDoc(collabTitle.trim(), currentParentId)
+                .then(file => {
+                  message.success('协作文档已创建')
+                  setCollabTitle('')
+                  setCollabVisible(false)
+                  navigate(`/files/${file.id}/edit`)
+                })
+                .catch(() => message.error('创建失败'))
+                .finally(() => setCreatingCollab(false))
+            }
+          }}
+          autoFocus
+        />
       </Modal>
 
       <UploadModal

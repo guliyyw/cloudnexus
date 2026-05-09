@@ -14,6 +14,10 @@ export default defineConfig({
         target: 'http://localhost:8083',
         changeOrigin: true,
       },
+      '/api/v1/collab': {
+        target: 'http://localhost:8086',
+        changeOrigin: true,
+      },
       '/api/v1/cameras': {
         target: 'http://localhost:8085',
         changeOrigin: true,
@@ -28,6 +32,11 @@ export default defineConfig({
       },
       '/api': {
         target: 'http://localhost:8081',
+        changeOrigin: true,
+      },
+      '/ws/collab': {
+        target: 'http://localhost:8086',
+        ws: true,
         changeOrigin: true,
       },
       '/ws': {
