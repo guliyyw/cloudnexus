@@ -133,9 +133,9 @@ func main() {
 				friends.GET("", imH.HandleListFriends)
 				friends.GET("/", imH.HandleListFriends)
 				friends.DELETE("/:friend_id", imH.HandleRemoveFriend)
-				friends.POST("/:id/block", friendH.HandleBlockUser)
-				friends.DELETE("/:id/block", friendH.HandleUnblockUser)
-				friends.PUT("/:id/remark", friendH.HandleSetRemark)
+				friends.POST("/:friend_id/block", friendH.HandleBlockUser)
+				friends.DELETE("/:friend_id/block", friendH.HandleUnblockUser)
+				friends.PUT("/:friend_id/remark", friendH.HandleSetRemark)
 				friends.GET("/online", friendH.HandleGetOnlineStatus)
 			}
 

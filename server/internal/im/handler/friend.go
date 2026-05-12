@@ -22,7 +22,7 @@ func NewFriendEnhanceHandler(svc *service.IMService, blSvc *service.BlocklistSer
 // Blocklist handlers
 func (h *FriendEnhanceHandler) HandleBlockUser(c *gin.Context) {
 	userID := c.GetUint64("user_id")
-	targetID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	targetID, err := strconv.ParseUint(c.Param("friend_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
 		return
@@ -42,7 +42,7 @@ func (h *FriendEnhanceHandler) HandleBlockUser(c *gin.Context) {
 
 func (h *FriendEnhanceHandler) HandleUnblockUser(c *gin.Context) {
 	userID := c.GetUint64("user_id")
-	targetID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	targetID, err := strconv.ParseUint(c.Param("friend_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
 		return
@@ -67,7 +67,7 @@ func (h *FriendEnhanceHandler) HandleGetBlocklist(c *gin.Context) {
 // Remark handler
 func (h *FriendEnhanceHandler) HandleSetRemark(c *gin.Context) {
 	userID := c.GetUint64("user_id")
-	friendID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	friendID, err := strconv.ParseUint(c.Param("friend_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的好友 ID"))
 		return

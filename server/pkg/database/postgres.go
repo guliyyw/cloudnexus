@@ -2,6 +2,7 @@ package database
 
 import (
 	"log"
+	"reflect"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -43,9 +44,24 @@ func registerSnowflakeCallback(db *gorm.DB) {
 			return
 		}
 		if field := db.Statement.Schema.LookUpField("ID"); field != nil {
-			_, isZero := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
-			if isZero {
-				field.Set(db.Statement.Context, db.Statement.ReflectValue, snowflake.Uint64())
+			rv := db.Statement.ReflectValue
+			switch rv.Kind() {
+			case reflect.Slice, reflect.Array:
+				for i := 0; i < rv.Len(); i++ {
+					elem := rv.Index(i)
+					if elem.Kind() == reflect.Ptr {
+						elem = elem.Elem()
+					}
+					_, isZero := field.ValueOf(db.Statement.Context, elem)
+					if isZero {
+						field.Set(db.Statement.Context, elem, snowflake.Uint64())
+					}
+				}
+			default:
+				_, isZero := field.ValueOf(db.Statement.Context, rv)
+				if isZero {
+					field.Set(db.Statement.Context, rv, snowflake.Uint64())
+				}
 			}
 		}
 	})
