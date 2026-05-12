@@ -11,6 +11,22 @@ import FaceOverlay, { type FaceBox } from '../components/FaceOverlay'
 import FaceRegisterModal from '../components/FaceRegisterModal'
 import Hls from 'hls.js'
 
+// Check if current page is loaded from a private/local network.
+// Private Network Access (PNA) in browsers blocks public→private requests,
+// so MJPEG direct mode only works when the page itself is on a private network.
+function isPrivateNetwork(): boolean {
+  const hostname = window.location.hostname
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return true
+  const ip = hostname.split('.').map(Number)
+  if (ip.length !== 4 || ip.some(isNaN)) return false // not an IPv4 address (domain name)
+
+  // Check private IPv4 ranges: 10.x, 172.16-31.x, 192.168.x
+  if (ip[0] === 10) return true
+  if (ip[0] === 172 && ip[1] >= 16 && ip[1] <= 31) return true
+  if (ip[0] === 192 && ip[1] === 168) return true
+  return false
+}
+
 // Extract host:port from stream URL, used to build direct MJPEG URL
 function extractHost(url: string): string {
   try {
@@ -179,7 +195,7 @@ export default function CameraLiveView() {
       const video = videoRef.current
       if (!video) return
 
-      const directUrl = `http://${window.location.hostname}:8888${hls_url}`
+      const directUrl = `${window.location.protocol}//${window.location.host}${hls_url}`
 
       if (Hls.isSupported()) {
         const hls = new Hls()
@@ -254,9 +270,14 @@ export default function CameraLiveView() {
 
   const handlePlay = () => {
     if (!camera) return
-    // Always try MJPEG direct first (zero server bandwidth)
-    // Falls back to HLS inside handlePlayMjpeg on failure
-    handlePlayMjpeg()
+    if (isPrivateNetwork()) {
+      // Private/local network — MJPEG direct works, zero server bandwidth
+      handlePlayMjpeg()
+    } else {
+      // Public network — browser PNA policy blocks cross-network requests,
+      // must use server-relayed HLS
+      handlePlayHls()
+    }
   }
 
   const handleStop = async () => {
