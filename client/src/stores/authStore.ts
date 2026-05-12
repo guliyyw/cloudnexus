@@ -13,7 +13,7 @@ interface AuthState {
   user: User | null
   isLoggedIn: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, email: string, password: string) => Promise<void>
+  register: (username: string, email: string, password: string, captchaId?: string, captchaCode?: string) => Promise<void>
   logout: () => void
   fetchProfile: () => Promise<void>
 }
@@ -30,8 +30,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoggedIn: true })
   },
 
-  register: async (username, email, password) => {
-    await api.post('/user/register', { username, email, password })
+  register: async (username: string, email: string, password: string, captchaId?: string, captchaCode?: string) => {
+    await api.post('/user/register', { username, email, password, captcha_id: captchaId, captcha_code: captchaCode })
   },
 
   logout: () => {

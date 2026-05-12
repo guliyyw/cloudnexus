@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
   Card, List, Button, Input, Modal, Space, Typography, Avatar,
-  Badge, Tabs, Popconfirm, message, Tag, Tooltip,
+  Badge, Tabs, Popconfirm, message, Tag, Tooltip, Input as AntInput,
 } from 'antd'
 import {
   UserOutlined, UserAddOutlined, SearchOutlined,
   CheckOutlined, CloseOutlined, DeleteOutlined,
   MessageOutlined, ReloadOutlined, TeamOutlined,
-  UserSwitchOutlined,
+  UserSwitchOutlined, StopOutlined, UndoOutlined,
+  EditOutlined,
 } from '@ant-design/icons'
 import { useFriendStore } from '../stores/friendStore'
 import { useChatStore } from '../stores/chatStore'
@@ -20,30 +21,45 @@ const { Text, Title } = Typography
 export default function FriendPage() {
   const navigate = useNavigate()
   const {
-    friends, pendingRequests, loading,
-    fetchFriends, fetchPendingRequests,
+    friends, pendingRequests, blocklist, onlineStatus, loading,
+    fetchFriends, fetchPendingRequests, fetchBlocklist,
     sendRequest, acceptRequest, rejectRequest, removeFriend,
+    blockUser, unblockUser, setRemark,
   } = useFriendStore()
   const { createConv } = useChatStore()
   const { user } = useAuthStore()
 
   const [addFriendVisible, setAddFriendVisible] = useState(false)
   const [addFriendName, setAddFriendName] = useState('')
+  const [addFriendMsg, setAddFriendMsg] = useState('')
   const [adding, setAdding] = useState(false)
   const [activeTab, setActiveTab] = useState('friends')
+  const [editingRemark, setEditingRemark] = useState<string | null>(null)
+  const [remarkValue, setRemarkValue] = useState('')
 
   useEffect(() => {
     fetchFriends()
     fetchPendingRequests()
+    fetchBlocklist()
+  }, [])
+
+  // Refresh online status every 30s
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const store = useFriendStore.getState()
+      if (store.friends.length > 0) store.fetchOnlineStatus()
+    }, 30000)
+    return () => clearInterval(timer)
   }, [])
 
   const handleAddFriend = async () => {
     if (!addFriendName.trim()) return
     setAdding(true)
     try {
-      await sendRequest(addFriendName.trim())
+      await sendRequest(addFriendName.trim(), addFriendMsg, 0)
       message.success('好友请求已发送')
       setAddFriendName('')
+      setAddFriendMsg('')
       setAddFriendVisible(false)
       fetchPendingRequests()
     } catch (e: any) {
@@ -79,6 +95,22 @@ export default function FriendPage() {
     message.success('已删除好友')
   }
 
+  const handleBlock = async (friendId: string) => {
+    await blockUser(friendId)
+    message.success('已拉黑')
+  }
+
+  const handleUnblock = async (friendId: string) => {
+    await unblockUser(friendId)
+    message.success('已取消拉黑')
+  }
+
+  const handleSetRemark = async (friendId: string) => {
+    await setRemark(friendId, remarkValue)
+    setEditingRemark(null)
+    message.success('备注已设置')
+  }
+
   const getFriendDisplayId = (f: FriendRequest): string => {
     return f.user_id === user!.id ? f.friend_id : f.user_id
   }
@@ -92,6 +124,8 @@ export default function FriendPage() {
       locale={{ emptyText: '暂无好友，点击"添加好友"开始添加' }}
       renderItem={(f) => {
         const friendId = getFriendDisplayId(f)
+        const isOnline = onlineStatus[friendId] === true
+        const displayName = f.remark || f.friend_nickname || f.friend_username || `用户 ${friendId}`
         return (
           <List.Item
             actions={[
@@ -99,6 +133,18 @@ export default function FriendPage() {
                 <Button type="link" icon={<MessageOutlined />}
                   onClick={() => handleStartChat(f)} />
               </Tooltip>,
+              <Tooltip title="设置备注" key="remark">
+                <Button type="link" icon={<EditOutlined />}
+                  onClick={() => { setEditingRemark(friendId); setRemarkValue(f.remark || '') }} />
+              </Tooltip>,
+              <Popconfirm
+                key="block"
+                title="拉黑此好友？"
+                description="拉黑后将无法收到对方消息"
+                onConfirm={() => handleBlock(friendId)}
+              >
+                <Button type="link" icon={<StopOutlined />} style={{ color: '#faad14' }} />
+              </Popconfirm>,
               <Popconfirm
                 key="delete"
                 title="确定删除该好友？"
@@ -111,14 +157,31 @@ export default function FriendPage() {
           >
             <List.Item.Meta
               avatar={
-                <Badge status="success" offset={[-4, 32]}>
-                  <Avatar icon={<UserOutlined />} size="large" />
+                <Badge status={isOnline ? 'success' : 'default'}
+                  offset={[-4, 32]}
+                  title={isOnline ? '在线' : '离线'}>
+                  <Avatar icon={<UserOutlined />} src={f.friend_avatar} size="large" />
                 </Badge>
               }
-              title={<Text strong>{f.friend_username || `用户 ${friendId}`}</Text>}
+              title={
+                <Space>
+                  <Text strong>{displayName}</Text>
+                  {f.remark && <Tag color="blue" style={{ fontSize: 11 }}>备注</Tag>}
+                  {f.online !== undefined && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {f.online ? '在线' : '离线'}
+                    </Text>
+                  )}
+                </Space>
+              }
               description={
                 <Space size="small">
                   <Tag color="green">好友</Tag>
+                  {f.friend_username && f.remark && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      用户名: {f.friend_username}
+                    </Text>
+                  )}
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     添加于 {new Date(f.created_at).toLocaleDateString()}
                   </Text>
@@ -153,10 +216,53 @@ export default function FriendPage() {
             avatar={<Avatar icon={<UserOutlined />} size="large" />}
             title={<Text strong>{req.friend_username || `用户 ${req.user_id}`}</Text>}
             description={
+              <Space size="small" direction="vertical" style={{ gap: 0 }}>
+                <Space size="small">
+                  <Tag color="orange">等待确认</Tag>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {new Date(req.created_at).toLocaleDateString()}
+                  </Text>
+                </Space>
+                {req.message && (
+                  <Text type="secondary" style={{ fontSize: 12, fontStyle: 'italic' }}>
+                    "{req.message}"
+                  </Text>
+                )}
+              </Space>
+            }
+          />
+        </List.Item>
+      )}
+    />
+  )
+
+  const blocklistContent = (
+    <List
+      dataSource={blocklist}
+      loading={loading}
+      locale={{ emptyText: '黑名单为空' }}
+      renderItem={(entry) => (
+        <List.Item
+          actions={[
+            <Button key="unblock" size="small" icon={<UndoOutlined />}
+              onClick={() => handleUnblock(entry.blocked_user_id)}>
+              解除拉黑
+            </Button>,
+          ]}
+        >
+          <List.Item.Meta
+            avatar={<Avatar icon={<StopOutlined />} size="large" style={{ backgroundColor: '#ff4d4f' }} />}
+            title={
+              <Space>
+                <Text strong>{entry.blocked_username || `用户 ${entry.blocked_user_id}`}</Text>
+                <Tag color="red">已拉黑</Tag>
+              </Space>
+            }
+            description={
               <Space size="small">
-                <Tag color="orange">等待确认</Tag>
+                {entry.reason && <Text type="secondary">原因: {entry.reason}</Text>}
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  {new Date(req.created_at).toLocaleDateString()}
+                  {new Date(entry.created_at).toLocaleDateString()}
                 </Text>
               </Space>
             }
@@ -189,6 +295,17 @@ export default function FriendPage() {
       ),
       children: pendingContent,
     },
+    {
+      key: 'blocklist',
+      label: (
+        <Space>
+          <StopOutlined />
+          <span>黑名单</span>
+          <Text type="secondary">({blocklist.length})</Text>
+        </Space>
+      ),
+      children: blocklistContent,
+    },
   ]
 
   return (
@@ -199,7 +316,7 @@ export default function FriendPage() {
           好友管理
         </Title>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => { fetchFriends(); fetchPendingRequests() }}>
+          <Button icon={<ReloadOutlined />} onClick={() => { fetchFriends(); fetchPendingRequests(); fetchBlocklist() }}>
             刷新
           </Button>
           <Button type="primary" icon={<UserAddOutlined />}
@@ -218,6 +335,7 @@ export default function FriendPage() {
             <Text type="secondary" style={{ fontSize: 12 }}>
               共 {friends.length} 位好友
               {pendingCount > 0 && `，${pendingCount} 条待处理请求`}
+              {blocklist.length > 0 && `，${blocklist.length} 条拉黑`}
             </Text>
           }
         />
@@ -228,7 +346,7 @@ export default function FriendPage() {
         title={<span><UserAddOutlined style={{ marginRight: 8 }} />添加好友</span>}
         open={addFriendVisible}
         onOk={handleAddFriend}
-        onCancel={() => { setAddFriendVisible(false); setAddFriendName('') }}
+        onCancel={() => { setAddFriendVisible(false); setAddFriendName(''); setAddFriendMsg('') }}
         confirmLoading={adding}
         okText="发送请求"
         cancelText="取消"
@@ -245,8 +363,33 @@ export default function FriendPage() {
             onChange={(e) => setAddFriendName(e.target.value)}
             onPressEnter={handleAddFriend}
             autoFocus
+            style={{ marginBottom: 12 }}
+          />
+          <AntInput.TextArea
+            placeholder="验证信息（选填）"
+            value={addFriendMsg}
+            onChange={(e) => setAddFriendMsg(e.target.value)}
+            maxLength={200}
+            rows={2}
           />
         </div>
+      </Modal>
+
+      {/* Edit Remark Modal */}
+      <Modal
+        title="设置备注"
+        open={editingRemark !== null}
+        onOk={() => handleSetRemark(editingRemark!)}
+        onCancel={() => setEditingRemark(null)}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Input
+          placeholder="输入备注名称"
+          value={remarkValue}
+          onChange={(e) => setRemarkValue(e.target.value)}
+          maxLength={50}
+        />
       </Modal>
     </div>
   )

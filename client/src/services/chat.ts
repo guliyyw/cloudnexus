@@ -77,13 +77,27 @@ export interface FriendRequest {
   user_id: string
   friend_id: string
   friend_username: string
+  friend_nickname?: string
+  friend_avatar?: string
+  online?: boolean
+  remark?: string
+  message?: string
   status: 'pending' | 'accepted' | 'blocked'
   created_at: string
   updated_at: string
 }
 
-export async function sendFriendRequest(friendName: string): Promise<FriendRequest> {
-  const res = await api.post('/im/friends/requests', { friend_name: friendName })
+export interface BlocklistEntry {
+  id: string
+  user_id: string
+  blocked_user_id: string
+  blocked_username?: string
+  reason: string
+  created_at: string
+}
+
+export async function sendFriendRequest(friendName: string, message?: string, expiresIn?: number): Promise<FriendRequest> {
+  const res = await api.post('/im/friends/requests', { friend_name: friendName, message, expires_in: expiresIn })
   return res.data.data
 }
 
@@ -108,6 +122,28 @@ export async function listFriends(): Promise<FriendRequest[]> {
 
 export async function removeFriend(friendId: string): Promise<void> {
   await api.delete(`/im/friends/${friendId}`)
+}
+
+export async function blockUser(friendId: string, reason?: string): Promise<void> {
+  await api.post(`/im/friends/${friendId}/block`, { reason })
+}
+
+export async function unblockUser(friendId: string): Promise<void> {
+  await api.delete(`/im/friends/${friendId}/block`)
+}
+
+export async function getBlocklist(): Promise<BlocklistEntry[]> {
+  const res = await api.get('/im/blocklist')
+  return res.data.data
+}
+
+export async function setFriendRemark(friendId: string, remark: string): Promise<void> {
+  await api.put(`/im/friends/${friendId}/remark`, { remark })
+}
+
+export async function getOnlineStatus(userIds: string[]): Promise<Record<string, boolean>> {
+  const res = await api.get('/im/friends/online', { params: { ids: userIds } })
+  return res.data.data
 }
 
 export interface LinkPreview {

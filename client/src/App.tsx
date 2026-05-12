@@ -21,10 +21,18 @@ import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import ForbiddenPage from './pages/ForbiddenPage'
+import { useAccess } from './hooks/useAccess'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
   if (!isLoggedIn) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { hasRole } = useAccess()
+  if (!hasRole('admin') && !hasRole('super_admin')) return <Navigate to="/forbidden" replace />
   return <>{children}</>
 }
 
@@ -82,6 +90,7 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/forbidden" element={<ForbiddenPage />} />
           <Route path="/s/:code" element={<ShareAccessPage />} />
           <Route
             element={
@@ -96,7 +105,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/friends" element={<FriendPage />} />
             <Route path="/docker" element={<DockerPage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="/cameras" element={<CameraListPage />} />
             <Route path="/cameras/:id" element={<CameraLiveView />} />
             <Route path="/faces" element={<FaceLibraryPage />} />
