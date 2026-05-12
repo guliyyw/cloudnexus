@@ -39,6 +39,13 @@ type AppConfig struct {
 		AccessTTL     int    `yaml:"access_ttl_sec"`
 		RefreshTTL    int    `yaml:"refresh_ttl_sec"`
 	} `yaml:"jwt"`
+	SMTP struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		From     string `yaml:"from"`
+	} `yaml:"smtp"`
 }
 
 // Host extracts the hostname from a PostgreSQL DSN.

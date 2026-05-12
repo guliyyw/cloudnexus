@@ -19,6 +19,8 @@ import FaceLibraryPage from './pages/FaceLibraryPage'
 import FaceAttendancePage from './pages/FaceAttendancePage'
 import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
@@ -78,6 +80,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/s/:code" element={<ShareAccessPage />} />
           <Route
             element={

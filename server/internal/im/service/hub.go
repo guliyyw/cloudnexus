@@ -103,13 +103,33 @@ func (c *Client) writePump() {
 }
 
 type Hub struct {
-	clients    map[uint64]*Client
-	register   chan *Client
-	unregister chan *Client
-	onMessage  chan *WSMessage
-	mu         sync.RWMutex
-	msgHandler func(*WSMessage)
-	redis      *redis.Client
+	clients     map[uint64]*Client
+	register    chan *Client
+	unregister  chan *Client
+	onMessage   chan *WSMessage
+	mu          sync.RWMutex
+	msgHandler  func(*WSMessage)
+	redis       *redis.Client
+	presenceSvc *PresenceService
+}
+
+func (h *Hub) SetPresenceService(ps *PresenceService) {
+	h.presenceSvc = ps
+	go h.startPresenceHeartbeat()
+}
+
+func (h *Hub) startPresenceHeartbeat() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		h.mu.RLock()
+		for userID := range h.clients {
+			if h.presenceSvc != nil {
+				h.presenceSvc.RefreshOnline(userID)
+			}
+		}
+		h.mu.RUnlock()
+	}
 }
 
 func NewHub(msgHandler func(*WSMessage)) *Hub {
@@ -140,6 +160,9 @@ func (h *Hub) Run() {
 			}
 			h.clients[client.UserID] = client
 			h.mu.Unlock()
+			if h.presenceSvc != nil {
+				h.presenceSvc.SetOnline(client.UserID)
+			}
 			h.broadcastPresence(client.UserID, "online")
 			log.Printf("ws: user %d connected", client.UserID)
 
@@ -150,6 +173,9 @@ func (h *Hub) Run() {
 				close(client.send)
 			}
 			h.mu.Unlock()
+			if h.presenceSvc != nil {
+				h.presenceSvc.SetOffline(client.UserID)
+			}
 			h.broadcastPresence(client.UserID, "offline")
 			log.Printf("ws: user %d disconnected", client.UserID)
 

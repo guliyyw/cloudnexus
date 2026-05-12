@@ -1,27 +1,38 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
+	"github.com/cloudnexus/server/pkg/auth"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
-	svc *service.UserService
+	svc        *service.UserService
+	sessionSvc *service.SessionService
 }
 
 func NewUserHandler(svc *service.UserService) *UserHandler {
 	return &UserHandler{svc: svc}
 }
 
+func (h *UserHandler) WithSessionService(svc *service.SessionService) *UserHandler {
+	h.sessionSvc = svc
+	return h
+}
+
 type registerReq struct {
-	Username string `json:"username" binding:"required,min=3,max=64"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6,max=128"`
+	Username    string `json:"username" binding:"required,min=3,max=64"`
+	Email       string `json:"email" binding:"required,email"`
+	Password    string `json:"password" binding:"required,min=8,max=128"`
+	CaptchaID   string `json:"captcha_id"`
+	CaptchaCode string `json:"captcha_code"`
 }
 
 func (h *UserHandler) HandleRegister(c *gin.Context) {
@@ -30,6 +41,12 @@ func (h *UserHandler) HandleRegister(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
 		return
 	}
+
+	if err := service.ValidatePasswordStrength(req.Password); err != nil {
+		handleError(c, err)
+		return
+	}
+
 	user, err := h.svc.Register(req.Username, req.Email, req.Password)
 	if err != nil {
 		handleError(c, err)
@@ -54,6 +71,16 @@ func (h *UserHandler) HandleLogin(c *gin.Context) {
 		handleError(c, err)
 		return
 	}
+
+	// Create session
+	if h.sessionSvc != nil {
+		claims, _ := auth.ParseToken(pair.AccessToken, h.svc.GetJWTConfig().AccessSecret)
+		if claims != nil {
+			h.sessionSvc.CreateSession(claims.UserID, claims.JTI,
+				c.GetHeader("User-Agent"), c.ClientIP())
+		}
+	}
+
 	c.JSON(http.StatusOK, response.OKWithData(pair))
 }
 
@@ -167,6 +194,30 @@ func (h *UserHandler) HandleAdminToggleStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.OKWithData(user))
+}
+
+func (h *UserHandler) HandleGetPrivacy(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	privacy, err := h.svc.GetPrivacy(userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(privacy))
+}
+
+func (h *UserHandler) HandleUpdatePrivacy(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var privacy model.UserPrivacy
+	if err := json.NewDecoder(c.Request.Body).Decode(&privacy); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+	if err := h.svc.UpdatePrivacy(userID, &privacy); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("隐私设置已更新"))
 }
 
 func handleError(c *gin.Context, err error) {

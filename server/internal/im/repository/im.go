@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
 )
@@ -103,6 +105,16 @@ func (r *IMRepository) CreateFriendRequest(userID, friendID uint64) error {
 	return r.db.Create(&model.Friend{UserID: userID, FriendID: friendID, Status: "pending"}).Error
 }
 
+func (r *IMRepository) CreateFriendRequestWithDetail(userID, friendID uint64, message string, expiresAt *time.Time) error {
+	return r.db.Create(&model.Friend{
+		UserID:    userID,
+		FriendID:  friendID,
+		Status:    "pending",
+		Message:   message,
+		ExpiresAt: expiresAt,
+	}).Error
+}
+
 func (r *IMRepository) FindFriendRequest(userID, friendID uint64) (*model.Friend, error) {
 	var f model.Friend
 	err := r.db.Where(
@@ -166,6 +178,12 @@ func (r *IMRepository) RemoveFriend(userID, friendID uint64) error {
 		"(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
 		userID, friendID, friendID, userID,
 	).Where("status = 'accepted'").Delete(&model.Friend{}).Error
+}
+
+func (r *IMRepository) SetFriendRemark(userID, friendID uint64, remark string) error {
+	return r.db.Model(&model.Friend{}).
+		Where("user_id = ? AND friend_id = ? AND status = 'accepted'", userID, friendID).
+		Update("remark", remark).Error
 }
 
 func (r *IMRepository) GetActiveMembers(convID uint64) ([]model.ConversationMember, error) {

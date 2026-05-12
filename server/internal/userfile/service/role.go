@@ -1,0 +1,238 @@
+package service
+
+import (
+	"github.com/cloudnexus/server/internal/userfile/repository"
+	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/model"
+	"gorm.io/gorm"
+)
+
+type RoleService struct {
+	repo *repository.RoleRepository
+}
+
+func NewRoleService(repo *repository.RoleRepository) *RoleService {
+	return &RoleService{repo: repo}
+}
+
+func (s *RoleService) ListRoles() ([]model.Role, error) {
+	return s.repo.ListRoles()
+}
+
+func (s *RoleService) GetRole(id uint64) (*model.Role, error) {
+	role, err := s.repo.FindRoleByID(id)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "角色不存在", apperrors.ErrNotFound)
+	}
+	return role, nil
+}
+
+func (s *RoleService) CreateRole(name, code, description string) (*model.Role, error) {
+	role := &model.Role{Name: name, Code: code, Description: description}
+	if err := s.repo.CreateRole(role); err != nil {
+		return nil, apperrors.NewAppError(500, "创建角色失败", err)
+	}
+	return role, nil
+}
+
+func (s *RoleService) UpdateRole(id uint64, name, description string) (*model.Role, error) {
+	role, err := s.repo.FindRoleByID(id)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "角色不存在", apperrors.ErrNotFound)
+	}
+	if role.IsSystem {
+		return nil, apperrors.NewAppError(400, "系统角色不可修改", apperrors.ErrBadRequest)
+	}
+	if name != "" {
+		role.Name = name
+	}
+	if description != "" {
+		role.Description = description
+	}
+	if err := s.repo.UpdateRole(role); err != nil {
+		return nil, apperrors.NewAppError(500, "更新角色失败", err)
+	}
+	return role, nil
+}
+
+func (s *RoleService) DeleteRole(id uint64) error {
+	role, err := s.repo.FindRoleByID(id)
+	if err != nil {
+		return apperrors.NewAppError(404, "角色不存在", apperrors.ErrNotFound)
+	}
+	if role.IsSystem {
+		return apperrors.NewAppError(400, "系统角色不可删除", apperrors.ErrBadRequest)
+	}
+	return s.repo.DeleteRole(id)
+}
+
+func (s *RoleService) ListPermissions() ([]model.Permission, error) {
+	return s.repo.ListPermissions()
+}
+
+func (s *RoleService) AssignRolePermissions(roleID uint64, permIDs []uint64) error {
+	_, err := s.repo.FindRoleByID(roleID)
+	if err != nil {
+		return apperrors.NewAppError(404, "角色不存在", apperrors.ErrNotFound)
+	}
+	return s.repo.AssignRolePermissions(roleID, permIDs)
+}
+
+func (s *RoleService) AssignUserRole(operatorID, userID, roleID uint64) error {
+	if _, err := s.repo.FindRoleByID(roleID); err != nil {
+		return apperrors.NewAppError(404, "角色不存在", apperrors.ErrNotFound)
+	}
+	return s.repo.AssignRole(userID, roleID, operatorID)
+}
+
+func (s *RoleService) RemoveUserRole(userID, roleID uint64) error {
+	return s.repo.RemoveRole(userID, roleID)
+}
+
+func (s *RoleService) GetUserRoles(userID uint64) ([]model.Role, error) {
+	return s.repo.FindUserRoles(userID)
+}
+
+// SeedRBAC inserts default permissions and roles if the system is empty.
+func (s *RoleService) SeedRBAC() error {
+	count, _ := s.repo.CountRoles()
+	if count > 0 {
+		return nil
+	}
+
+	permDefs := []struct {
+		name, code, desc, group string
+	}{
+		// File permissions
+		{"文件读取", "file:read", "查看和下载文件", "文件"},
+		{"文件写入", "file:write", "上传和修改文件", "文件"},
+		{"文件删除", "file:delete", "删除文件", "文件"},
+		{"文件分享", "file:share", "创建分享链接", "文件"},
+		{"文件管理", "file:admin", "管理所有文件", "文件"},
+		// User permissions
+		{"用户查看", "user:read", "查看用户信息", "用户"},
+		{"用户创建", "user:create", "创建新用户", "用户"},
+		{"用户修改", "user:update", "修改用户信息", "用户"},
+		{"用户删除", "user:delete", "删除用户", "用户"},
+		{"用户管理", "user:admin", "管理所有用户", "用户"},
+		// IM permissions
+		{"即时通讯", "im:chat", "发送和接收消息", "即时通讯"},
+		{"好友管理", "im:friend", "管理好友关系", "即时通讯"},
+		{"IM管理", "im:admin", "管理IM系统", "即时通讯"},
+		// Docker permissions
+		{"容器查看", "docker:read", "查看容器列表和日志", "容器"},
+		{"容器控制", "docker:control", "启动/停止/重启容器", "容器"},
+		{"容器管理", "docker:admin", "创建/删除容器", "容器"},
+		// Camera permissions
+		{"摄像头查看", "camera:read", "查看摄像头列表和画面", "摄像头"},
+		{"摄像头控制", "camera:control", "控制摄像头和流", "摄像头"},
+		{"摄像头管理", "camera:admin", "管理摄像头配置", "摄像头"},
+		// Face recognition
+		{"人脸查看", "face:read", "查看人脸库和考勤", "人脸"},
+		{"人脸管理", "face:write", "管理人脸档案", "人脸"},
+		{"人脸管理权限", "face:admin", "管理人脸系统", "人脸"},
+		// Attendance
+		{"考勤查看", "attendance:read", "查看考勤记录", "考勤"},
+		{"考勤管理", "attendance:admin", "管理考勤系统", "考勤"},
+		// Role management
+		{"角色查看", "role:read", "查看角色和权限", "角色"},
+		{"角色管理", "role:write", "创建和修改角色", "角色"},
+		{"角色管理权限", "role:admin", "管理角色分配", "角色"},
+		// System
+		{"系统日志", "system:log", "查看系统日志", "系统"},
+		{"系统节点", "system:node", "查看和管理节点", "系统"},
+		{"系统指标", "system:metrics", "查看系统指标", "系统"},
+		{"系统管理", "system:admin", "管理所有系统设置", "系统"},
+	}
+
+	perms := make([]model.Permission, len(permDefs))
+	permMap := make(map[string]uint64)
+	for i, d := range permDefs {
+		p := model.Permission{
+			Name:        d.name,
+			Code:        d.code,
+			Description: d.desc,
+			GroupName:   d.group,
+		}
+		perms[i] = p
+	}
+
+	if err := s.repo.BatchCreatePermissions(perms); err != nil {
+		return err
+	}
+
+	// Re-fetch to get IDs (snowflake IDs are generated by GORM callback)
+	allPerms, _ := s.repo.ListPermissions()
+	for _, p := range allPerms {
+		permMap[p.Code] = p.ID
+	}
+
+	// Super admin role — gets all permissions
+	superAdmin := model.Role{
+		Name:        "超级管理员",
+		Code:        "super_admin",
+		Description: "拥有所有权限",
+		IsSystem:    true,
+	}
+	if err := s.repo.CreateRole(&superAdmin); err != nil {
+		return err
+	}
+	allPermIDs := make([]uint64, 0, len(allPerms))
+	for _, p := range allPerms {
+		allPermIDs = append(allPermIDs, p.ID)
+	}
+	s.repo.AssignRolePermissions(superAdmin.ID, allPermIDs)
+
+	// Admin role
+	admin := model.Role{
+		Name:        "管理员",
+		Code:        "admin",
+		Description: "常规管理权限",
+		IsSystem:    true,
+	}
+	s.repo.CreateRole(&admin)
+	adminPerms := []string{"file:admin", "user:admin", "im:admin", "docker:admin", "camera:admin", "face:admin", "attendance:admin", "role:admin", "system:log", "system:node", "system:metrics"}
+	adminPermIDs := make([]uint64, 0)
+	for _, code := range adminPerms {
+		if id, ok := permMap[code]; ok {
+			adminPermIDs = append(adminPermIDs, id)
+		}
+	}
+	s.repo.AssignRolePermissions(admin.ID, adminPermIDs)
+
+	// Default user role
+	userRole := model.Role{
+		Name:        "普通用户",
+		Code:        "user",
+		Description: "默认用户权限",
+		IsSystem:    true,
+	}
+	s.repo.CreateRole(&userRole)
+	userPerms := []string{"file:read", "file:write", "file:delete", "file:share", "im:chat", "im:friend", "docker:read", "camera:read", "face:read", "attendance:read"}
+	userPermIDs := make([]uint64, 0)
+	for _, code := range userPerms {
+		if id, ok := permMap[code]; ok {
+			userPermIDs = append(userPermIDs, id)
+		}
+	}
+	s.repo.AssignRolePermissions(userRole.ID, userPermIDs)
+
+	return nil
+}
+
+// AssignDefaultRoleToAllUsers gives the "user" role to every user that has no role yet.
+func AssignDefaultRoleToAllUsers(db *gorm.DB) error {
+	roleRepo := repository.NewRoleRepository(db)
+	userRole, err := roleRepo.FindRoleByCode("user")
+	if err != nil {
+		return err
+	}
+	return db.Exec(`
+		INSERT INTO user_roles (user_id, role_id, granted_by, granted_at)
+		SELECT u.id, ?, 0, NOW()
+		FROM users u
+		WHERE NOT EXISTS (
+			SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id
+		)
+	`, userRole.ID).Error
+}

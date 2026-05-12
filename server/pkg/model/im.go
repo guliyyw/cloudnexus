@@ -21,17 +21,31 @@ type ConversationMember struct {
 }
 
 type Friend struct {
-	ID        uint64    `json:"id,string" gorm:"primaryKey"`
-	UserID    uint64    `json:"user_id,string" gorm:"not null;uniqueIndex:idx_friend_pair"`
-	FriendID  uint64    `json:"friend_id,string" gorm:"not null;uniqueIndex:idx_friend_pair"`
-	Status    string    `json:"status" gorm:"not null;size:16;default:pending"` // pending / accepted / blocked
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint64     `json:"id,string" gorm:"primaryKey"`
+	UserID    uint64     `json:"user_id,string" gorm:"not null;uniqueIndex:idx_friend_pair"`
+	FriendID  uint64     `json:"friend_id,string" gorm:"not null;uniqueIndex:idx_friend_pair"`
+	Status    string     `json:"status" gorm:"not null;size:16;default:pending"` // pending / accepted / blocked
+	Message   string     `json:"message" gorm:"size:200"`
+	Remark    string     `json:"remark" gorm:"size:50"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type FriendInfo struct {
 	Friend
 	FriendUsername string `json:"friend_username"`
+	FriendNickname string `json:"friend_nickname"`
+	FriendAvatar   string `json:"friend_avatar"`
+	Online         bool   `json:"online"`
+}
+
+type Blocklist struct {
+	ID            uint64    `json:"id,string" gorm:"primaryKey"`
+	UserID        uint64    `json:"user_id,string" gorm:"not null;uniqueIndex:idx_block_pair"`
+	BlockedUserID uint64    `json:"blocked_user_id,string" gorm:"not null;uniqueIndex:idx_block_pair"`
+	Reason        string    `json:"reason" gorm:"size:200"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type Message struct {

@@ -87,6 +87,42 @@ func (r *UserRepository) SetStatus(id uint64, status int8) error {
 	return r.db.Model(&model.User{}).Where("id = ?", id).Update("status", status).Error
 }
 
+func (r *UserRepository) UpdateFields(id uint64, fields map[string]interface{}) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Updates(fields).Error
+}
+
+func (r *UserRepository) SearchUsers(keyword string, page, pageSize int) ([]model.UserBrief, int64, error) {
+	var users []model.User
+	var total int64
+
+	query := r.db.Model(&model.User{}).
+		Where("deleted_at IS NULL AND status = 1 AND (privacy IS NULL OR privacy NOT LIKE '%\"allow_search\":false%')")
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("username ILIKE ? OR email = ? OR nickname ILIKE ?", like, keyword, like)
+	}
+
+	query.Count(&total)
+	offset := (page - 1) * pageSize
+	err := query.Order("username ASC").Offset(offset).Limit(pageSize).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	results := make([]model.UserBrief, len(users))
+	for i, u := range users {
+		results[i] = model.UserBrief{
+			ID:       u.ID,
+			Username: u.Username,
+			Nickname: u.Nickname,
+			Avatar:   u.Avatar,
+			Status:   u.Status,
+		}
+	}
+	return results, total, nil
+}
+
 func (r *UserRepository) CountUsers() (int64, error) {
 	var count int64
 	err := r.db.Model(&model.User{}).Count(&count).Error

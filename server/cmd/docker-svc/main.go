@@ -93,20 +93,20 @@ func main() {
 
 			containers := docker.Group("/containers")
 			{
-				containers.GET("", dockerH.HandleListContainers)
-				containers.POST("", dockerH.HandleCreateContainer)
-				containers.POST("/:id/start", dockerH.HandleStartContainer)
-				containers.POST("/:id/stop", dockerH.HandleStopContainer)
-				containers.POST("/:id/restart", dockerH.HandleRestartContainer)
-				containers.DELETE("/:id", dockerH.HandleRemoveContainer)
-				containers.GET("/:id/logs", dockerH.HandleGetLogs)
-				containers.GET("/:id/stats", dockerH.HandleGetStats)
+				containers.GET("", middleware.RequirePermission("docker:read"), dockerH.HandleListContainers)
+				containers.POST("", middleware.RequirePermission("docker:admin"), dockerH.HandleCreateContainer)
+				containers.POST("/:id/start", middleware.RequirePermission("docker:control"), dockerH.HandleStartContainer)
+				containers.POST("/:id/stop", middleware.RequirePermission("docker:control"), dockerH.HandleStopContainer)
+				containers.POST("/:id/restart", middleware.RequirePermission("docker:control"), dockerH.HandleRestartContainer)
+				containers.DELETE("/:id", middleware.RequirePermission("docker:admin"), dockerH.HandleRemoveContainer)
+				containers.GET("/:id/logs", middleware.RequirePermission("docker:read"), dockerH.HandleGetLogs)
+				containers.GET("/:id/stats", middleware.RequirePermission("docker:read"), dockerH.HandleGetStats)
 			}
 			images := docker.Group("/images")
 			{
-				images.GET("", dockerH.HandleListImages)
-				images.POST("/pull", dockerH.HandlePullImage)
-				images.DELETE("/:image", dockerH.HandleRemoveImage)
+				images.GET("", middleware.RequirePermission("docker:read"), dockerH.HandleListImages)
+				images.POST("/pull", middleware.RequirePermission("docker:admin"), dockerH.HandlePullImage)
+				images.DELETE("/:image", middleware.RequirePermission("docker:admin"), dockerH.HandleRemoveImage)
 			}
 		}
 	}

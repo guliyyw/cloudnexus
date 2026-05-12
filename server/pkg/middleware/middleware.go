@@ -92,6 +92,9 @@ func AuthRequired(secret string) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("is_admin", claims.IsAdmin)
+		c.Set("jti", claims.JTI)
+		c.Set("roles", claims.Roles)
+		c.Set("permissions", claims.Permissions)
 		c.Next()
 	}
 }

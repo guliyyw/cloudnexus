@@ -61,6 +61,7 @@ func main() {
 		&model.ConversationMember{},
 		&model.Message{},
 		&model.Friend{},
+		&model.Blocklist{},
 		&model.DockerNode{},
 		&model.NodeOnlineSession{},
 		&model.AlertRule{},
@@ -98,6 +99,10 @@ func main() {
 	imRepo := repository.NewIMRepository(db)
 	imSvc := service.NewIMService(imRepo, hub)
 	imH := handler.NewIMHandler(imSvc, hub)
+	blSvc := service.NewBlocklistService(db)
+	presenceSvc := service.NewPresenceService(rdb)
+	friendH := handler.NewFriendEnhanceHandler(imSvc, blSvc, presenceSvc)
+	hub.SetPresenceService(presenceSvc)
 
 	r := gin.Default()
 	r.Use(middleware.Logger())
@@ -128,8 +133,13 @@ func main() {
 				friends.GET("", imH.HandleListFriends)
 				friends.GET("/", imH.HandleListFriends)
 				friends.DELETE("/:friend_id", imH.HandleRemoveFriend)
+				friends.POST("/:id/block", friendH.HandleBlockUser)
+				friends.DELETE("/:id/block", friendH.HandleUnblockUser)
+				friends.PUT("/:id/remark", friendH.HandleSetRemark)
+				friends.GET("/online", friendH.HandleGetOnlineStatus)
 			}
 
+			im.GET("/blocklist", friendH.HandleGetBlocklist)
 			im.POST("/link-preview", imH.HandleLinkPreview)
 		}
 	}

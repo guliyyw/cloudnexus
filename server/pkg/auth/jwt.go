@@ -9,9 +9,12 @@ import (
 )
 
 type Claims struct {
-	UserID   uint64 `json:"user_id"`
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"is_admin"`
+	UserID      uint64   `json:"user_id"`
+	Username    string   `json:"username"`
+	IsAdmin     bool     `json:"is_admin"`
+	Roles       []string `json:"roles"`
+	Permissions []string `json:"permissions"`
+	JTI         string   `json:"jti"`
 	jwt.RegisteredClaims
 }
 
@@ -28,7 +31,7 @@ type Config struct {
 	RefreshTTL    time.Duration
 }
 
-func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool) (*TokenPair, error) {
+func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool, roles, permissions []string) (*TokenPair, error) {
 	now := time.Now()
 	jti := make([]byte, 16)
 	if _, err := rand.Read(jti); err != nil {
@@ -36,10 +39,20 @@ func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool)
 	}
 	jtiStr := hex.EncodeToString(jti)
 
+	if roles == nil {
+		roles = []string{}
+	}
+	if permissions == nil {
+		permissions = []string{}
+	}
+
 	accessClaims := &Claims{
-		UserID:   userID,
-		Username: username,
-		IsAdmin:  isAdmin,
+		UserID:      userID,
+		Username:    username,
+		IsAdmin:     isAdmin,
+		Roles:       roles,
+		Permissions: permissions,
+		JTI:         jtiStr,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.AccessTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -52,9 +65,12 @@ func GenerateTokenPair(cfg Config, userID uint64, username string, isAdmin bool)
 	}
 
 	refreshClaims := &Claims{
-		UserID:   userID,
-		Username: username,
-		IsAdmin:  isAdmin,
+		UserID:      userID,
+		Username:    username,
+		IsAdmin:     isAdmin,
+		Roles:       roles,
+		Permissions: permissions,
+		JTI:         jtiStr,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.RefreshTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),

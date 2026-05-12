@@ -74,7 +74,7 @@ func (s *IMService) CreatePrivateConversation(creatorID, targetID uint64) (*mode
 
 // --- Friend methods ---
 
-func (s *IMService) SendFriendRequest(fromUserID uint64, toUsername string) (*model.Friend, error) {
+func (s *IMService) SendFriendRequest(fromUserID uint64, toUsername, message string, expiresIn int) (*model.Friend, error) {
 	target, err := s.repo.FindUserByUsername(toUsername)
 	if err != nil {
 		return nil, apperrors.NewAppError(404, "用户不存在", apperrors.ErrNotFound)
@@ -99,10 +99,16 @@ func (s *IMService) SendFriendRequest(fromUserID uint64, toUsername string) (*mo
 		}
 	}
 
-	if err := s.repo.CreateFriendRequest(fromUserID, target.ID); err != nil {
+	var expiresAt *time.Time
+	if expiresIn > 0 {
+		t := time.Now().Add(time.Duration(expiresIn) * 24 * time.Hour)
+		expiresAt = &t
+	}
+
+	if err := s.repo.CreateFriendRequestWithDetail(fromUserID, target.ID, message, expiresAt); err != nil {
 		return nil, apperrors.NewAppError(500, "发送请求失败", err)
 	}
-	return &model.Friend{UserID: fromUserID, FriendID: target.ID, Status: "pending"}, nil
+	return &model.Friend{UserID: fromUserID, FriendID: target.ID, Status: "pending", Message: message, ExpiresAt: expiresAt}, nil
 }
 
 func (s *IMService) AcceptFriendRequest(requestID, userID uint64) (*model.Conversation, error) {
@@ -133,6 +139,10 @@ func (s *IMService) ListPendingRequests(userID uint64) ([]model.FriendInfo, erro
 
 func (s *IMService) RemoveFriend(userID, friendID uint64) error {
 	return s.repo.RemoveFriend(userID, friendID)
+}
+
+func (s *IMService) SetFriendRemark(userID, friendID uint64, remark string) error {
+	return s.repo.SetFriendRemark(userID, friendID, remark)
 }
 
 func (s *IMService) DeleteConversation(userID, convID uint64) error {

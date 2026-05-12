@@ -10,8 +10,11 @@ import (
 	"github.com/cloudnexus/server/internal/userfile/repository"
 	"github.com/cloudnexus/server/internal/userfile/service"
 	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/cache"
+	"github.com/cloudnexus/server/pkg/captcha"
 	"github.com/cloudnexus/server/pkg/config"
 	"github.com/cloudnexus/server/pkg/database"
+	"github.com/cloudnexus/server/pkg/email"
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/migration"
@@ -56,7 +59,16 @@ func main() {
 	if err := migration.Up(db); err != nil {
 		logger.Log.Warn("SQL migration skipped", zap.Error(err))
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}); err != nil {
+	rdb, err := cache.NewRedis(cache.Config{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err != nil {
+		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
+	}
+
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -82,6 +94,35 @@ func main() {
 	userSvc := service.NewUserService(userRepo, jwtCfg)
 	userSvc.SeedDefaultAdmin()
 	userH := handler.NewUserHandler(userSvc)
+	var captchaMgr *captcha.Manager
+	if rdb != nil {
+		captchaMgr = captcha.NewManager(rdb)
+	}
+
+	emailSender := email.NewSender(*cfg)
+	verifySvc := service.NewVerifyService(db, emailSender)
+	verifyH := handler.NewVerifyHandler(verifySvc)
+	resetSvc := service.NewResetService(db, emailSender)
+	resetH := handler.NewResetHandler(resetSvc)
+	sessionSvc := service.NewSessionService(db, rdb, *cfg)
+	sessionSvc.CleanExpiredSessions()
+	sessionH := handler.NewSessionHandler(sessionSvc)
+	userH.WithSessionService(sessionSvc)
+	roleRepo := repository.NewRoleRepository(db)
+	roleSvc := service.NewRoleService(roleRepo)
+	if err := roleSvc.SeedRBAC(); err != nil {
+		logger.Log.Warn("RBAC 种子数据写入失败", zap.Error(err))
+	}
+	if err := service.AssignDefaultRoleToAllUsers(db); err != nil {
+		logger.Log.Warn("默认角色分配失败", zap.Error(err))
+	}
+	userSvc.WithRoleRepo(roleRepo)
+	roleH := handler.NewRoleHandler(roleSvc)
+	deleteSvc := service.NewDeleteService(db)
+	deleteH := handler.NewDeleteHandler(deleteSvc)
+	oauthSvc := service.NewOAuthService(db)
+	oauthH := handler.NewOAuthHandler(oauthSvc)
+	searchH := handler.NewSearchHandler(userRepo)
 
 	fileRepo := repository.NewFileRepository(db)
 	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
@@ -129,36 +170,59 @@ func main() {
 			user.POST("/login", userH.HandleLogin)
 			user.POST("/refresh", userH.HandleRefresh)
 
+			if captchaMgr != nil {
+				captchaH := handler.NewCaptchaHandler(captchaMgr)
+				user.GET("/captcha", captchaH.HandleGenerate)
+				user.POST("/captcha/verify", captchaH.HandleVerify)
+			}
+
+			user.POST("/email/send-code", verifyH.HandleSendEmailCode)
+			user.POST("/email/verify", verifyH.HandleVerifyEmail)
+			user.POST("/phone/send-code", verifyH.HandleSendPhoneCode)
+			user.POST("/phone/verify", verifyH.HandleVerifyPhone)
+			user.POST("/password/forgot", resetH.HandleForgotPassword)
+			user.POST("/password/reset", resetH.HandleResetPassword)
+
 			protected := user.Group("")
 			protected.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
 			{
 				protected.GET("/profile", userH.HandleGetProfile)
 				protected.PUT("/profile", userH.HandleUpdateProfile)
 				protected.PUT("/password", userH.HandleChangePassword)
+				protected.GET("/sessions", sessionH.HandleListSessions)
+				protected.DELETE("/sessions/:jti", sessionH.HandleRevokeSession)
+				protected.DELETE("/sessions", sessionH.HandleRevokeAllSessions)
+				protected.POST("/delete/request", deleteH.HandleRequestDelete)
+				protected.POST("/delete/cancel", deleteH.HandleCancelDelete)
+				protected.GET("/oauth/bindings", oauthH.HandleListBindings)
+				protected.DELETE("/oauth/unbind", oauthH.HandleUnbind)
+				protected.GET("/search", searchH.HandleSearch)
+				protected.GET("/privacy", userH.HandleGetPrivacy)
+				protected.PUT("/privacy", userH.HandleUpdatePrivacy)
 			}
 		}
 
 		file := api.Group("/file")
 		file.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
 		{
-			file.POST("/upload", fileH.HandleUpload)
-			file.GET("/list", fileH.HandleList)
-			file.GET("/download/:id", fileH.HandleDownload)
-			file.DELETE("/:id", fileH.HandleDelete)
-			file.POST("/mkdir", fileH.HandleMkdir)
-			file.GET("/search", fileH.HandleSearch)
-			file.POST("/batch-delete", fileH.HandleBatchDelete)
-			file.POST("/batch-download", fileH.HandleBatchDownload)
-			file.POST("/move", fileH.HandleMove)
-			file.POST("/copy", fileH.HandleCopy)
-			file.POST("/collab", fileH.HandleCreateCollab)
+			file.POST("/upload", middleware.RequirePermission("file:write"), fileH.HandleUpload)
+			file.GET("/list", middleware.RequirePermission("file:read"), fileH.HandleList)
+			file.GET("/download/:id", middleware.RequirePermission("file:read"), fileH.HandleDownload)
+			file.DELETE("/:id", middleware.RequirePermission("file:delete"), fileH.HandleDelete)
+			file.POST("/mkdir", middleware.RequirePermission("file:write"), fileH.HandleMkdir)
+			file.GET("/search", middleware.RequirePermission("file:read"), fileH.HandleSearch)
+			file.POST("/batch-delete", middleware.RequirePermission("file:delete"), fileH.HandleBatchDelete)
+			file.POST("/batch-download", middleware.RequirePermission("file:read"), fileH.HandleBatchDownload)
+			file.POST("/move", middleware.RequirePermission("file:write"), fileH.HandleMove)
+			file.POST("/copy", middleware.RequirePermission("file:write"), fileH.HandleCopy)
+			file.POST("/collab", middleware.RequirePermission("file:write"), fileH.HandleCreateCollab)
 			// 文件版本
-			file.GET("/:id/versions", fileH.HandleListVersions)
-			file.POST("/:id/versions/:versionId/restore", fileH.HandleRestoreVersion)
-			file.GET("/:id/versions/:versionId/download", fileH.HandleDownloadVersion)
-			file.GET("/:id/meta", fileH.HandleGetFileMeta)
-			file.POST("/:id/share", shareH.HandleCreateShare)
-			file.GET("/:id/shares", shareH.HandleListSharesByFile)
+			file.GET("/:id/versions", middleware.RequirePermission("file:read"), fileH.HandleListVersions)
+			file.POST("/:id/versions/:versionId/restore", middleware.RequirePermission("file:write"), fileH.HandleRestoreVersion)
+			file.GET("/:id/versions/:versionId/download", middleware.RequirePermission("file:read"), fileH.HandleDownloadVersion)
+			file.GET("/:id/meta", middleware.RequirePermission("file:read"), fileH.HandleGetFileMeta)
+			file.POST("/:id/share", middleware.RequirePermission("file:share"), shareH.HandleCreateShare)
+			file.GET("/:id/shares", middleware.RequirePermission("file:read"), shareH.HandleListSharesByFile)
 		}
 
 		shares := api.Group("/shares")
@@ -204,6 +268,20 @@ func main() {
 					alerts.DELETE("/rules/:id", alertH.HandleDeleteRule)
 					alerts.GET("/history", alertH.HandleListHistory)
 				}
+
+				roles := admin.Group("/roles")
+				{
+					roles.GET("", roleH.HandleListRoles)
+					roles.POST("", roleH.HandleCreateRole)
+					roles.PUT("/:id", roleH.HandleUpdateRole)
+					roles.DELETE("/:id", roleH.HandleDeleteRole)
+					roles.GET("/permissions", roleH.HandleListPermissions)
+					roles.POST("/:id/permissions", roleH.HandleAssignPermissions)
+				}
+
+				admin.GET("/users/:id/roles", roleH.HandleGetUserRoles)
+				admin.POST("/users/:id/roles", roleH.HandleAssignUserRole)
+				admin.DELETE("/users/:id/roles/:roleId", roleH.HandleRemoveUserRole)
 			}
 	}
 

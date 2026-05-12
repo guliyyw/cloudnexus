@@ -210,6 +210,8 @@ func (h *IMHandler) HandleLeaveGroup(c *gin.Context) {
 
 type sendFriendReq struct {
 	FriendName string `json:"friend_name" binding:"required"`
+	Message    string `json:"message"`
+	ExpiresIn  int    `json:"expires_in"` // 0=permanent, >0=days
 }
 
 func (h *IMHandler) HandleSendFriendRequest(c *gin.Context) {
@@ -219,7 +221,7 @@ func (h *IMHandler) HandleSendFriendRequest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
 		return
 	}
-	friend, err := h.svc.SendFriendRequest(userID, req.FriendName)
+	friend, err := h.svc.SendFriendRequest(userID, req.FriendName, req.Message, req.ExpiresIn)
 	if err != nil {
 		handleError(c, err)
 		return

@@ -1,0 +1,5 @@
+DO $$
+BEGIN
+    BEGIN ALTER TABLE users ADD COLUMN delete_requested_at TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END;
+    BEGIN ALTER TABLE users ADD COLUMN deleted_at TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END;
+END $$;

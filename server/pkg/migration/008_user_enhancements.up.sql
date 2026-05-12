@@ -1,0 +1,29 @@
+DO $$
+BEGIN
+    BEGIN ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END;
+    BEGIN ALTER TABLE users ADD COLUMN phone VARCHAR(20) DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END;
+    BEGIN ALTER TABLE users ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END;
+    BEGIN ALTER TABLE users ADD COLUMN nickname VARCHAR(50) DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END;
+END $$;
+
+CREATE TABLE IF NOT EXISTS email_verifications (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT DEFAULT 0,
+    email VARCHAR(255) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'register',
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS phone_verifications (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT DEFAULT 0,
+    phone VARCHAR(20) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'register',
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
