@@ -51,7 +51,7 @@ export default function UserSettingsPage() {
     setSessionsLoading(true)
     try {
       const res = await api.get('/user/sessions')
-      setSessions(res.data.data || [])
+      setSessions(res.data.data?.sessions || [])
     } catch { /* ignore */ }
     finally { setSessionsLoading(false) }
   }, [])
