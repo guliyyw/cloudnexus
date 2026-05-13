@@ -14,8 +14,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/service ./cmd/${S
 
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata curl
+RUN apk add --no-cache ca-certificates tzdata curl && \
+    addgroup -S cloudnexus && adduser -S cloudnexus -G cloudnexus
 
 COPY --from=builder /bin/service /usr/local/bin/service
+
+# Ensure log directory is writable by non-root user
+RUN mkdir -p /app/logs && chown -R cloudnexus:cloudnexus /app/logs
+
+USER cloudnexus
 
 CMD ["service"]

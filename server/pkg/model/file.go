@@ -14,7 +14,7 @@ type File struct {
 	StorageSHA256 string `json:"storage_sha256" gorm:"size:64"`
 	IsShared      bool       `json:"is_shared" gorm:"default:false"`
 	CollabType    string     `json:"collab_type" gorm:"size:16;default:''"`
-	DeletedAt     *time.Time
+	DeletedAt     *time.Time `gorm:"index"`
 }
 
 type FileShare struct {
