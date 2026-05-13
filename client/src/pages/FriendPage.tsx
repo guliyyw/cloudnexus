@@ -80,7 +80,7 @@ export default function FriendPage() {
   }
 
   const handleStartChat = async (f: FriendRequest) => {
-    const friendId = f.user_id === user!.id ? f.friend_id : f.user_id
+    const friendId = f.user_id === user?.id ? f.friend_id : f.user_id
     try {
       await createConv(friendId)
       message.success('会话已打开')
@@ -112,7 +112,7 @@ export default function FriendPage() {
   }
 
   const getFriendDisplayId = (f: FriendRequest): string => {
-    return f.user_id === user!.id ? f.friend_id : f.user_id
+    return f.user_id === user?.id ? f.friend_id : f.user_id
   }
 
   const pendingCount = pendingRequests.length

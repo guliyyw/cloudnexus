@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 
@@ -254,7 +255,10 @@ func (h *CameraHandler) HandleDetectImage(c *gin.Context) {
 	}
 	defer f.Close()
 	buf := make([]byte, file.Size)
-	f.Read(buf)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		c.JSON(500, response.Error(500, "读取图片失败"))
+		return
+	}
 	objects, err := h.rec.DetectImage(buf)
 	if err != nil {
 		c.JSON(500, response.Error(500, "AI识别失败: "+err.Error()))
@@ -280,7 +284,10 @@ func (h *CameraHandler) HandleDetectVideo(c *gin.Context) {
 	}
 	defer f.Close()
 	buf := make([]byte, file.Size)
-	f.Read(buf)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		c.JSON(500, response.Error(500, "读取视频失败"))
+		return
+	}
 
 	interval, _ := strconv.ParseFloat(c.DefaultQuery("interval", "2"), 64)
 	if interval < 0.5 {

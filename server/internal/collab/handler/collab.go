@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/collab/service"
+	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +16,9 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// TODO: 生产环境应限制 CheckOrigin 为受信任的域名，避免跨站 WebSocket 劫持
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		return middleware.CheckWebSocketOrigin(r)
+	},
 }
 
 type CollabHandler struct {

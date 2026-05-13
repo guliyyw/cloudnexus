@@ -22,6 +22,7 @@ import DocumentEditorPage from './pages/DocumentEditorPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import ForbiddenPage from './pages/ForbiddenPage'
+import ErrorBoundary from './components/ErrorBoundary'
 import { useAccess } from './hooks/useAccess'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -99,20 +100,20 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/files" element={<FileListPage />} />
-            <Route path="/files/:id/edit" element={<DocumentEditorPage />} />
-            <Route path="/shares" element={<MySharesPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/friends" element={<FriendPage />} />
-            <Route path="/docker" element={<DockerPage />} />
-            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
-            <Route path="/cameras" element={<CameraListPage />} />
-            <Route path="/cameras/:id" element={<CameraLiveView />} />
-            <Route path="/faces" element={<FaceLibraryPage />} />
-            <Route path="/attendance" element={<FaceAttendancePage />} />
-            <Route path="/documents" element={<DocumentListPage />} />
-            <Route path="/documents/:id" element={<DocumentEditorPage />} />
-            <Route path="/settings" element={<UserSettingsPage />} />
+            <Route path="/files" element={<ErrorBoundary><FileListPage /></ErrorBoundary>} />
+            <Route path="/files/:id/edit" element={<ErrorBoundary><DocumentEditorPage /></ErrorBoundary>} />
+            <Route path="/shares" element={<ErrorBoundary><MySharesPage /></ErrorBoundary>} />
+            <Route path="/chat" element={<ErrorBoundary><ChatPage /></ErrorBoundary>} />
+            <Route path="/friends" element={<ErrorBoundary><FriendPage /></ErrorBoundary>} />
+            <Route path="/docker" element={<ErrorBoundary><DockerPage /></ErrorBoundary>} />
+            <Route path="/admin" element={<AdminRoute><ErrorBoundary><AdminPage /></ErrorBoundary></AdminRoute>} />
+            <Route path="/cameras" element={<ErrorBoundary><CameraListPage /></ErrorBoundary>} />
+            <Route path="/cameras/:id" element={<ErrorBoundary><CameraLiveView /></ErrorBoundary>} />
+            <Route path="/faces" element={<ErrorBoundary><FaceLibraryPage /></ErrorBoundary>} />
+            <Route path="/attendance" element={<ErrorBoundary><FaceAttendancePage /></ErrorBoundary>} />
+            <Route path="/documents" element={<ErrorBoundary><DocumentListPage /></ErrorBoundary>} />
+            <Route path="/documents/:id" element={<ErrorBoundary><DocumentEditorPage /></ErrorBoundary>} />
+            <Route path="/settings" element={<ErrorBoundary><UserSettingsPage /></ErrorBoundary>} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />
         </Routes>

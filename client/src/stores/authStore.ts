@@ -28,6 +28,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('access_token', access_token)
     localStorage.setItem('refresh_token', refresh_token)
     set({ isLoggedIn: true })
+    try {
+      const profileRes = await api.get('/user/profile')
+      set({ user: profileRes.data.data })
+    } catch { /* profile fetch failure doesn't block login */ }
   },
 
   register: async (username: string, email: string, password: string, captchaId?: string, captchaCode?: string) => {

@@ -93,6 +93,12 @@ func (s *SessionService) ListActiveSessions(userID uint64) ([]model.UserSession,
 	return sessions, err
 }
 
+// IsRevoked implements middleware.TokenRevoker for JWT revocation checking.
+func (s *SessionService) IsRevoked(ctx context.Context, jti string) bool {
+	valid, _ := s.ValidateSession(jti)
+	return !valid
+}
+
 func (s *SessionService) CleanExpiredSessions() {
 	ticker := time.NewTicker(1 * time.Hour)
 	go func() {

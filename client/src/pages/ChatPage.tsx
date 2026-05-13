@@ -26,7 +26,8 @@ import type { FileItem } from '../services/file'
 
 const { Text } = Typography
 
-function getFriendUserId(f: FriendRequest, myId: string): string {
+function getFriendUserId(f: FriendRequest, myId?: string): string {
+  if (!myId) return ''
   return f.user_id === myId ? f.friend_id : f.user_id
 }
 
@@ -327,7 +328,7 @@ export default function ChatPage() {
   // Friends not already in group
   const memberIds = new Set(members.map((m) => m.user_id))
   const addableFriends = friends.filter((f) => {
-    const fid = getFriendUserId(f, user!.id)
+    const fid = getFriendUserId(f, user?.id)
     return !memberIds.has(fid)
   })
 
@@ -672,11 +673,11 @@ export default function ChatPage() {
             renderItem={(f) => (
               <List.Item
                 style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6 }}
-                onClick={() => handleStartChat(getFriendUserId(f, user!.id))}
+                onClick={() => handleStartChat(getFriendUserId(f, user?.id))}
               >
                 <List.Item.Meta
                   avatar={<Avatar icon={<UserOutlined />} />}
-                  title={f.friend_username || `用户 ${getFriendUserId(f, user!.id)}`}
+                  title={f.friend_username || `用户 ${getFriendUserId(f, user?.id)}`}
                 />
               </List.Item>
             )}
@@ -711,7 +712,7 @@ export default function ChatPage() {
               <List
                 dataSource={friends}
                 renderItem={(f) => {
-                  const fid = getFriendUserId(f, user!.id)
+                  const fid = getFriendUserId(f, user?.id)
                   return (
                     <List.Item style={{ padding: '4px 0' }}>
                       <Checkbox value={fid}>
@@ -786,7 +787,7 @@ export default function ChatPage() {
           <List
             dataSource={addableFriends}
             renderItem={(f) => {
-              const fid = getFriendUserId(f, user!.id)
+              const fid = getFriendUserId(f, user?.id)
               return (
                 <List.Item
                   style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6 }}

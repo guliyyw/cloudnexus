@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudnexus/server/internal/userfile/service"
 	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/captcha"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
@@ -16,6 +17,7 @@ import (
 type UserHandler struct {
 	svc        *service.UserService
 	sessionSvc *service.SessionService
+	captchaMgr *captcha.Manager
 }
 
 func NewUserHandler(svc *service.UserService) *UserHandler {
@@ -24,6 +26,11 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 
 func (h *UserHandler) WithSessionService(svc *service.SessionService) *UserHandler {
 	h.sessionSvc = svc
+	return h
+}
+
+func (h *UserHandler) WithCaptchaManager(mgr *captcha.Manager) *UserHandler {
+	h.captchaMgr = mgr
 	return h
 }
 
@@ -40,6 +47,17 @@ func (h *UserHandler) HandleRegister(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
 		return
+	}
+
+	if h.captchaMgr != nil {
+		if req.CaptchaID == "" || req.CaptchaCode == "" {
+			c.JSON(http.StatusBadRequest, response.Error(400, "请完成验证码"))
+			return
+		}
+		if !h.captchaMgr.Verify(req.CaptchaID, req.CaptchaCode) {
+			c.JSON(http.StatusBadRequest, response.Error(400, "验证码错误或已过期"))
+			return
+		}
 	}
 
 	if err := service.ValidatePasswordStrength(req.Password); err != nil {

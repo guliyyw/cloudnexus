@@ -107,7 +107,7 @@ func main() {
 	sessionSvc := service.NewSessionService(db, rdb, *cfg)
 	sessionSvc.CleanExpiredSessions()
 	sessionH := handler.NewSessionHandler(sessionSvc)
-	userH.WithSessionService(sessionSvc)
+	userH.WithSessionService(sessionSvc).WithCaptchaManager(captchaMgr)
 	roleRepo := repository.NewRoleRepository(db)
 	roleSvc := service.NewRoleService(roleRepo)
 	if err := roleSvc.SeedRBAC(); err != nil {
@@ -184,7 +184,7 @@ func main() {
 			user.POST("/password/reset", resetH.HandleResetPassword)
 
 			protected := user.Group("")
-			protected.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+			protected.Use(middleware.AuthRequired(jwtCfg.AccessSecret, sessionSvc))
 			{
 				protected.GET("/profile", userH.HandleGetProfile)
 				protected.PUT("/profile", userH.HandleUpdateProfile)
@@ -194,6 +194,7 @@ func main() {
 				protected.DELETE("/sessions", sessionH.HandleRevokeAllSessions)
 				protected.POST("/delete/request", deleteH.HandleRequestDelete)
 				protected.POST("/delete/cancel", deleteH.HandleCancelDelete)
+				protected.POST("/delete/confirm", deleteH.HandleConfirmDelete)
 				protected.GET("/oauth/bindings", oauthH.HandleListBindings)
 				protected.DELETE("/oauth/unbind", oauthH.HandleUnbind)
 				protected.GET("/search", searchH.HandleSearch)

@@ -69,7 +69,7 @@ export default function UploadModal({ open, targetDirId, targetDirName, onClose 
         </Button>,
       ]}
       width={560}
-      mask={{ closable: false }}
+      maskClosable={false}
     >
       <Upload.Dragger
         multiple

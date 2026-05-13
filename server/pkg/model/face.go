@@ -15,7 +15,7 @@ type FaceProfile struct {
 type FaceRecognitionEvent struct {
 	ID          uint64    `json:"id,string" gorm:"primaryKey"`
 	CameraID    uint64    `json:"camera_id,string" gorm:"not null;index"`
-	FaceID      *uint64   `json:"face_id,string" gorm:"index"`
+	FaceID      uint64    `json:"face_id,string" gorm:"index"`
 	FaceName    string    `json:"face_name" gorm:"size:64"`
 	Confidence  float64   `json:"confidence"`
 	SnapshotURL string    `json:"snapshot_url" gorm:"type:text"`

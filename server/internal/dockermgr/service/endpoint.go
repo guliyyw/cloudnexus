@@ -115,6 +115,9 @@ func (m *EndpointManager) GetClient(name string) (*endpointClient, error) {
 	}
 
 	// Look up in DB
+	if m.db == nil {
+		return nil, fmt.Errorf("Docker 端点 %s 不存在（数据库不可用）", name)
+	}
 	var node model.DockerNode
 	if err := m.db.Where("name = ? AND node_type = ?", name, "docker_endpoint").First(&node).Error; err != nil {
 		return nil, fmt.Errorf("Docker 端点 %s 不存在", name)

@@ -20,7 +20,7 @@ export interface CollabListResponse {
 
 export async function listDocuments(page = 1, pageSize = 20): Promise<CollabListResponse> {
   const { data } = await api.get('/collab', { params: { page, page_size: pageSize } })
-  return data
+  return data.data
 }
 
 export async function createDocument(title: string): Promise<CollabDocument> {

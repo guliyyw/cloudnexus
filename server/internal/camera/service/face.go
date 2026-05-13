@@ -173,6 +173,13 @@ func (s *FaceService) MatchEmbedding(ownerID uint64, query []float64) (*MatchRes
 	return &MatchResult{Matched: false, Confidence: bestScore}, nil
 }
 
+func derefUint64(p *uint64) uint64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 func cosineSimilarity(a, b []float64) float64 {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0
@@ -198,7 +205,7 @@ func (s *FaceService) RecordEvent(cameraID uint64, result *MatchResult, bbox map
 	event := &model.FaceRecognitionEvent{
 		ID:        snowflake.Uint64(),
 		CameraID:  cameraID,
-		FaceID:    result.FaceID,
+		FaceID:    derefUint64(result.FaceID),
 		FaceName:  result.Name,
 		Confidence: result.Confidence,
 		BboxJSON: string(bboxJSON),

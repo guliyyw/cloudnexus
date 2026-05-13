@@ -12,6 +12,7 @@ import (
 
 	"github.com/cloudnexus/server/internal/im/service"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/middleware"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 
@@ -23,7 +24,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		return middleware.CheckWebSocketOrigin(r)
 	},
 }
 

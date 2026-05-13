@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -12,6 +14,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// TokenRevoker is used to check whether a JWT (identified by JTI) has been revoked.
+// Services that have Redis can pass a Redis-backed implementation.
+type TokenRevoker interface {
+	IsRevoked(ctx context.Context, jti string) bool
+}
 
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -59,8 +67,23 @@ func Logger() gin.HandlerFunc {
 }
 
 func CORS() gin.HandlerFunc {
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000,http://localhost"
+	}
+	allowedSet := make(map[string]bool)
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		allowedSet[strings.TrimSpace(o)] = true
+	}
+
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if origin == "" || allowedSet[origin] {
+			if origin == "" {
+				origin = "*"
+			}
+			c.Header("Access-Control-Allow-Origin", origin)
+		}
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type")
 		if c.Request.Method == http.MethodOptions {
@@ -71,14 +94,21 @@ func CORS() gin.HandlerFunc {
 	}
 }
 
-func AuthRequired(secret string) gin.HandlerFunc {
+func AuthRequired(secret string, revoker ...TokenRevoker) gin.HandlerFunc {
+	var tokenRevoker TokenRevoker
+	if len(revoker) > 0 {
+		tokenRevoker = revoker[0]
+	}
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		token := header
 		if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 			token = token[7:]
 		} else if token == "" {
-			token = c.Query("token")
+			// 仅 WebSocket 升级请求允许通过 query param 传递 token
+			if strings.EqualFold(c.GetHeader("Upgrade"), "websocket") {
+				token = c.Query("token")
+			}
 		}
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "缺少认证令牌"})
@@ -89,6 +119,15 @@ func AuthRequired(secret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "令牌无效或已过期"})
 			return
 		}
+
+		// 检查 JTI 是否已被吊销（如强制下线）
+		if tokenRevoker != nil && claims.JTI != "" {
+			if tokenRevoker.IsRevoked(c.Request.Context(), claims.JTI) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "令牌已被吊销"})
+				return
+			}
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("is_admin", claims.IsAdmin)
@@ -97,6 +136,25 @@ func AuthRequired(secret string) gin.HandlerFunc {
 		c.Set("permissions", claims.Permissions)
 		c.Next()
 	}
+}
+
+// CheckWebSocketOrigin validates WebSocket upgrade requests against ALLOWED_ORIGINS.
+// Defaults to localhost origins if env var is not set.
+func CheckWebSocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // non-browser clients
+	}
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		allowedOrigins = "http://localhost:3000,http://localhost"
+	}
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	return false
 }
 
 func AdminRequired() gin.HandlerFunc {
