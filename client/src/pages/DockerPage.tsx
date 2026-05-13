@@ -293,7 +293,7 @@ export default function DockerPage() {
         onOk={async () => {
           if (createImage.trim()) {
             try {
-              await create(createImage.trim(), createName.trim() || undefined as any)
+              await create(createImage.trim(), createName.trim())
               setCreateImage('')
               setCreateName('')
               setCreateVisible(false)

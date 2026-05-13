@@ -119,7 +119,6 @@ export default function ChatPage() {
       } else {
         incrementUnread(msgConvId)
       }
-    } else if (wsMsg.type === 'read_receipt' && wsMsg.conversation_id === currentConvId) {
     }
   })
 

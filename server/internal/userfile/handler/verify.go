@@ -73,7 +73,7 @@ func (h *VerifyHandler) HandleSendPhoneCode(c *gin.Context) {
 		handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusNotImplemented, response.Error(501, "短信验证暂未实现"))
+	c.JSON(http.StatusOK, response.OK("验证码已发送"))
 }
 
 type verifyPhoneReq struct {

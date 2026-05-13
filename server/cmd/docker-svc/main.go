@@ -38,7 +38,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	snowflake.Init(3)
+	snowflake.Init(3) // node 1=user-file, 2=im, 3=docker, 4=reserved, 5=camera, 6=collab
 
 	db, err := database.NewPostgres(database.Config{DSN: cfg.Database.DSN})
 	if err != nil {

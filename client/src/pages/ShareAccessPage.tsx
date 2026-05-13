@@ -70,7 +70,7 @@ export default function ShareAccessPage() {
   if (phase === 'loading') {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <Spin size="large" tip="加载分享信息..." />
+        <Spin size="large" />
       </div>
     )
   }
