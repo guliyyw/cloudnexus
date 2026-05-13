@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"os"
 	"time"
 
@@ -250,6 +251,7 @@ func hashToken(token string) string {
 func (s *UserService) SeedDefaultAdmin() {
 	count, err := s.repo.CountUsers()
 	if err != nil {
+		log.Printf("[seed] 查询用户数量失败: %v", err)
 		return
 	}
 	if count > 0 {
@@ -271,6 +273,7 @@ func (s *UserService) SeedDefaultAdmin() {
 
 	hashed, err := crypto.HashPassword(password)
 	if err != nil {
+		log.Printf("[seed] 密码哈希失败: %v", err)
 		return
 	}
 
@@ -281,8 +284,10 @@ func (s *UserService) SeedDefaultAdmin() {
 		IsAdmin:  true,
 	}
 	if err := s.repo.CreateUser(user); err != nil {
+		log.Printf("[seed] 创建默认管理员失败: %v", err)
 		return
 	}
+	log.Printf("[seed] 默认管理员账号已创建 (username=%s)", username)
 }
 
 func (s *UserService) GetPrivacy(userID uint64) (*model.UserPrivacy, error) {

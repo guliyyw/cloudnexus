@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -32,7 +33,7 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	if err := logger.Init(logger.Config{Level: cfg.Log.Level, Format: cfg.Log.Format}); err != nil {
+	if err := logger.Init(logger.Config{Level: cfg.Log.Level, Format: cfg.Log.Format, Service: "docker-svc", LogDir: "/app/logs"}); err != nil {
 		log.Fatalf("初始化日志失败: %v", err)
 	}
 	defer logger.Sync()
@@ -123,8 +124,8 @@ func main() {
 		},
 	))
 
-	logger.Log.Info("docker-svc starting", zap.Int("port", 8083))
-	if err := r.Run(":8083"); err != nil {
+	logger.Log.Info("docker-svc starting", zap.Int("port", cfg.Server.Port))
+	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
 }

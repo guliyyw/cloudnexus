@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Typography } from 'antd'
 import { LockOutlined } from '@ant-design/icons'
-import axios from 'axios'
+import api from '../services/api'
 
 const { Title, Text } = Typography
 
 export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
-  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const token = searchParams.get('token') || ''
+  // token from URL fragment (#token=xxx), not query string, to avoid server log leakage
+  const hash = window.location.hash
+  const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash)
+  const token = params.get('token') || ''
 
   const onFinish = async (values: { new_password: string; confirm_password: string }) => {
     if (values.new_password !== values.confirm_password) {
@@ -23,7 +25,7 @@ export default function ResetPasswordPage() {
     }
     setLoading(true)
     try {
-      await axios.post('/api/v1/user/password/reset', {
+      await api.post('/user/password/reset', {
         token,
         new_password: values.new_password,
       })

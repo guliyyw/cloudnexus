@@ -52,7 +52,7 @@ export default function FaceLibraryPage() {
       render: (_: string, r: FaceProfile) => {
         const token = localStorage.getItem('access_token')
         const src = r.thumbnail_url
-          ? `/api/v1/faces/${r.id}/thumbnail?token=${token}`
+          ? `${import.meta.env.VITE_API_BASE || ''}/api/v1/faces/${r.id}/thumbnail?token=${token}`
           : undefined
         return <Avatar shape="square" size={48} src={src} icon={<UserOutlined />} />
       },

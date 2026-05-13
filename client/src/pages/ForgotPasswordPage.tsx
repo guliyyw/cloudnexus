@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Typography } from 'antd'
 import { MailOutlined } from '@ant-design/icons'
-import axios from 'axios'
+import api from '../services/api'
 
 const { Title, Text } = Typography
 
@@ -13,12 +13,12 @@ export default function ForgotPasswordPage() {
   const onFinish = async (values: { email: string }) => {
     setLoading(true)
     try {
-      await axios.post('/api/v1/user/password/forgot', { email: values.email })
+      await api.post('/user/password/forgot', { email: values.email })
       setSent(true)
-      message.success('如果该邮箱已注册，重置邮件已发送')
     } catch {
-      message.success('如果该邮箱已注册，重置邮件已发送')
+      // Don't reveal whether the email exists
     } finally {
+      message.success('如果该邮箱已注册，重置邮件已发送')
       setLoading(false)
     }
   }

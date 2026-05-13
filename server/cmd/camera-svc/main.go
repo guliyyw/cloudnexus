@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -157,8 +158,8 @@ func main() {
 		},
 	))
 
-	logger.Log.Info("camera-svc starting", zap.Int("port", 8085))
-	if err := r.Run(":8085"); err != nil {
+	logger.Log.Info("camera-svc starting", zap.Int("port", cfg.Server.Port))
+	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
 }

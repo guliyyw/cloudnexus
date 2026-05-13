@@ -69,7 +69,7 @@ export default function FileListPage() {
   const [pickerOpen, setPickerOpen] = useState<'move' | 'copy' | null>(null)
   const [pendingMoveCopyIds, setPendingMoveCopyIds] = useState<string[]>([])
 
-  useEffect(() => { fetchFiles() }, [])
+  useEffect(() => { fetchFiles() }, [fetchFiles])
 
   // Open upload modal, optionally targeting a specific directory
   const openUploadModal = (dirId = currentParentId, dirName?: string) => {

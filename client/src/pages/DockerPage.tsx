@@ -51,8 +51,8 @@ export default function DockerPage() {
   const [pullLoading, setPullLoading] = useState(false)
   const [expandedStats, setExpandedStats] = useState<Set<string>>(new Set())
 
-  useEffect(() => { fetchEndpoints() }, [])
-  useEffect(() => { fetchContainers(showAll) }, [showAll, endpoint])
+  useEffect(() => { fetchEndpoints() }, [fetchEndpoints])
+  useEffect(() => { fetchContainers(showAll) }, [showAll, endpoint, fetchContainers])
 
   const handleViewLogs = async (id: string) => {
     setLogsVisible(true)

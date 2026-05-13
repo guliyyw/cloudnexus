@@ -89,7 +89,7 @@ export default function ChatPage() {
     if (user) {
       fetchFriends()
     }
-  }, [user])
+  }, [user, fetchConversations, fetchFriends])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

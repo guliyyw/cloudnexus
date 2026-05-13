@@ -1,6 +1,8 @@
 package service
 
 import (
+	"log"
+
 	"github.com/cloudnexus/server/internal/userfile/repository"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
 	"github.com/cloudnexus/server/pkg/model"
@@ -158,6 +160,7 @@ func (s *RoleService) SeedRBAC() error {
 	}
 
 	if err := s.repo.BatchCreatePermissions(perms); err != nil {
+		log.Printf("[seed] 批量创建权限失败: %v", err)
 		return err
 	}
 
@@ -190,7 +193,9 @@ func (s *RoleService) SeedRBAC() error {
 		Description: "常规管理权限",
 		IsSystem:    true,
 	}
-	s.repo.CreateRole(&admin)
+	if err := s.repo.CreateRole(&admin); err != nil {
+		log.Printf("[seed] 创建管理员角色失败: %v", err)
+	}
 	adminPerms := []string{"file:admin", "user:admin", "im:admin", "docker:admin", "camera:admin", "face:admin", "attendance:admin", "role:admin", "system:log", "system:node", "system:metrics"}
 	adminPermIDs := make([]uint64, 0)
 	for _, code := range adminPerms {
@@ -207,7 +212,9 @@ func (s *RoleService) SeedRBAC() error {
 		Description: "默认用户权限",
 		IsSystem:    true,
 	}
-	s.repo.CreateRole(&userRole)
+	if err := s.repo.CreateRole(&userRole); err != nil {
+		log.Printf("[seed] 创建普通用户角色失败: %v", err)
+	}
 	userPerms := []string{"file:read", "file:write", "file:delete", "file:share", "im:chat", "im:friend", "docker:read", "camera:read", "face:read", "attendance:read"}
 	userPermIDs := make([]uint64, 0)
 	for _, code := range userPerms {

@@ -9,5 +9,5 @@ CREATE TABLE IF NOT EXISTS file_versions (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_file_versions_file_id ON file_versions(file_id);
-CREATE INDEX idx_file_versions_file_version ON file_versions(file_id, version_num DESC);
+CREATE INDEX IF NOT EXISTS idx_file_versions_file_id ON file_versions(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_versions_file_version ON file_versions(file_id, version_num DESC);

@@ -46,7 +46,7 @@ func (s *ResetService) RequestPasswordReset(emailAddr string) error {
 	subject := "CloudNexus 密码重置"
 	body := "您正在重置 CloudNexus 账户密码。\n\n" +
 		"请在浏览器中打开以下链接（30 分钟内有效）:\n" +
-		"/reset-password?token=" + token + "\n\n" +
+		"/reset-password#token=" + token + "\n\n" +
 		"如果您没有请求重置密码，请忽略此邮件。"
 
 	return s.sender.Send(emailAddr, subject, body)

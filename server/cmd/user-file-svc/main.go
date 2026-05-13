@@ -291,7 +291,7 @@ func main() {
 	r.GET("/metrics/resources", systemH.HandleResourceMetrics)
 
 	logger.Log.Info("user-file-svc starting", zap.Int("port", cfg.Server.Port))
-	if err := r.Run(":8081"); err != nil {
+	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
 }
