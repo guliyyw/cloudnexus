@@ -29,7 +29,10 @@ function parseJWT(): JWTClaims | null {
 }
 
 export function useAccess() {
-  const claims = useMemo(() => parseJWT(), [])
+  // Re-parse on every render to pick up token changes (login/logout/refresh)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+  const claims = useMemo(() => parseJWT(), [token])
 
   const hasPermission = (perm: string) => {
     if (!claims) return false

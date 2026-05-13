@@ -100,6 +100,10 @@ services:
       retries: 3
       start_period: 5s
 
+  # Security note: docker-svc mounts the host Docker socket to manage containers.
+  # A compromise of docker-svc grants the attacker root-level host access.
+  # Mitigations: run docker-svc as non-root (user namespaces), restrict with
+  # AppArmor/SELinux, or use a dedicated Docker-in-Docker (dind) setup.
   docker-svc:
     build:
       context: ../server
@@ -133,6 +137,8 @@ services:
     build:
       context: .
       dockerfile: ./ai-inference/Dockerfile
+    environment:
+      - AI_INFERENCE_TOKEN=change-me-in-production
     restart: unless-stopped
     # GPU support: uncomment the following lines if NVIDIA GPU is available
     # deploy:
@@ -154,6 +160,7 @@ services:
       - SNOWFLAKE_NODE_ID=5
       - MEDIAMTX_API_URL=http://mediamtx:8889
       - AI_INFERENCE_URL=http://ai-inference:8000
+      - AI_INFERENCE_TOKEN=change-me-in-production
     ports:
       - "8085:8085"
     volumes:

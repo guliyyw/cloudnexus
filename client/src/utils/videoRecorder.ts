@@ -6,6 +6,7 @@ export class VideoRecorder {
   private animId = 0
   private _recording = false
   private maxChunks = 60 // 5 minutes at 5s intervals
+  private blobUrl: string | null = null
 
   get recording() { return this._recording }
 
@@ -49,7 +50,7 @@ export class VideoRecorder {
       if (e.data.size > 0) {
         this.chunks.push(e.data)
         if (this.chunks.length > this.maxChunks) {
-          URL.revokeObjectURL(URL.createObjectURL(this.chunks.shift()!))
+          this.chunks.shift()
         }
       }
     }
@@ -77,7 +78,9 @@ export class VideoRecorder {
   }
 
   getBlobUrl(): string {
-    return URL.createObjectURL(this.getRecordedBlob())
+    if (this.blobUrl) URL.revokeObjectURL(this.blobUrl)
+    this.blobUrl = URL.createObjectURL(this.getRecordedBlob())
+    return this.blobUrl
   }
 
   getDurationMs(): number {
@@ -86,8 +89,18 @@ export class VideoRecorder {
   }
 
   destroy(): void {
-    this.stop()
-    this.chunks.forEach((c) => URL.revokeObjectURL(URL.createObjectURL(c)))
+    this._recording = false
+    cancelAnimationFrame(this.animId)
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop()
+    }
+    if (this.blobUrl) {
+      URL.revokeObjectURL(this.blobUrl)
+      this.blobUrl = null
+    }
     this.chunks = []
+    this.canvas = null
+    this.ctx = null
+    this.mediaRecorder = null
   }
 }

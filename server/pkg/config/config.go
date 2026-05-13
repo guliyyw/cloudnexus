@@ -84,5 +84,43 @@ func Load(path string) (*AppConfig, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	// Override sensitive values from environment variables
+	applyEnvOverrides(cfg)
 	return cfg, nil
+}
+
+func applyEnvOverrides(cfg *AppConfig) {
+	// Env vars take precedence over config file values for security-critical settings
+	if v := os.Getenv("DB_PASSWORD"); v != "" {
+		// Replace password in DSN: host=... user=... password=OLD → password=ENV
+		cfg.Database.DSN = overrideDSNPassword(cfg.Database.DSN, v)
+	}
+	if v := os.Getenv("JWT_ACCESS_SECRET"); v != "" {
+		cfg.JWT.AccessSecret = v
+	}
+	if v := os.Getenv("JWT_REFRESH_SECRET"); v != "" {
+		cfg.JWT.RefreshSecret = v
+	}
+	if v := os.Getenv("MINIO_SECRET_KEY"); v != "" {
+		cfg.MinIO.SecretKey = v
+	}
+	if v := os.Getenv("MINIO_ACCESS_KEY"); v != "" {
+		cfg.MinIO.AccessKey = v
+	}
+	if v := os.Getenv("REDIS_PASSWORD"); v != "" {
+		cfg.Redis.Password = v
+	}
+	if v := os.Getenv("SMTP_PASSWORD"); v != "" {
+		cfg.SMTP.Password = v
+	}
+}
+
+func overrideDSNPassword(dsn, newPass string) string {
+	fields := strings.Fields(dsn)
+	for i, f := range fields {
+		if strings.HasPrefix(f, "password=") {
+			fields[i] = "password=" + newPass
+		}
+	}
+	return strings.Join(fields, " ")
 }

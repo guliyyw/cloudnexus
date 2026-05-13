@@ -36,14 +36,16 @@ type DetectedObject struct {
 type RecognitionService struct {
 	repo           *repository.CameraRepository
 	inferenceURL   string // e.g. http://ai-inference:8000
+	inferenceToken string // shared secret for AI inference auth
 	stopChans      map[uint64]chan struct{}
 }
 
-func NewRecognitionService(repo *repository.CameraRepository, inferenceURL string) *RecognitionService {
+func NewRecognitionService(repo *repository.CameraRepository, inferenceURL, inferenceToken string) *RecognitionService {
 	return &RecognitionService{
-		repo:         repo,
-		inferenceURL: inferenceURL,
-		stopChans:    make(map[uint64]chan struct{}),
+		repo:           repo,
+		inferenceURL:   inferenceURL,
+		inferenceToken: inferenceToken,
+		stopChans:      make(map[uint64]chan struct{}),
 	}
 }
 
@@ -161,11 +163,15 @@ func (s *RecognitionService) sendToInference(imageBytes []byte) ([]DetectedObjec
 	part.Write(imageBytes)
 	w.Close()
 
-	resp, err := http.Post(
-		fmt.Sprintf("%s/detect", s.inferenceURL),
-		w.FormDataContentType(),
-		&buf,
-	)
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/detect", s.inferenceURL), &buf)
+	if err != nil {
+		return nil, fmt.Errorf("创建推理请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if s.inferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.inferenceToken)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("推理服务请求失败: %w", err)
 	}
@@ -222,7 +228,15 @@ func (s *RecognitionService) DetectVideo(videoBytes []byte, filename string, int
 	w.Close()
 
 	url := fmt.Sprintf("%s/detect-video?interval=%.1f", s.inferenceURL, interval)
-	resp, err := http.Post(url, w.FormDataContentType(), &buf)
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("创建视频分析请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if s.inferenceToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.inferenceToken)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("视频分析请求失败: %w", err)
 	}

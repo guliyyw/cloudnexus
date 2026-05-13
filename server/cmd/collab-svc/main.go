@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -124,8 +125,8 @@ func main() {
 		},
 	))
 
-	logger.Log.Info("collab-svc starting", zap.Int("port", 8086))
-	if err := r.Run(":8086"); err != nil {
+	logger.Log.Info("collab-svc starting", zap.Int("port", cfg.Server.Port))
+	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
 		logger.Log.Fatal("启动失败", zap.Error(err))
 	}
 }

@@ -63,10 +63,6 @@ func main() {
 		&model.Message{},
 		&model.Friend{},
 		&model.Blocklist{},
-		&model.DockerNode{},
-		&model.NodeOnlineSession{},
-		&model.AlertRule{},
-		&model.AlertHistory{},
 	); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}

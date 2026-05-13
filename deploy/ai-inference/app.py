@@ -4,10 +4,13 @@ import uuid
 import torch
 import cv2
 from ultralytics import YOLO
-from fastapi import FastAPI, UploadFile, File, Query
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Header
 import uvicorn
 
 app = FastAPI(title="CloudNexus AI Inference")
+
+# Shared secret for internal service-to-service auth
+AUTH_TOKEN = os.getenv("AI_INFERENCE_TOKEN", "")
 
 # Auto-detect device
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -50,7 +53,9 @@ def health():
 
 
 @app.post("/detect")
-async def detect(image: UploadFile = File(...)):
+async def detect(image: UploadFile = File(...), authorization: str = Header(default="", alias="Authorization")):
+    if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
     contents = await image.read()
     tmp_path = f"/tmp/{image.filename or 'frame.jpg'}"
     with open(tmp_path, "wb") as f:
@@ -70,7 +75,11 @@ async def detect(image: UploadFile = File(...)):
 async def detect_video(
     video: UploadFile = File(...),
     interval: float = Query(2.0, ge=0.5, le=60.0, description="Seconds between sampled frames"),
+    authorization: str = Header(default="", alias="Authorization"),
 ):
+    if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # Save uploaded video to temp file
     ext = os.path.splitext(video.filename or "video.mp4")[1] or ".mp4"
     tmp_path = f"/tmp/{uuid.uuid4().hex}{ext}"

@@ -99,8 +99,10 @@ func main() {
 		logger.Log.Fatal("连接 MinIO 失败", zap.Error(err))
 	}
 
+	inferenceToken := os.Getenv("AI_INFERENCE_TOKEN")
+
 	camSvc := service.NewCameraService(repo, mediamtxURL)
-	recSvc := service.NewRecognitionService(repo, inferenceURL)
+	recSvc := service.NewRecognitionService(repo, inferenceURL, inferenceToken)
 	faceSvc := service.NewFaceService(repo, minioClient, cfg.MinIO.Bucket)
 	camH := handler.NewCameraHandler(camSvc, recSvc)
 	faceH := handler.NewFaceHandler(faceSvc)

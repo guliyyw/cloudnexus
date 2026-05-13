@@ -1,10 +1,12 @@
 package service
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math/big"
 	"os"
 	"time"
 
@@ -248,6 +250,22 @@ func hashToken(token string) string {
 	return hex.EncodeToString(h[:])
 }
 
+var rngChars = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+")
+
+func generateRandomPassword(length int) string {
+	buf := make([]rune, length)
+	for i := range buf {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(rngChars))))
+		if err != nil {
+			// fallback: use time-based seed (unlikely to reach here)
+			buf[i] = rngChars[i%len(rngChars)]
+			continue
+		}
+		buf[i] = rngChars[n.Int64()]
+	}
+	return string(buf)
+}
+
 func (s *UserService) SeedDefaultAdmin() {
 	count, err := s.repo.CountUsers()
 	if err != nil {
@@ -268,7 +286,8 @@ func (s *UserService) SeedDefaultAdmin() {
 	}
 	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
 	if password == "" {
-		password = "CloudNexus@admin"
+		password = generateRandomPassword(16)
+		log.Printf("[seed] 未设置 DEFAULT_ADMIN_PASSWORD，已生成随机密码: %s", password)
 	}
 
 	hashed, err := crypto.HashPassword(password)
