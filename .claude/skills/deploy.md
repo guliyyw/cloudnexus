@@ -52,9 +52,12 @@ cd D:/code/cloudnexus/client/dist && tar czf /tmp/dist_new.tar.gz .
 # 在服务器上执行:
 cd /home/user/cloudnexus/deploy
 docker compose -f docker-compose.single.yml stop <service-name>
-docker compose -f docker-compose.single.yml create <service-name>
-docker cp /home/user/cloudnexus/deploy/service-bins/<service-name> $(docker compose -f docker-compose.single.yml ps -q <service-name>):/app/service
-docker start $(docker compose -f docker-compose.single.yml ps -a -q <service-name> | head -1)
+CID=$(docker compose -f docker-compose.single.yml ps -a -q <service-name> | head -1)
+docker cp /home/user/cloudnexus/deploy/service-bins/<service-name> $CID:/usr/local/bin/service
+docker start $CID
+sleep 1
+docker exec $CID chmod +x /usr/local/bin/service
+docker compose -f docker-compose.single.yml restart <service-name>
 ```
 
 **前端:**

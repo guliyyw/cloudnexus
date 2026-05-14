@@ -94,10 +94,24 @@ deploy_go_service() {
   log "重启 ${svc} 容器 ..."
   remote "
     cd ${REMOTE_DEPLOY} &&
-    docker compose -f ${REMOTE_COMPOSE} stop ${svc} &&
-    docker compose -f ${REMOTE_COMPOSE} create ${svc} &&
-    docker cp ${REMOTE_BINS}/${svc} \$(docker compose -f ${REMOTE_COMPOSE} ps -q ${svc}):/app/service &&
-    docker start \$(docker compose -f ${REMOTE_COMPOSE} ps -a -q ${svc})
+    CID=\$(docker compose -f ${REMOTE_COMPOSE} ps -q ${svc} | head -1) &&
+    if [ -n \"\$CID\" ]; then
+      docker compose -f ${REMOTE_COMPOSE} stop ${svc} &&
+      docker cp ${REMOTE_BINS}/${svc} \${CID}:/usr/local/bin/service &&
+      docker start \${CID} &&
+      sleep 1 &&
+      docker exec \${CID} chmod +x /usr/local/bin/service &&
+      docker compose -f ${REMOTE_COMPOSE} restart ${svc}
+    else
+      docker compose -f ${REMOTE_COMPOSE} stop ${svc} &&
+      docker compose -f ${REMOTE_COMPOSE} create ${svc} &&
+      CID=\$(docker compose -f ${REMOTE_COMPOSE} ps -a -q ${svc} | head -1) &&
+      docker cp ${REMOTE_BINS}/${svc} \${CID}:/usr/local/bin/service &&
+      docker start \${CID} &&
+      sleep 1 &&
+      docker exec \${CID} chmod +x /usr/local/bin/service &&
+      docker compose -f ${REMOTE_COMPOSE} restart ${svc}
+    fi
   " 2>&1
 
   # 健康检查
