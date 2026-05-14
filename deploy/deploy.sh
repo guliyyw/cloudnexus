@@ -30,6 +30,7 @@ declare -A GO_SERVICES=(
   ["im-svc"]="./cmd/im-svc"
   ["docker-svc"]="./cmd/docker-svc"
   ["camera-svc"]="./cmd/camera-svc"
+  ["collab-svc"]="./cmd/collab-svc"
 )
 
 # 获取远程 compose 文件名
@@ -233,6 +234,8 @@ main() {
           deploy_svcs+=("docker-svc") ;;
         server/cmd/camera-svc/*|server/internal/camera/*)
           deploy_svcs+=("camera-svc") ;;
+        server/cmd/collab-svc/*|server/internal/collab/*)
+          deploy_svcs+=("collab-svc") ;;
       esac
     done <<< "$changed"
 

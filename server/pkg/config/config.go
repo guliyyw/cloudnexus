@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -112,6 +113,11 @@ func applyEnvOverrides(cfg *AppConfig) {
 	}
 	if v := os.Getenv("SMTP_PASSWORD"); v != "" {
 		cfg.SMTP.Password = v
+	}
+	if v := os.Getenv("SERVER_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil {
+			cfg.Server.Port = port
+		}
 	}
 }
 

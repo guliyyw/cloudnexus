@@ -63,6 +63,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
       - SNOWFLAKE_NODE_ID=1
+      - SERVER_PORT=8081
       # 默认管理员 — 仅当数据库中无用户时创建（首次启动）
       - DEFAULT_ADMIN_USERNAME=admin
       - DEFAULT_ADMIN_PASSWORD=CloudNexus@admin
@@ -93,6 +94,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
       - SNOWFLAKE_NODE_ID=2
+      - SERVER_PORT=8082
     ports:
       - "8082:8082"
     volumes:
@@ -123,6 +125,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
       - SNOWFLAKE_NODE_ID=3
+      - SERVER_PORT=8083
     ports:
       - "8083:8083"
     volumes:
@@ -168,6 +171,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
       - SNOWFLAKE_NODE_ID=5
+      - SERVER_PORT=8085
       - MEDIAMTX_API_URL=http://mediamtx:8889
       - AI_INFERENCE_URL=http://ai-inference:8000
       - AI_INFERENCE_TOKEN=change-me-in-production
@@ -197,6 +201,7 @@ services:
       - CONFIG_PATH=/app/config/config.docker.yaml
       - SERVICE_VERSION=latest
       - SNOWFLAKE_NODE_ID=6
+      - SERVER_PORT=8086
     ports:
       - "8086:8086"
     volumes:
