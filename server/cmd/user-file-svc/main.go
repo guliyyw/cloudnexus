@@ -287,6 +287,11 @@ func main() {
 			share.GET("/:code/download", shareH.HandleDownloadShare)
 		}
 
+		dashSvc := service.NewDashboardService(db)
+		dashH := handler.NewDashboardHandler(dashSvc)
+
+		api.GET("/dashboard/status", middleware.AuthRequired(jwtCfg.AccessSecret), dashH.HandleGetStatus)
+
 		api.GET("/metrics", systemH.HandleMetrics)
 
 		admin := api.Group("/admin")

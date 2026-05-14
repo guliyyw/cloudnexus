@@ -1,17 +1,22 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
-import { useAuthStore } from './stores/authStore'
+import { AuthGuard, AdminGuard } from './components/Guard'
 import AppLayout from './components/Layout'
+import PageTransition from './components/PageTransition'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+import ForbiddenPage from './pages/ForbiddenPage'
+import ShareAccessPage from './pages/ShareAccessPage'
+import Dashboard from './pages/Dashboard'
 import FileListPage from './pages/FileListPage'
 import ChatPage from './pages/ChatPage'
 import FriendPage from './pages/FriendPage'
 import DockerPage from './pages/DockerPage'
 import AdminPage from './pages/AdminPage'
 import MySharesPage from './pages/MySharesPage'
-import ShareAccessPage from './pages/ShareAccessPage'
 import UserSettingsPage from './pages/UserSettingsPage'
 import CameraListPage from './pages/CameraListPage'
 import CameraLiveView from './pages/CameraLiveView'
@@ -19,41 +24,29 @@ import FaceLibraryPage from './pages/FaceLibraryPage'
 import FaceAttendancePage from './pages/FaceAttendancePage'
 import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
-import ForgotPasswordPage from './pages/ForgotPasswordPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
 import RecycleBinPage from './pages/RecycleBinPage'
-import ForbiddenPage from './pages/ForbiddenPage'
+import AlbumPage from './pages/AlbumPage'
+import MusicPage from './pages/MusicPage'
+import ServiceStatusPage from './pages/ServiceStatusPage'
 import ErrorBoundary from './components/ErrorBoundary'
-import { useAccess } from './hooks/useAccess'
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
-  if (!isLoggedIn) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { hasRole } = useAccess()
-  if (!hasRole('admin') && !hasRole('super_admin')) return <Navigate to="/forbidden" replace />
-  return <>{children}</>
-}
+import { colors } from './theme/tokens'
 
 const theme = {
   token: {
-    colorPrimary: '#e8964a',
-    colorPrimaryBg: '#fef3e7',
+    colorPrimary: colors.primary,
+    colorPrimaryBg: colors.primaryLight,
     colorPrimaryBorder: '#f5d5b0',
-    colorBgLayout: '#fafaf8',
-    colorBgContainer: '#ffffff',
-    colorBgElevated: '#ffffff',
+    colorBgLayout: colors.bg,
+    colorBgContainer: colors.bgCard,
+    colorBgElevated: colors.bgCard,
     colorBorderSecondary: '#f0eeeb',
-    colorText: '#2c2c2c',
-    colorTextSecondary: '#8c8c8c',
+    colorText: colors.text,
+    colorTextSecondary: colors.textSecondary,
     borderRadius: 10,
     boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     boxShadowSecondary: '0 2px 8px rgba(0,0,0,0.06)',
     controlHeight: 38,
-    colorLink: '#e8964a',
+    colorLink: colors.primary,
   },
   components: {
     Button: {
@@ -88,36 +81,49 @@ export default function App() {
     <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
         <Routes>
+          {/* 公开路由 */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
           <Route path="/s/:code" element={<ShareAccessPage />} />
-          <Route
-            element={
-              <ProtectedRoute>
-                <AppLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/files" element={<ErrorBoundary><FileListPage /></ErrorBoundary>} />
-            <Route path="/files/:id/edit" element={<ErrorBoundary><DocumentEditorPage /></ErrorBoundary>} />
-            <Route path="/shares" element={<ErrorBoundary><MySharesPage /></ErrorBoundary>} />
-            <Route path="/chat" element={<ErrorBoundary><ChatPage /></ErrorBoundary>} />
-            <Route path="/friends" element={<ErrorBoundary><FriendPage /></ErrorBoundary>} />
-            <Route path="/docker" element={<ErrorBoundary><DockerPage /></ErrorBoundary>} />
-            <Route path="/admin" element={<AdminRoute><ErrorBoundary><AdminPage /></ErrorBoundary></AdminRoute>} />
-            <Route path="/cameras" element={<ErrorBoundary><CameraListPage /></ErrorBoundary>} />
-            <Route path="/cameras/:id" element={<ErrorBoundary><CameraLiveView /></ErrorBoundary>} />
-            <Route path="/faces" element={<ErrorBoundary><FaceLibraryPage /></ErrorBoundary>} />
-            <Route path="/attendance" element={<ErrorBoundary><FaceAttendancePage /></ErrorBoundary>} />
-            <Route path="/documents" element={<ErrorBoundary><DocumentListPage /></ErrorBoundary>} />
-            <Route path="/documents/:id" element={<ErrorBoundary><DocumentEditorPage /></ErrorBoundary>} />
-            <Route path="/trash" element={<ErrorBoundary><RecycleBinPage /></ErrorBoundary>} />
-            <Route path="/settings" element={<ErrorBoundary><UserSettingsPage /></ErrorBoundary>} />
+
+          {/* 普通用户路由 */}
+          <Route element={<AuthGuard />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<PageTransition><ErrorBoundary><Dashboard /></ErrorBoundary></PageTransition>} />
+              <Route path="/files" element={<PageTransition><ErrorBoundary><FileListPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/files/:id/edit" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/shares" element={<PageTransition><ErrorBoundary><MySharesPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/chat" element={<PageTransition><ErrorBoundary><ChatPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/friends" element={<PageTransition><ErrorBoundary><FriendPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/docker" element={<PageTransition><ErrorBoundary><DockerPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/cameras" element={<PageTransition><ErrorBoundary><CameraListPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/cameras/:id" element={<PageTransition><ErrorBoundary><CameraLiveView /></ErrorBoundary></PageTransition>} />
+              <Route path="/faces" element={<PageTransition><ErrorBoundary><FaceLibraryPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/attendance" element={<PageTransition><ErrorBoundary><FaceAttendancePage /></ErrorBoundary></PageTransition>} />
+              <Route path="/documents" element={<PageTransition><ErrorBoundary><DocumentListPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/documents/:id" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/album" element={<PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/music" element={<PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/trash" element={<PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/settings" element={<PageTransition><ErrorBoundary><UserSettingsPage /></ErrorBoundary></PageTransition>} />
+            </Route>
           </Route>
-          <Route path="*" element={<Navigate to="/files" replace />} />
+
+          {/* 管理员路由 */}
+          <Route element={<AuthGuard />}>
+            <Route element={<AdminGuard />}>
+              <Route element={<AppLayout />}>
+                <Route path="/admin" element={<PageTransition><ErrorBoundary><AdminPage /></ErrorBoundary></PageTransition>} />
+                <Route path="/status" element={<PageTransition><ErrorBoundary><ServiceStatusPage /></ErrorBoundary></PageTransition>} />
+              </Route>
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>
