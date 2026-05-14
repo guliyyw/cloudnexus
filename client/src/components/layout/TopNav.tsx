@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button, Dropdown, Avatar, Drawer, Menu, Grid, Typography } from 'antd'
 import {
@@ -31,6 +31,23 @@ interface NavItem {
   adminOnly?: boolean
 }
 
+const sectionLabels: Record<string, string> = {
+  '/dashboard': '',
+  '/files': '文件管理',
+  '/shares': '我的分享',
+  '/chat': '即时通讯',
+  '/friends': '好友',
+  '/docker': 'Docker 管理',
+  '/cameras': '摄像头管理',
+  '/album': '相册',
+  '/music': '音乐',
+  '/documents': '在线文档',
+  '/trash': '回收站',
+  '/settings': '个人设置',
+  '/admin': '管理后台',
+  '/status': '系统状态',
+}
+
 export default function TopNav() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -44,7 +61,12 @@ export default function TopNav() {
     if (!user) fetchProfile()
   }, [])
 
-  const navItems: NavItem[] = [
+  const currentSection = useMemo(() => {
+    const base = '/' + location.pathname.split('/')[1]
+    return sectionLabels[base] || ''
+  }, [location.pathname])
+
+  const allNavItems: NavItem[] = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '首页', path: '/dashboard' },
     { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files' },
     { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat' },
@@ -54,14 +76,12 @@ export default function TopNav() {
     { key: 'album', icon: <PictureOutlined />, label: '相册', path: '/album' },
     { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐', path: '/music' },
     { key: 'docs', icon: <FileTextOutlined />, label: '文档', path: '/documents' },
+    ...(isAdmin ? [
+      { key: 'admin', icon: <SettingOutlined />, label: '管理后台', path: '/admin', adminOnly: true },
+      { key: 'status', icon: <DashboardOutlined />, label: '系统状态', path: '/status', adminOnly: true },
+    ] : []),
   ]
 
-  const adminItems: NavItem[] = [
-    { key: 'admin', icon: <SettingOutlined />, label: '管理后台', path: '/admin', adminOnly: true },
-    { key: 'status', icon: <DashboardOutlined />, label: '系统状态', path: '/status', adminOnly: true },
-  ]
-
-  const allVisibleItems = [...navItems, ...(isAdmin ? adminItems : [])]
   const selectedKey = '/' + location.pathname.split('/')[1]
 
   const userMenuItems = [
@@ -117,7 +137,7 @@ export default function TopNav() {
           zIndex: 100,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
           {isMobile && (
             <Button
               type="text"
@@ -138,50 +158,10 @@ export default function TopNav() {
           >
             CloudNexus
           </span>
-          {!isMobile && (
-            <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, overflow: 'hidden' }}>
-              {allVisibleItems.slice(0, 8).map((item) => (
-                <Button
-                  key={item.key}
-                  type="text"
-                  icon={item.icon}
-                  onClick={() => handleNavClick(item.path)}
-                  style={{
-                    color: selectedKey === item.path ? colors.primary : '#6b6b6b',
-                    fontWeight: selectedKey === item.path ? 600 : 400,
-                    fontSize: 13,
-                    height: 32,
-                    padding: '0 12px',
-                    flexShrink: 0,
-                  }}
-                >
-                  {item.label}
-                </Button>
-              ))}
-              {allVisibleItems.length > 8 && (
-                <Dropdown
-                  menu={{
-                    items: allVisibleItems.slice(8).map((item) => ({
-                      key: item.path,
-                      icon: item.icon,
-                      label: item.label,
-                    })),
-                    onClick: ({ key }) => handleNavClick(key),
-                  }}
-                  trigger={['click']}
-                >
-                  <Button
-                    type="text"
-                    style={{ color: '#6b6b6b', fontSize: 13, height: 32, padding: '0 8px' }}
-                  >
-                    更多 ▾
-                  </Button>
-                </Dropdown>
-              )}
-              {allVisibleItems.length > 8 && allVisibleItems.slice(8).some((item) => selectedKey === item.path) && (
-                <span style={{ color: colors.primary, fontSize: 12, fontWeight: 600 }}>●</span>
-              )}
-            </nav>
+          {!isMobile && currentSection && (
+            <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
+              {currentSection}
+            </Text>
           )}
         </div>
         <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
@@ -205,7 +185,7 @@ export default function TopNav() {
           mode="inline"
           selectedKeys={[selectedKey]}
           style={{ borderInlineEnd: 'none', fontSize: 14 }}
-          items={allVisibleItems.map((item) => ({
+          items={allNavItems.map((item) => ({
             key: item.path,
             icon: item.icon,
             label: item.label,
