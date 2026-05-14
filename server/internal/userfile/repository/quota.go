@@ -81,10 +81,9 @@ func (r *QuotaRepository) ListAllUserIDsWithQuota() ([]uint64, error) {
 	return ids, err
 }
 
-func (r *QuotaRepository) UpdateUserQuota(userID uint64, storageLimit *int64, tierID *uint64) error {
-	updates := map[string]interface{}{
-		"storage_limit": storageLimit,
-		"tier_id":       tierID,
+func (r *QuotaRepository) UpdateUserQuotaFields(userID uint64, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return nil
 	}
 	return r.db.Model(&model.UserQuota{}).Where("user_id = ?", userID).Updates(updates).Error
 }
@@ -134,6 +133,21 @@ func (r *QuotaRepository) GetTierLimitMap() (map[uint64]int64, error) {
 		m[t.ID] = t.StorageLimit
 	}
 	return m, nil
+}
+
+func (r *QuotaRepository) BatchFindUserQuotas(userIDs []uint64) (map[uint64]*model.UserQuota, error) {
+	if len(userIDs) == 0 {
+		return map[uint64]*model.UserQuota{}, nil
+	}
+	var quotas []model.UserQuota
+	if err := r.db.Where("user_id IN ?", userIDs).Find(&quotas).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[uint64]*model.UserQuota, len(quotas))
+	for i := range quotas {
+		result[quotas[i].UserID] = &quotas[i]
+	}
+	return result, nil
 }
 
 func uint64Ptr(v uint64) *uint64 {

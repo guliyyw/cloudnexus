@@ -151,10 +151,16 @@ func (s *QuotaService) DeleteTier(id uint64) error {
 }
 
 // SetUserQuota overrides a user's quota tier and/or custom limit.
-func (s *QuotaService) SetUserQuota(userID uint64, storageLimit *int64, tierID *uint64) error {
+// Only fields present in updates map will be modified.
+func (s *QuotaService) SetUserQuota(userID uint64, updates map[string]interface{}) error {
 	_, err := s.repo.GetOrCreateQuota(userID)
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdateUserQuota(userID, storageLimit, tierID)
+	return s.repo.UpdateUserQuotaFields(userID, updates)
+}
+
+// GetUserQuotaDetail returns quota info for a specific user (admin use).
+func (s *QuotaService) GetUserQuotaDetail(userID uint64, fileRepo *repository.FileRepository) (*QuotaInfo, error) {
+	return s.GetQuotaInfo(userID, fileRepo)
 }

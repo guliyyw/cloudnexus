@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/cloudnexus/server/internal/userfile/repository"
 	"github.com/cloudnexus/server/internal/userfile/service"
 	"github.com/cloudnexus/server/pkg/auth"
 	"github.com/cloudnexus/server/pkg/captcha"
@@ -18,10 +19,16 @@ type UserHandler struct {
 	svc        *service.UserService
 	sessionSvc *service.SessionService
 	captchaMgr *captcha.Manager
+	quotaRepo  *repository.QuotaRepository
 }
 
 func NewUserHandler(svc *service.UserService) *UserHandler {
 	return &UserHandler{svc: svc}
+}
+
+func (h *UserHandler) WithQuotaRepo(repo *repository.QuotaRepository) *UserHandler {
+	h.quotaRepo = repo
+	return h
 }
 
 func (h *UserHandler) WithSessionService(svc *service.SessionService) *UserHandler {
@@ -169,6 +176,15 @@ func (h *UserHandler) HandleChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, response.OK("密码已修改"))
 }
 
+// adminUserItem combines user info with quota info for admin list.
+type adminUserItem struct {
+	model.User
+	StorageUsed  int64  `json:"storage_used"`
+	StorageLimit *int64 `json:"storage_limit"`
+	TierID       *uint64 `json:"tier_id,string"`
+	TierName     string `json:"tier_name"`
+}
+
 func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
@@ -178,8 +194,37 @@ func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
 		handleError(c, err)
 		return
 	}
+
+	items := make([]adminUserItem, 0, len(users))
+	if len(users) > 0 {
+		userIDs := make([]uint64, len(users))
+		for i, u := range users {
+			userIDs[i] = u.ID
+		}
+
+		quotaMap := map[uint64]*model.UserQuota{}
+		if h.quotaRepo != nil {
+			quotaMap, _ = h.quotaRepo.BatchFindUserQuotas(userIDs)
+		}
+
+		for _, u := range users {
+			item := adminUserItem{User: u}
+			if q, ok := quotaMap[u.ID]; ok {
+				item.StorageUsed = q.StorageUsed
+				item.StorageLimit = q.StorageLimit
+				item.TierID = q.TierID
+				if q.TierID != nil {
+					if t, err := h.quotaRepo.FindTierByID(*q.TierID); err == nil {
+						item.TierName = t.Name
+					}
+				}
+			}
+			items = append(items, item)
+		}
+	}
+
 	c.JSON(http.StatusOK, response.OKWithData(gin.H{
-		"items":     users,
+		"items":     items,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,

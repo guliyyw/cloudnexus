@@ -116,6 +116,21 @@ func (h *QuotaHandler) HandleDeleteTier(c *gin.Context) {
 	c.JSON(http.StatusOK, response.OK("已删除"))
 }
 
+// HandleGetUserQuota returns quota info for a specific user (admin use).
+func (h *QuotaHandler) HandleGetUserQuota(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
+		return
+	}
+	info, err := h.svc.GetUserQuotaDetail(userID, h.fileRepo)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(info))
+}
+
 // HandleSetUserQuota allows admin to override a user's quota tier or limit.
 func (h *QuotaHandler) HandleSetUserQuota(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -123,20 +138,41 @@ func (h *QuotaHandler) HandleSetUserQuota(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
 		return
 	}
-	var req struct {
-		StorageLimit *int64  `json:"storage_limit"`
-		TierID       *uint64 `json:"tier_id,string"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// Use raw map to detect which fields were actually sent
+	var raw map[string]interface{}
+	if err := c.ShouldBindJSON(&raw); err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
 		return
 	}
-	// Convert tier_id from uint64* properly
-	var tierID *uint64
-	if req.TierID != nil {
-		tierID = req.TierID
+
+	updates := make(map[string]interface{})
+	if v, ok := raw["storage_limit"]; ok {
+		if v == nil {
+			updates["storage_limit"] = nil
+		} else if f, ok := v.(float64); ok {
+			updates["storage_limit"] = int64(f)
+		}
 	}
-	if err := h.svc.SetUserQuota(userID, req.StorageLimit, tierID); err != nil {
+	if v, ok := raw["tier_id"]; ok {
+		if v == nil {
+			updates["tier_id"] = nil
+		} else {
+			switch val := v.(type) {
+			case string:
+				if id, err := strconv.ParseUint(val, 10, 64); err == nil {
+					updates["tier_id"] = id
+				}
+			case float64:
+				updates["tier_id"] = uint64(val)
+			}
+		}
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无更新内容"))
+		return
+	}
+	if err := h.svc.SetUserQuota(userID, updates); err != nil {
 		handleError(c, err)
 		return
 	}

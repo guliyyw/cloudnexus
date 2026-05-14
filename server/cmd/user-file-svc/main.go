@@ -126,6 +126,7 @@ func main() {
 
 	fileRepo := repository.NewFileRepository(db)
 	quotaRepo := repository.NewQuotaRepository(db)
+	userH.WithQuotaRepo(quotaRepo)
 	chunkRepo := repository.NewChunkRepository(db)
 
 	quotaSvc := service.NewQuotaService(quotaRepo)
@@ -329,7 +330,8 @@ func main() {
 					quota.PUT("/tiers/:id", quotaH.HandleUpdateTier)
 					quota.DELETE("/tiers/:id", quotaH.HandleDeleteTier)
 				}
-				admin.PUT("/users/:id/quota", quotaH.HandleSetUserQuota)
+				admin.GET("/users/:id/quota", quotaH.HandleGetUserQuota)
+			admin.PUT("/users/:id/quota", quotaH.HandleSetUserQuota)
 
 				// 系统配置
 				admin.GET("/config", systemH.HandleGetConfig)

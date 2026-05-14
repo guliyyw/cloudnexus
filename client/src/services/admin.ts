@@ -8,6 +8,10 @@ export interface AdminUser {
   status: number
   is_admin: boolean
   created_at: string
+  storage_used: number
+  storage_limit: number | null
+  tier_id: string | null
+  tier_name: string
 }
 
 export interface AdminUserListResponse {
@@ -294,8 +298,22 @@ export async function deleteQuotaTier(id: string): Promise<void> {
 
 // ── 用户配额 ──
 
+export interface UserQuotaInfo {
+  used: number
+  limit: number
+  tier_name: string
+  trash_used: number
+  trash_limit: number
+  usage_percent: number
+}
+
+export async function getUserQuota(userId: string): Promise<UserQuotaInfo> {
+  const res = await api.get(`/admin/users/${userId}/quota`)
+  return res.data.data
+}
+
 export async function setUserQuota(userId: string, req: {
-  storage_limit?: number; tier_id?: string
+  storage_limit?: number | null; tier_id?: string
 }): Promise<void> {
   await api.put(`/admin/users/${userId}/quota`, req)
 }
