@@ -121,6 +121,30 @@ CREATE INDEX idx_file_versions_file_id ON file_versions(file_id);
 CREATE INDEX idx_file_versions_file_version ON file_versions(file_id, version_num DESC);
 ```
 
+### quota_tiers — 配额等级表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| name | VARCHAR(64) | UNIQUE, NOT NULL | 等级名称 (free/premium) |
+| storage_limit | BIGINT | NOT NULL | 存储上限 (字节) |
+| description | VARCHAR(256) | | 等级描述 |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+
+### user_quota — 用户配额表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| user_id | BIGINT | PK | 用户 ID |
+| storage_used | BIGINT | NOT NULL, DEFAULT 0 | 已用存储 (字节) |
+| storage_limit | BIGINT | | 自定义存储上限 (NULL=使用等级限额) |
+| tier_id | BIGINT | | 关联 quota_tiers.id |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+
+注意: 实际表名为 `user_quota` (单数)，GORM 默认 NamingStrategy 对 "UserQuota" 自动转为单数形式。
+
 ---
 
 ## 4. 即时通讯模块

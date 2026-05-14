@@ -17,6 +17,7 @@
 | F3.2 | 文件在线预览 | P1 | ✅ 已完成 | 图片/视频/音频/PDF 内联预览 |
 | F3.3 | 文件批量删除 | P1 | ✅ 已完成 | 多选后批量删除 |
 | F3.4 | 文件批量下载 | P1 | ✅ 已完成 | 多选后打包下载 ZIP |
+| F3.5 | 存储配额管理 | P1 | ✅ 已完成 | 用户配额显示、文件操作后自动刷新 |
 | F4 | 目录创建/删除 | P0 | ✅ 已完成 | 软删除 |
 | F5 | 文件移动/复制 | P1 | ✅ 已完成 | 拖拽移动、批量移动/复制、目录选择器 |
 | F6 | 文件列表/搜索 | P0 | ✅ 已完成 | 分页、排序、搜索 |
@@ -71,6 +72,7 @@
 | E1 | 文档 CRUD | P1 | ✅ 已完成 | 集成到文件管理系统，统一入口 |
 | E2 | 协作编辑 | P1 | ✅ 已完成 | Yjs CRDT + TipTap 富文本 |
 | E3 | 实时同步 | P1 | ✅ 已完成 | WebSocket + Redis Pub/Sub 跨节点 |
+| E4 | Markdown 增强 | P1 | ✅ 已完成 | 代码高亮、任务列表、悬浮工具栏、Markdown 粘贴转换 |
 
 ### 1.4 前端 (client/)
 
@@ -375,4 +377,7 @@ Phase 1–4 完成后发布 v0.1.0，以下 P2 功能列入 v0.2.0：
 | 2026-05-08 | v0.1.0-dev | feat: 摄像头功能完成 — camera-svc + MediaMTX + YOLO推理 + 前端列表/播放页，21文件 1529行新增 | CloudNexus 团队 |
 | 2026-05-08 | v0.1.0-dev | feat: 文件版本管理 — 覆盖上传自动保存旧版本、版本历史/恢复/下载、前端版本面板 Drawer | CloudNexus 团队 |
 | 2026-05-09 | v0.1.0-dev | feat: 视频文件智能分析 (C5) — Python cv2 抽帧 + YOLO 逐帧推理 + 时间轴检测结果 + 前端拖拽上传 UI | CloudNexus 团队 |
+| 2026-05-14 | v0.1.0-dev | feat: Markdown 编辑器增强 — 代码语法高亮 (lowlight)、任务列表、BubbleMenu 悬浮工具栏、Markdown 粘贴自动转换 | CloudNexus 团队 |
+| 2026-05-14 | v0.1.0-dev | fix: 文件删除后存储配额未更新 — BatchDelete 减少配额、AddStorageUsed 自动创建配额记录、前端 quotaStore 全局状态 | CloudNexus 团队 |
+| 2026-05-14 | v0.1.0-dev | fix: 修复 user_quota 表名不一致 — 迁移 SQL 改为与 GORM 实际使用的单数表名一致 | CloudNexus 团队 |
 | 2026-05-03 | v0.1.0-dev | Phase 1 单机 MVP 开发完成：用户认证、文件管理、即时通讯、Docker管理（前后端全栈） | CloudNexus 团队 |
