@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin, Progress, Input, Select, Modal, Form, InputNumber, Switch } from 'antd'
-import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined, AreaChartOutlined, DownloadOutlined, ClusterOutlined, PlusOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, BellOutlined } from '@ant-design/icons'
+import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined, AreaChartOutlined, DownloadOutlined, ClusterOutlined, PlusOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, BellOutlined, SettingOutlined, CloudUploadOutlined, HddOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import * as adminApi from '../services/admin'
-import type { AdminUser, SystemMetrics, LogEntry, ResourceMetrics, MetricSnapshot, AlertRule, AlertHistoryItem } from '../services/admin'
+import type { AdminUser, SystemMetrics, LogEntry, ResourceMetrics, MetricSnapshot, AlertRule, AlertHistoryItem, QuotaTier } from '../services/admin'
+import { formatFileSize } from '../utils/format'
 
 const { Text } = Typography
 
@@ -13,6 +14,10 @@ function UserManagement() {
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [quotaModalOpen, setQuotaModalOpen] = useState(false)
+  const [quotaUserId, setQuotaUserId] = useState<string>('')
+  const [quotaLimit, setQuotaLimit] = useState<number | undefined>()
+  const [quotaSaving, setQuotaSaving] = useState(false)
   const pageSize = 20
 
   const fetchUsers = async () => {
@@ -40,6 +45,25 @@ function UserManagement() {
     message.success(`已${updated.status === 1 ? '启用' : '禁用'}用户`)
   }
 
+  const handleOpenQuota = (userId: string) => {
+    setQuotaUserId(userId)
+    setQuotaLimit(undefined)
+    setQuotaModalOpen(true)
+  }
+
+  const handleSetQuota = async () => {
+    setQuotaSaving(true)
+    try {
+      await adminApi.setUserQuota(quotaUserId, { storage_limit: quotaLimit })
+      message.success('配额已更新')
+      setQuotaModalOpen(false)
+    } catch (e: any) {
+      message.error(e.response?.data?.message || '设置失败')
+    } finally {
+      setQuotaSaving(false)
+    }
+  }
+
   const activeUsers = users.filter((u) => u.status === 1).length
   const adminUsers = users.filter((u) => u.is_admin).length
 
@@ -58,6 +82,12 @@ function UserManagement() {
     {
       title: '注册时间', dataIndex: 'created_at', key: 'created_at', width: 180,
       render: (v: string) => v ? new Date(v).toLocaleString() : '-',
+    },
+    {
+      title: '配额', key: 'quota', width: 120,
+      render: (_: any, record: AdminUser) => (
+        <Button size="small" onClick={() => handleOpenQuota(record.id)}>设置配额</Button>
+      ),
     },
     {
       title: '操作', key: 'actions', width: 200,
@@ -111,6 +141,32 @@ function UserManagement() {
         }}
         size="middle"
       />
+
+      <Modal
+        title="设置用户配额"
+        open={quotaModalOpen}
+        onOk={handleSetQuota}
+        onCancel={() => setQuotaModalOpen(false)}
+        confirmLoading={quotaSaving}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Text type="secondary">用户 ID: {quotaUserId}</Text>
+        </div>
+        <Form layout="vertical">
+          <Form.Item label="存储配额上限 (字节)" help="留空则使用默认等级配额；0 表示无限制">
+            <InputNumber
+              min={0}
+              style={{ width: '100%' }}
+              value={quotaLimit}
+              onChange={(v) => setQuotaLimit(v || undefined)}
+              placeholder="例如: 1073741824 (1GB)"
+            />
+          </Form.Item>
+          {quotaLimit !== undefined && (
+            <Text type="secondary">{formatFileSize(quotaLimit)}</Text>
+          )}
+        </Form>
+      </Modal>
     </div>
   )
 }
@@ -1081,12 +1137,204 @@ function AlertRulesManagement() {
   )
 }
 
+function SystemConfigPanel() {
+  const [loading, setLoading] = useState(false)
+  const [seqMode, setSeqMode] = useState(false)
+  const [maxConcurrent, setMaxConcurrent] = useState(3)
+  const [saving, setSaving] = useState(false)
+
+  const fetchConfigs = async () => {
+    setLoading(true)
+    try {
+      const list = await adminApi.getSystemConfig()
+      const seq = list.find((c) => c.key === 'upload.sequential_mode')
+      const max = list.find((c) => c.key === 'upload.max_concurrent_chunks')
+      setSeqMode(seq?.value === 'true')
+      setMaxConcurrent(parseInt(max?.value || '3', 10))
+    } catch { /* ignore */ } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchConfigs() }, [])
+
+  const handleSaveSeq = async (val: boolean) => {
+    setSaving(true)
+    try {
+      await adminApi.updateSystemConfig('upload.sequential_mode', val ? 'true' : 'false')
+      setSeqMode(val)
+      message.success('已更新')
+    } catch { message.error('保存失败') } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveMax = async () => {
+    setSaving(true)
+    try {
+      await adminApi.updateSystemConfig('upload.max_concurrent_chunks', String(maxConcurrent))
+      message.success('已更新')
+    } catch { message.error('保存失败') } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Spin spinning={loading}>
+      <Text strong style={{ fontSize: 16, display: 'block', marginBottom: 24 }}><SettingOutlined /> 系统配置</Text>
+
+      <Card title={<span><CloudUploadOutlined /> 上传配置</span>} size="small" style={{ marginBottom: 16 }}>
+        <Row gutter={[16, 16]} align="middle">
+          <Col span={12}>
+            <Text>顺序上传模式</Text>
+            <div><Text type="secondary" style={{ fontSize: 12 }}>启用后分片逐个上传；关闭后并发上传</Text></div>
+          </Col>
+          <Col span={12}>
+            <Switch checked={seqMode} loading={saving} onChange={handleSaveSeq}
+              checkedChildren="顺序" unCheckedChildren="并发" />
+          </Col>
+        </Row>
+      </Card>
+
+      <Card title="并发设置" size="small">
+        <Row gutter={[16, 16]} align="middle">
+          <Col span={12}>
+            <Text>最大并发分片数</Text>
+            <div><Text type="secondary" style={{ fontSize: 12 }}>仅并发模式生效 (1-10)</Text></div>
+          </Col>
+          <Col span={12}>
+            <Space>
+              <InputNumber min={1} max={10} value={maxConcurrent}
+                onChange={(v) => setMaxConcurrent(v || 1)} />
+              <Button type="primary" loading={saving} onClick={handleSaveMax}>保存</Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
+    </Spin>
+  )
+}
+
+function QuotaTierPanel() {
+  const [tiers, setTiers] = useState<QuotaTier[]>([])
+  const [loading, setLoading] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingTier, setEditingTier] = useState<QuotaTier | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [form] = Form.useForm()
+
+  const fetchTiers = async () => {
+    setLoading(true)
+    try {
+      setTiers(await adminApi.getQuotaTiers())
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchTiers() }, [])
+
+  const handleCreate = () => {
+    setEditingTier(null)
+    form.resetFields()
+    setModalOpen(true)
+  }
+
+  const handleEdit = (tier: QuotaTier) => {
+    setEditingTier(tier)
+    form.setFieldsValue(tier)
+    setModalOpen(true)
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await adminApi.deleteQuotaTier(id)
+      message.success('已删除')
+      fetchTiers()
+    } catch (e: any) {
+      message.error(e.response?.data?.message || '删除失败')
+    }
+  }
+
+  const handleSave = async () => {
+    const values = await form.validateFields()
+    setSaving(true)
+    try {
+      if (editingTier) {
+        await adminApi.updateQuotaTier(editingTier.id, values)
+        message.success('已更新')
+      } else {
+        await adminApi.createQuotaTier(values)
+        message.success('已创建')
+      }
+      setModalOpen(false)
+      fetchTiers()
+    } catch (e: any) {
+      message.error(e.response?.data?.message || '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const columns: ColumnsType<QuotaTier> = [
+    { title: '名称', dataIndex: 'name', key: 'name', width: 150 },
+    {
+      title: '存储上限', dataIndex: 'storage_limit', key: 'storage_limit', width: 150,
+      render: (v: number) => formatFileSize(v),
+    },
+    { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+    {
+      title: '操作', key: 'actions', width: 150,
+      render: (_: unknown, record: QuotaTier) => (
+        <Space>
+          <Button size="small" onClick={() => handleEdit(record)}>编辑</Button>
+          <Popconfirm title="删除此等级？" onConfirm={() => handleDelete(record.id)}>
+            <Button size="small" danger>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text strong style={{ fontSize: 16 }}><HddOutlined /> 配额等级管理</Text>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建等级</Button>
+      </div>
+      <Table columns={columns} dataSource={tiers} rowKey="id" loading={loading} size="middle" pagination={false} />
+
+      <Modal
+        title={editingTier ? '编辑配额等级' : '新建配额等级'}
+        open={modalOpen}
+        onOk={handleSave}
+        onCancel={() => setModalOpen(false)}
+        confirmLoading={saving}
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入等级名称' }]}>
+            <Input placeholder="例如: free, premium, enterprise" />
+          </Form.Item>
+          <Form.Item name="storage_limit" label="存储上限 (字节)" rules={[{ required: true, message: '请输入存储上限' }]}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="例如: 1073741824 (1GB)" />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const tabItems = [
     { key: 'users', label: <span><UserOutlined />用户管理</span>, children: <UserManagement /> },
     { key: 'status', label: <span><DashboardOutlined />系统状态</span>, children: <SystemStatus /> },
     { key: 'nodes', label: <span><ClusterOutlined />集群节点</span>, children: <ClusterNodes /> },
     { key: 'alerts', label: <span><BellOutlined />告警规则</span>, children: <AlertRulesManagement /> },
+    { key: 'config', label: <span><SettingOutlined />系统配置</span>, children: <SystemConfigPanel /> },
+    { key: 'quota', label: <span><HddOutlined />配额管理</span>, children: <QuotaTierPanel /> },
     { key: 'history', label: <span><AreaChartOutlined />历史指标</span>, children: <HistoricalMetrics /> },
     { key: 'logs', label: <span><FileTextOutlined />服务器日志</span>, children: <LogViewer /> },
   ]

@@ -21,6 +21,7 @@ import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import RecycleBinPage from './pages/RecycleBinPage'
 import ForbiddenPage from './pages/ForbiddenPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useAccess } from './hooks/useAccess'
@@ -113,6 +114,7 @@ export default function App() {
             <Route path="/attendance" element={<ErrorBoundary><FaceAttendancePage /></ErrorBoundary>} />
             <Route path="/documents" element={<ErrorBoundary><DocumentListPage /></ErrorBoundary>} />
             <Route path="/documents/:id" element={<ErrorBoundary><DocumentEditorPage /></ErrorBoundary>} />
+            <Route path="/trash" element={<ErrorBoundary><RecycleBinPage /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary><UserSettingsPage /></ErrorBoundary>} />
           </Route>
           <Route path="*" element={<Navigate to="/files" replace />} />

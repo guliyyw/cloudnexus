@@ -283,3 +283,49 @@ func (h *SystemHandler) HandleMetricsHistory(c *gin.Context) {
 func round1(f float64) float64 {
 	return float64(int(f*10+0.5)) / 10
 }
+
+// HandleGetConfig returns system configuration from system_configs table.
+func (h *SystemHandler) HandleGetConfig(c *gin.Context) {
+	var cfgs []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	h.db.Table("system_configs").Find(&cfgs)
+	if cfgs == nil {
+		cfgs = []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}{}
+	}
+	m := make(map[string]string, len(cfgs))
+	for _, c := range cfgs {
+		m[c.Key] = c.Value
+	}
+	c.JSON(200, response.OKWithData(m))
+}
+
+// HandleUpdateConfig updates system configuration key-value pairs.
+func (h *SystemHandler) HandleUpdateConfig(c *gin.Context) {
+	var req map[string]string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, response.Error(400, "参数错误"))
+		return
+	}
+	for k, v := range req {
+		h.db.Exec(
+			"INSERT INTO system_configs (key, value, updated_at) VALUES (?, ?, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+			k, v,
+		)
+	}
+	// Re-read to return current state
+	var cfgs []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	h.db.Table("system_configs").Find(&cfgs)
+	m := make(map[string]string, len(cfgs))
+	for _, c := range cfgs {
+		m[c.Key] = c.Value
+	}
+	c.JSON(200, response.OKWithData(m))
+}

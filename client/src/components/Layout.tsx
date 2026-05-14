@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout as AntLayout, Menu, Button, theme, Grid } from 'antd'
+import { Layout as AntLayout, Menu, Button, theme, Grid, Progress, Typography } from 'antd'
 import {
   ShareAltOutlined,
   CloudOutlined,
@@ -16,11 +16,15 @@ import {
   SmileOutlined,
   ClockCircleOutlined,
   FileTextOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
+import * as fileApi from '../services/file'
+import { formatFileSize } from '../utils/format'
 
 const { Header, Sider, Content } = AntLayout
 const { useBreakpoint } = Grid
+const { Text } = Typography
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -29,11 +33,17 @@ export default function AppLayout() {
   const { logout, user, fetchProfile } = useAuthStore()
   const screens = useBreakpoint()
   const isMobile = !screens.md
+  const [quota, setQuota] = useState<fileApi.QuotaInfo | null>(null)
 
   useEffect(() => {
     if (!user) fetchProfile()
   }, [])
   useEffect(() => { setCollapsed(!!isMobile) }, [isMobile])
+
+  useEffect(() => {
+    fileApi.getQuota().then(setQuota).catch(() => {})
+  }, [])
+
   const { token: themeToken } = theme.useToken()
 
   const menuItems = [
@@ -46,6 +56,7 @@ export default function AppLayout() {
     { key: '/faces', icon: <SmileOutlined />, label: '人脸库' },
     { key: '/attendance', icon: <ClockCircleOutlined />, label: '考勤记录' },
     { key: '/documents', icon: <FileTextOutlined />, label: '在线文档' },
+    { key: '/trash', icon: <DeleteOutlined />, label: '回收站' },
     ...(user?.is_admin ? [{ key: '/admin', icon: <SettingOutlined />, label: '管理后台' }] : []),
   ]
 
@@ -97,6 +108,25 @@ export default function AppLayout() {
             fontSize: 14,
           }}
         />
+
+        {quota && !collapsed && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid #f0eeeb', marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>云空间</Text>
+            <div style={{ marginBottom: 4 }}>
+              <Text strong style={{ fontSize: 13 }}>{formatFileSize(quota.used)}</Text>
+              <Text type="secondary" style={{ fontSize: 11 }}> / {formatFileSize(quota.limit)}</Text>
+            </div>
+            <Progress
+              percent={quota.usage_percent}
+              size="small"
+              strokeColor={quota.usage_percent > 80 ? '#ff4d4f' : '#e8964a'}
+              showInfo={false}
+            />
+            {quota.usage_percent > 80 && (
+              <Text type="danger" style={{ fontSize: 10 }}>空间即将用尽</Text>
+            )}
+          </div>
+        )}
       </Sider>
       <AntLayout style={{
         marginLeft: siderWidth,

@@ -68,7 +68,7 @@ func main() {
 		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -125,8 +125,23 @@ func main() {
 	searchH := handler.NewSearchHandler(userRepo)
 
 	fileRepo := repository.NewFileRepository(db)
-	fileSvc := service.NewFileService(fileRepo, minioClient, cfg.MinIO.Bucket)
+	quotaRepo := repository.NewQuotaRepository(db)
+	chunkRepo := repository.NewChunkRepository(db)
+
+	quotaSvc := service.NewQuotaService(quotaRepo)
+	fileSvc := service.NewFileService(fileRepo, quotaRepo, quotaSvc, minioClient, cfg.MinIO.Bucket)
 	fileH := handler.NewFileHandler(fileSvc)
+
+	chunkSvc := service.NewChunkService(chunkRepo, fileRepo, quotaRepo, quotaSvc, minioClient, cfg.MinIO.Bucket)
+	chunkH := handler.NewChunkHandler(chunkSvc)
+
+	trashSvc := service.NewTrashService(fileRepo, quotaRepo, quotaSvc, minioClient, cfg.MinIO.Bucket)
+	trashH := handler.NewTrashHandler(trashSvc)
+
+	quotaH := handler.NewQuotaHandler(quotaSvc, fileRepo)
+
+	cleanupScheduler := service.NewCleanupScheduler(db, trashSvc, quotaSvc)
+	cleanupScheduler.Start()
 	systemH := handler.NewSystemHandler(db, minioClient)
 	go systemH.StartMetricsCollector()
 
@@ -200,6 +215,7 @@ func main() {
 				protected.GET("/search", searchH.HandleSearch)
 				protected.GET("/privacy", userH.HandleGetPrivacy)
 				protected.PUT("/privacy", userH.HandleUpdatePrivacy)
+				protected.GET("/quota", quotaH.HandleGetQuota)
 			}
 		}
 
@@ -224,7 +240,27 @@ func main() {
 			file.GET("/:id/meta", middleware.RequirePermission("file:read"), fileH.HandleGetFileMeta)
 			file.POST("/:id/share", middleware.RequirePermission("file:share"), shareH.HandleCreateShare)
 			file.GET("/:id/shares", middleware.RequirePermission("file:read"), shareH.HandleListSharesByFile)
+
+		// 分块上传
+		chunk := file.Group("/chunk")
+		{
+			chunk.POST("/init", middleware.RequirePermission("file:write"), chunkH.HandleInitUpload)
+			chunk.POST("/upload", middleware.RequirePermission("file:write"), chunkH.HandleUploadChunk)
+			chunk.GET("/status/:uploadId", middleware.RequirePermission("file:read"), chunkH.HandleGetStatus)
+			chunk.POST("/complete", middleware.RequirePermission("file:write"), chunkH.HandleComplete)
+			chunk.DELETE("/cancel/:uploadId", middleware.RequirePermission("file:delete"), chunkH.HandleCancel)
+			chunk.GET("/incomplete", middleware.RequirePermission("file:read"), chunkH.HandleListIncomplete)
 		}
+
+		// 回收站
+		trash := file.Group("/trash")
+		{
+			trash.GET("/", middleware.RequirePermission("file:read"), trashH.HandleListTrash)
+			trash.POST("/:id/restore", middleware.RequirePermission("file:write"), trashH.HandleRestore)
+			trash.DELETE("/:id", middleware.RequirePermission("file:delete"), trashH.HandlePermanentDelete)
+			trash.DELETE("/", middleware.RequirePermission("file:delete"), trashH.HandleEmptyTrash)
+		}
+	}
 
 		shares := api.Group("/shares")
 		shares.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
@@ -283,6 +319,20 @@ func main() {
 				admin.GET("/users/:id/roles", roleH.HandleGetUserRoles)
 				admin.POST("/users/:id/roles", roleH.HandleAssignUserRole)
 				admin.DELETE("/users/:id/roles/:roleId", roleH.HandleRemoveUserRole)
+
+				// 配额管理
+				quota := admin.Group("/quota")
+				{
+					quota.GET("/tiers", quotaH.HandleListTiers)
+					quota.POST("/tiers", quotaH.HandleCreateTier)
+					quota.PUT("/tiers/:id", quotaH.HandleUpdateTier)
+					quota.DELETE("/tiers/:id", quotaH.HandleDeleteTier)
+				}
+				admin.PUT("/users/:id/quota", quotaH.HandleSetUserQuota)
+
+				// 系统配置
+				admin.GET("/config", systemH.HandleGetConfig)
+				admin.PUT("/config", systemH.HandleUpdateConfig)
 			}
 	}
 

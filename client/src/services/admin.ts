@@ -258,3 +258,60 @@ export async function getAlertHistory(params?: {
   const res = await api.get('/admin/alerts/history', { params })
   return res.data.data
 }
+
+// ── 配额等级 ──
+
+export interface QuotaTier {
+  id: string
+  name: string
+  storage_limit: number
+  description: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getQuotaTiers(): Promise<QuotaTier[]> {
+  const res = await api.get('/admin/quota/tiers')
+  return res.data.data.tiers
+}
+
+export async function createQuotaTier(req: {
+  name: string; storage_limit: number; description?: string
+}): Promise<QuotaTier> {
+  const res = await api.post('/admin/quota/tiers', req)
+  return res.data.data
+}
+
+export async function updateQuotaTier(id: string, req: {
+  name?: string; storage_limit?: number; description?: string
+}): Promise<void> {
+  await api.put(`/admin/quota/tiers/${id}`, req)
+}
+
+export async function deleteQuotaTier(id: string): Promise<void> {
+  await api.delete(`/admin/quota/tiers/${id}`)
+}
+
+// ── 用户配额 ──
+
+export async function setUserQuota(userId: string, req: {
+  storage_limit?: number; tier_id?: string
+}): Promise<void> {
+  await api.put(`/admin/users/${userId}/quota`, req)
+}
+
+// ── 系统配置 ──
+
+export interface SystemConfig {
+  key: string
+  value: string
+}
+
+export async function getSystemConfig(): Promise<SystemConfig[]> {
+  const res = await api.get('/admin/config')
+  return res.data.data.configs
+}
+
+export async function updateSystemConfig(key: string, value: string): Promise<void> {
+  await api.put('/admin/config', { key, value })
+}

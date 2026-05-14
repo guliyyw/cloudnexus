@@ -234,3 +234,103 @@ export function getVersionDownloadUrl(fileId: string, versionId: string): string
   const sep = token ? `?token=${token}` : ''
   return `/api/v1/file/${fileId}/versions/${versionId}/download${sep}`
 }
+
+// ── 分块上传 ──
+
+export interface ChunkInitResponse {
+  upload_id: string
+  chunk_size: number
+  total_chunks: number
+}
+
+export interface ChunkUploadInfo {
+  upload_id: string
+  file_name: string
+  file_size: number
+  total_chunks: number
+  completed: number[]
+  chunk_size: number
+  status: string
+  created_at: string
+}
+
+export async function initChunkUpload(params: {
+  file_name: string; file_size: number; parent_id: string; mime_type?: string
+}): Promise<ChunkInitResponse> {
+  const res = await api.post('/file/chunk/init', params)
+  return res.data.data
+}
+
+export async function uploadChunk(
+  uploadId: string, chunkIndex: number, chunk: Blob,
+  onProgress?: (pct: number) => void,
+): Promise<{ chunk_index: number; completed: number; total_chunks: number }> {
+  const form = new FormData()
+  form.append('upload_id', uploadId)
+  form.append('chunk_index', String(chunkIndex))
+  form.append('chunk', chunk, `chunk_${chunkIndex}`)
+  const res = await api.post('/file/chunk/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+  })
+  return { ...res.data.data, chunk_index: chunkIndex }
+}
+
+export async function getChunkUploadStatus(uploadId: string): Promise<ChunkUploadInfo> {
+  const res = await api.get(`/file/chunk/status/${uploadId}`)
+  return res.data.data
+}
+
+export async function completeChunkUpload(uploadId: string, versionMessage?: string): Promise<FileItem> {
+  const res = await api.post('/file/chunk/complete', { upload_id: uploadId, version_message: versionMessage })
+  return res.data.data
+}
+
+export async function cancelChunkUpload(uploadId: string): Promise<void> {
+  await api.delete(`/file/chunk/cancel/${uploadId}`)
+}
+
+export async function listIncompleteUploads(): Promise<ChunkUploadInfo[]> {
+  const res = await api.get('/file/chunk/incomplete')
+  return res.data.data.uploads
+}
+
+// ── 回收站 ──
+
+export async function getTrashList(page: number, pageSize: number): Promise<FileListResponse> {
+  const res = await api.get('/file/trash/', { params: { page, page_size: pageSize } })
+  return res.data.data
+}
+
+export async function restoreFromTrash(id: string): Promise<void> {
+  await api.post(`/file/trash/${id}/restore`)
+}
+
+export async function permanentDelete(id: string): Promise<void> {
+  await api.delete(`/file/trash/${id}`)
+}
+
+export async function emptyTrash(): Promise<{ deleted: number }> {
+  const res = await api.delete('/file/trash/')
+  return res.data.data
+}
+
+// ── 配额 ──
+
+export interface QuotaInfo {
+  used: number
+  limit: number
+  tier_name: string
+  trash_used: number
+  trash_limit: number
+  usage_percent: number
+}
+
+export async function getQuota(): Promise<QuotaInfo> {
+  const res = await api.get('/user/quota')
+  return res.data.data
+}

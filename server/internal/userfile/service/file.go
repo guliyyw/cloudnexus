@@ -16,16 +16,24 @@ import (
 )
 
 type FileService struct {
-	repo   *repository.FileRepository
-	minio  *minio.Client
-	bucket string
+	repo      *repository.FileRepository
+	quotaRepo *repository.QuotaRepository
+	quotaSvc  *QuotaService
+	minio     *minio.Client
+	bucket    string
 }
 
-func NewFileService(repo *repository.FileRepository, minioClient *minio.Client, bucket string) *FileService {
-	return &FileService{repo: repo, minio: minioClient, bucket: bucket}
+func NewFileService(repo *repository.FileRepository, quotaRepo *repository.QuotaRepository, quotaSvc *QuotaService, minioClient *minio.Client, bucket string) *FileService {
+	return &FileService{repo: repo, quotaRepo: quotaRepo, quotaSvc: quotaSvc, minio: minioClient, bucket: bucket}
 }
 
 func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.FileHeader, versionMessage string) (*model.File, error) {
+	// Quota check
+	if s.quotaSvc != nil {
+		if err := s.quotaSvc.CheckQuota(userID, header.Size); err != nil {
+			return nil, err
+		}
+	}
 	src, err := header.Open()
 	if err != nil {
 		return nil, apperrors.NewAppError(500, "打开文件失败", err)
@@ -83,6 +91,10 @@ func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.F
 		s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
 		return nil, apperrors.NewAppError(500, "保存文件信息失败", err)
 	}
+	// Update quota
+	if s.quotaRepo != nil {
+		_ = s.quotaRepo.AddStorageUsed(userID, header.Size)
+	}
 	return file, nil
 }
 
@@ -123,10 +135,27 @@ func (s *FileService) DeleteFile(userID, fileID uint64) error {
 	if file.UserID != userID {
 		return apperrors.NewAppError(403, "无权删除", apperrors.ErrForbidden)
 	}
+
+	// Check trash space before soft-delete
+	if s.quotaSvc != nil && !file.IsDir {
+		if err := s.quotaSvc.CheckTrashSpace(userID, file.Size, s.repo); err != nil {
+			return err
+		}
+	}
+
 	if !file.IsDir {
 		s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
 	}
-	return s.repo.SoftDelete(fileID, userID)
+
+	if err := s.repo.SoftDelete(fileID, userID); err != nil {
+		return err
+	}
+
+	// Reduce quota usage
+	if s.quotaRepo != nil && !file.IsDir {
+		_ = s.quotaRepo.AddStorageUsed(userID, -file.Size)
+	}
+	return nil
 }
 
 func (s *FileService) Mkdir(userID uint64, parentID uint64, name string) (*model.File, error) {
