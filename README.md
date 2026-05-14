@@ -5,9 +5,9 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://go.dev)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql)](https://www.postgresql.org)
-[![Version](https://img.shields.io/badge/version-0.1.0--dev-orange)](.)
+[![Version](https://img.shields.io/badge/version-0.2.0--dev-orange)](.)
 
-> 当前版本 v0.1.0-dev — Phase 4 开发中。Phase 1–4 全部完成并测试通过后发布 v0.1.0。
+> **v0.1.0 已发布** — 5微服务、12容器全栈Docker化。v0.2.0 开发中，规划 WebDAV、消息搜索、FCM 推送等功能。
 
 ## 核心功能
 
