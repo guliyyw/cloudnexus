@@ -254,11 +254,16 @@ Shares are created per-file with an optional password (bcrypt hashed) and expiry
 
 ### Frontend routing
 Public routes (no auth, no layout chrome): `/login`, `/register`, `/forgot-password`, `/reset-password`, `/forbidden`, `/s/:code`
-Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/files/:id/edit`, `/shares`, `/chat`, `/friends`, `/docker`, `/cameras`, `/cameras/:id`, `/faces`, `/attendance`, `/documents`, `/documents/:id`, `/trash`, `/settings`
-Admin routes (wrapped in `AdminRoute`): `/admin`
-Catch-all redirects to `/files`
 
-Layout sidebar has 11 navigation items: 文件管理, 我的分享, 即时通讯, 好友, Docker管理, 摄像头, 人脸库, 考勤记录, 在线文档, 回收站, 管理后台(admin only). Quota usage bar at sidebar bottom.
+Protected routes (wrapped in `AuthGuard > AppLayout`):
+`/` → redirect `/dashboard`, `/dashboard`, `/files`, `/files/:id/edit`, `/shares`, `/chat`, `/friends`, `/docker`,
+`/cameras` (统一页面：摄像头/人脸库/考勤 三Tab), `/cameras/:id`, `/documents`, `/documents/:id`,
+`/album`, `/music`, `/trash`, `/settings`
+
+Admin routes (wrapped in `AuthGuard > AdminGuard > AppLayout`): `/admin`, `/status`
+Catch-all redirects to `/dashboard`
+
+TopNav has 9 default items: 首页(dashboard), 文件(files), 聊天(chat), 好友(friends), Docker(docker), 摄像头(camera), 相册(album), 音乐(music), 文档(docs). Desktop shows first 8 items, the rest in a "更多" dropdown. Admin sees 2 extra items: 管理后台(admin), 系统状态(status). Mobile uses a Drawer with all items. Shares and trash are accessible from quick-access buttons within the files page toolbar.
 
 ### Docker permission model
 docker-svc uses container labels for ownership (no PostgreSQL needed):
