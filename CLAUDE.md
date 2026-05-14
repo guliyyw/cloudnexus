@@ -263,7 +263,7 @@ Protected routes (wrapped in `AuthGuard > AppLayout`):
 Admin routes (wrapped in `AuthGuard > AdminGuard > AppLayout`): `/admin`, `/status`
 Catch-all redirects to `/dashboard`
 
-TopNav has 9 default items: 首页(dashboard), 文件(files), 聊天(chat), 好友(friends), Docker(docker), 摄像头(camera), 相册(album), 音乐(music), 文档(docs). Desktop shows first 8 items, the rest in a "更多" dropdown. Admin sees 2 extra items: 管理后台(admin), 系统状态(status). Mobile uses a Drawer with all items. Shares and trash are accessible from quick-access buttons within the files page toolbar.
+TopNav is minimal and context-aware: desktop shows only Logo (→/dashboard) + current section label + user avatar. No feature navigation buttons are shown — all feature discovery happens via dashboard cards. Each feature page manages its own internal navigation (tabs, toolbar buttons). Mobile uses a Drawer with full nav for quick access.
 
 ### Docker permission model
 docker-svc uses container labels for ownership (no PostgreSQL needed):
