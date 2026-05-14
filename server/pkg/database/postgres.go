@@ -19,7 +19,9 @@ type Config struct {
 
 func NewPostgres(cfg Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:                                   logger.Default.LogMode(logger.Warn),
+		DisableForeignKeyConstraintWhenMigrating: true,
+		PrepareStmt:                              true,
 	})
 	if err != nil {
 		return nil, err
@@ -29,8 +31,16 @@ func NewPostgres(cfg Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
-	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	if cfg.MaxOpenConns > 0 {
+		sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	} else {
+		sqlDB.SetMaxOpenConns(20)
+	}
+	if cfg.MaxIdleConns > 0 {
+		sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	} else {
+		sqlDB.SetMaxIdleConns(5)
+	}
 
 	registerSnowflakeCallback(db)
 

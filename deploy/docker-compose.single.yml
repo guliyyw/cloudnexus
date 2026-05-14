@@ -1,6 +1,16 @@
 services:
   postgres:
     image: postgres:15-alpine
+    command: postgres
+      -c shared_buffers=512MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=128MB
+      -c effective_cache_size=2GB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_connections=20
+      -c wal_buffers=16MB
+      -c synchronous_commit=off
     environment:
       POSTGRES_USER: cloudnexus
       POSTGRES_PASSWORD: cloudnexus
