@@ -68,17 +68,17 @@ func (h *ChunkHandler) HandleUploadChunk(c *gin.Context) {
 	}
 	file.Close()
 
-	completed, err := h.svc.UploadChunk(userID, uploadID, int32(chunkIndex), fh)
+	completed, totalChunks, err := h.svc.UploadChunk(userID, uploadID, int32(chunkIndex), fh)
 	if err != nil {
 		handleError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, response.OKWithData(gin.H{
-		"chunk_index":   chunkIndex,
-		"completed":     completed,
-		"total_chunks":  0, // will be populated from frontend knowledge
-		"received":      true,
+		"chunk_index":  chunkIndex,
+		"completed":    completed,
+		"total_chunks": totalChunks,
+		"received":     true,
 	}))
 }
 

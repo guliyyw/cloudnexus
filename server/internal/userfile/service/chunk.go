@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"mime/multipart"
-	"net/url"
 	"path/filepath"
 	"time"
 
@@ -82,44 +81,52 @@ func (s *ChunkService) InitUpload(userID uint64, parentID uint64, fileName strin
 }
 
 // UploadChunk stores a single chunk to MinIO and updates progress.
-func (s *ChunkService) UploadChunk(userID uint64, uploadID string, chunkIndex int32, header *multipart.FileHeader) (int, error) {
+func (s *ChunkService) UploadChunk(userID uint64, uploadID string, chunkIndex int32, header *multipart.FileHeader) (int, int, error) {
 	chunk, err := s.chunkRepo.FindByUploadID(uploadID)
 	if err != nil {
-		return 0, apperrors.NewAppError(404, "上传会话不存在", apperrors.ErrNotFound)
+		return 0, 0, apperrors.NewAppError(404, "上传会话不存在", apperrors.ErrNotFound)
 	}
 	if chunk.UserID != userID {
-		return 0, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return 0, 0, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
 	}
 	if chunk.Status != "uploading" {
-		return 0, apperrors.NewAppError(400, "上传会话状态异常", apperrors.ErrBadRequest)
+		return 0, 0, apperrors.NewAppError(400, "上传会话状态异常", apperrors.ErrBadRequest)
 	}
 	if chunkIndex < 0 || chunkIndex >= int32(chunk.TotalChunks) {
-		return 0, apperrors.NewAppError(400, "分片索引无效", apperrors.ErrBadRequest)
+		return 0, 0, apperrors.NewAppError(400, "分片索引无效", apperrors.ErrBadRequest)
+	}
+
+	// Skip if already completed (idempotent)
+	for _, c := range chunk.Completed {
+		if c == chunkIndex {
+			return len(chunk.Completed), chunk.TotalChunks, nil
+		}
 	}
 
 	src, err := header.Open()
 	if err != nil {
-		return 0, apperrors.NewAppError(500, "打开分片失败", err)
+		return 0, 0, apperrors.NewAppError(500, "打开分片失败", err)
 	}
 	defer src.Close()
 
 	chunkKey := fmt.Sprintf("chunks/%s/%d", uploadID, chunkIndex)
 	_, err = s.minio.PutObject(context.Background(), s.bucket, chunkKey, src, header.Size, minio.PutObjectOptions{})
 	if err != nil {
-		return 0, apperrors.NewAppError(500, "存储分片失败", err)
+		return 0, 0, apperrors.NewAppError(500, "存储分片失败", err)
 	}
 
 	if err := s.chunkRepo.AddCompletedChunk(uploadID, chunkIndex); err != nil {
-		return 0, apperrors.NewAppError(500, "更新进度失败", err)
+		return 0, 0, apperrors.NewAppError(500, "更新进度失败", err)
 	}
 
 	// Re-read to get updated count
 	updated, _ := s.chunkRepo.FindByUploadID(uploadID)
 	completed := 0
+	totalChunks := chunk.TotalChunks
 	if updated != nil {
 		completed = len(updated.Completed)
 	}
-	return completed, nil
+	return completed, totalChunks, nil
 }
 
 // GetStatus returns the upload status for resume support.
@@ -206,6 +213,7 @@ func (s *ChunkService) CompleteUpload(userID uint64, uploadID string, versionMes
 		existing.StorageSHA256 = ""
 		if err := s.fileRepo.Update(existing); err != nil {
 			s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+			_ = s.fileRepo.DeleteVersion(v.ID)
 			return nil, apperrors.NewAppError(500, "更新文件信息失败", err)
 		}
 		file = existing
@@ -258,14 +266,4 @@ func (s *ChunkService) CancelUpload(userID uint64, uploadID string) error {
 // ListIncomplete returns all incomplete uploads for the user (used by resume dialog).
 func (s *ChunkService) ListIncomplete(userID uint64) ([]model.ChunkUpload, error) {
 	return s.chunkRepo.ListIncompleteByUser(userID)
-}
-
-// ChunkDownloadURL generates a presigned URL for downloading a chunk.
-func (s *ChunkService) ChunkDownloadURL(uploadID string, chunkIndex int) (string, error) {
-	u, err := s.minio.PresignedGetObject(context.Background(), s.bucket,
-		fmt.Sprintf("chunks/%s/%d", uploadID, chunkIndex), time.Hour, url.Values{})
-	if err != nil {
-		return "", err
-	}
-	return u.String(), nil
 }

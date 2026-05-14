@@ -29,10 +29,8 @@ func NewFileService(repo *repository.FileRepository, quotaRepo *repository.Quota
 
 func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.FileHeader, versionMessage string) (*model.File, error) {
 	// Quota check
-	if s.quotaSvc != nil {
-		if err := s.quotaSvc.CheckQuota(userID, header.Size); err != nil {
-			return nil, err
-		}
+	if err := s.quotaSvc.CheckQuota(userID, header.Size); err != nil {
+		return nil, err
 	}
 	src, err := header.Open()
 	if err != nil {
@@ -74,6 +72,7 @@ func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.F
 		existing.StorageSHA256 = ""
 		if err := s.repo.Update(existing); err != nil {
 			s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+			_ = s.repo.DeleteVersion(v.ID)
 			return nil, apperrors.NewAppError(500, "更新文件信息失败", err)
 		}
 		return existing, nil
@@ -92,9 +91,7 @@ func (s *FileService) Upload(userID uint64, parentID uint64, header *multipart.F
 		return nil, apperrors.NewAppError(500, "保存文件信息失败", err)
 	}
 	// Update quota
-	if s.quotaRepo != nil {
-		_ = s.quotaRepo.AddStorageUsed(userID, header.Size)
-	}
+	_ = s.quotaRepo.AddStorageUsed(userID, header.Size)
 	return file, nil
 }
 
@@ -137,7 +134,7 @@ func (s *FileService) DeleteFile(userID, fileID uint64) error {
 	}
 
 	// Check trash space before soft-delete
-	if s.quotaSvc != nil && !file.IsDir {
+	if !file.IsDir {
 		if err := s.quotaSvc.CheckTrashSpace(userID, file.Size, s.repo); err != nil {
 			return err
 		}
@@ -152,7 +149,7 @@ func (s *FileService) DeleteFile(userID, fileID uint64) error {
 	}
 
 	// Reduce quota usage
-	if s.quotaRepo != nil && !file.IsDir {
+	if !file.IsDir {
 		_ = s.quotaRepo.AddStorageUsed(userID, -file.Size)
 	}
 	return nil

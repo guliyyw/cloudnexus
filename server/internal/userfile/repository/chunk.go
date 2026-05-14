@@ -29,7 +29,7 @@ func (r *ChunkRepository) FindByUploadID(uploadID string) (*model.ChunkUpload, e
 
 func (r *ChunkRepository) AddCompletedChunk(uploadID string, chunkIndex int32) error {
 	return r.db.Model(&model.ChunkUpload{}).
-		Where("upload_id = ?", uploadID).
+		Where("upload_id = ? AND NOT (? = ANY(completed))", uploadID, chunkIndex).
 		Update("completed", gorm.Expr("array_append(completed, ?)", chunkIndex)).Error
 }
 

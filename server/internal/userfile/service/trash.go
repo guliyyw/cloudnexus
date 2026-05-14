@@ -85,52 +85,73 @@ func (s *TrashService) PermanentDelete(userID, fileID uint64) error {
 }
 
 func (s *TrashService) EmptyTrash(userID uint64) (int64, error) {
-	// Get all deleted files for user
-	files, _, err := s.fileRepo.FindDeletedByUser(userID, 1, 10000)
-	if err != nil {
-		return 0, apperrors.NewAppError(500, "读取回收站失败", err)
-	}
+	const batchSize = 200
+	var totalDeleted int64
 
-	var count int64
-	ids := make([]uint64, 0)
-	for _, f := range files {
-		if !f.IsDir {
-			s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
+	for {
+		files, total, err := s.fileRepo.FindDeletedByUser(userID, 1, batchSize)
+		if err != nil {
+			return totalDeleted, apperrors.NewAppError(500, "读取回收站失败", err)
 		}
-		s.fileRepo.CleanupFileVersionsByFileID(f.ID)
-		ids = append(ids, f.ID)
-		count++
-	}
+		if len(files) == 0 {
+			break
+		}
 
-	if len(ids) > 0 {
-		if err := s.fileRepo.BatchForceDelete(ids); err != nil {
-			return count, apperrors.NewAppError(500, "清空回收站失败", err)
+		ids := make([]uint64, 0, len(files))
+		for _, f := range files {
+			if !f.IsDir {
+				s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
+			}
+			s.fileRepo.CleanupFileVersionsByFileID(f.ID)
+			ids = append(ids, f.ID)
+		}
+		if len(ids) > 0 {
+			if err := s.fileRepo.BatchForceDelete(ids); err != nil {
+				return totalDeleted, apperrors.NewAppError(500, "清空回收站失败", err)
+			}
+			totalDeleted += int64(len(ids))
+		}
+
+		// If we got fewer than requested, we're done
+		if int64(len(files)) < total && total <= int64(batchSize) {
+			break
+		}
+		if len(files) < batchSize {
+			break
 		}
 	}
-	return count, nil
+	return totalDeleted, nil
 }
 
 // CleanupExpiredTrash removes files deleted more than 30 days ago.
+// Processes in batches of 500 to avoid loading too many rows at once.
 func (s *TrashService) CleanupExpiredTrash(threshold interface{}) (int64, error) {
-	files, err := s.fileRepo.FindDeletedExpired(threshold)
-	if err != nil {
-		return 0, err
-	}
+	const batchSize = 500
+	var totalDeleted int64
 
-	var deleted int64
-	ids := make([]uint64, 0)
-	for _, f := range files {
-		if !f.IsDir {
-			s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
+	for {
+		files, err := s.fileRepo.FindDeletedExpired(threshold, batchSize)
+		if err != nil {
+			return totalDeleted, err
 		}
-		s.fileRepo.CleanupFileVersionsByFileID(f.ID)
-		ids = append(ids, f.ID)
-	}
-	if len(ids) > 0 {
-		if err := s.fileRepo.BatchForceDelete(ids); err != nil {
-			return deleted, err
+		if len(files) == 0 {
+			break
 		}
-		deleted = int64(len(ids))
+
+		ids := make([]uint64, 0, len(files))
+		for _, f := range files {
+			if !f.IsDir {
+				s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
+			}
+			s.fileRepo.CleanupFileVersionsByFileID(f.ID)
+			ids = append(ids, f.ID)
+		}
+		if len(ids) > 0 {
+			if err := s.fileRepo.BatchForceDelete(ids); err != nil {
+				return totalDeleted, err
+			}
+			totalDeleted += int64(len(ids))
+		}
 	}
-	return deleted, nil
+	return totalDeleted, nil
 }

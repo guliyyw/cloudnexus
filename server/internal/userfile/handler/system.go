@@ -286,46 +286,41 @@ func round1(f float64) float64 {
 
 // HandleGetConfig returns system configuration from system_configs table.
 func (h *SystemHandler) HandleGetConfig(c *gin.Context) {
-	var cfgs []struct {
+	type configItem struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
 	}
+	var cfgs []configItem
 	h.db.Table("system_configs").Find(&cfgs)
 	if cfgs == nil {
-		cfgs = []struct {
-			Key   string `json:"key"`
-			Value string `json:"value"`
-		}{}
+		cfgs = []configItem{}
 	}
-	m := make(map[string]string, len(cfgs))
-	for _, c := range cfgs {
-		m[c.Key] = c.Value
-	}
-	c.JSON(200, response.OKWithData(m))
+	c.JSON(200, response.OKWithData(gin.H{"configs": cfgs}))
 }
 
 // HandleUpdateConfig updates system configuration key-value pairs.
 func (h *SystemHandler) HandleUpdateConfig(c *gin.Context) {
-	var req map[string]string
+	var req struct {
+		Key   string `json:"key" binding:"required"`
+		Value string `json:"value" binding:"required"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, response.Error(400, "参数错误"))
+		c.JSON(400, response.Error(400, "参数错误：需要 key 和 value"))
 		return
 	}
-	for k, v := range req {
-		h.db.Exec(
-			"INSERT INTO system_configs (key, value, updated_at) VALUES (?, ?, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
-			k, v,
-		)
-	}
+	h.db.Exec(
+		"INSERT INTO system_configs (key, value, updated_at) VALUES (?, ?, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+		req.Key, req.Value,
+	)
 	// Re-read to return current state
-	var cfgs []struct {
+	type configItem struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
 	}
+	var cfgs []configItem
 	h.db.Table("system_configs").Find(&cfgs)
-	m := make(map[string]string, len(cfgs))
-	for _, c := range cfgs {
-		m[c.Key] = c.Value
+	if cfgs == nil {
+		cfgs = []configItem{}
 	}
-	c.JSON(200, response.OKWithData(m))
+	c.JSON(200, response.OKWithData(gin.H{"configs": cfgs}))
 }

@@ -140,7 +140,7 @@ func main() {
 
 	quotaH := handler.NewQuotaHandler(quotaSvc, fileRepo)
 
-	cleanupScheduler := service.NewCleanupScheduler(db, trashSvc, quotaSvc)
+	cleanupScheduler := service.NewCleanupScheduler(trashSvc, quotaSvc, chunkRepo)
 	cleanupScheduler.Start()
 	systemH := handler.NewSystemHandler(db, minioClient)
 	go systemH.StartMetricsCollector()

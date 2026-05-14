@@ -110,6 +110,10 @@ func (r *FileRepository) CreateVersion(v *model.FileVersion) error {
 	return r.db.Create(v).Error
 }
 
+func (r *FileRepository) DeleteVersion(id uint64) error {
+	return r.db.Delete(&model.FileVersion{}, id).Error
+}
+
 func (r *FileRepository) ListVersions(fileID uint64, page, pageSize int) ([]model.FileVersion, int64, error) {
 	var versions []model.FileVersion
 	var total int64
@@ -158,10 +162,10 @@ func (r *FileRepository) RestoreFromTrash(id, userID uint64) error {
 		Update("deleted_at", nil).Error
 }
 
-func (r *FileRepository) FindDeletedExpired(before interface{}) ([]model.File, error) {
+func (r *FileRepository) FindDeletedExpired(before interface{}, limit int) ([]model.File, error) {
 	var files []model.File
 	err := r.db.Where("deleted_at IS NOT NULL AND deleted_at < ?", before).
-		Limit(500).Find(&files).Error
+		Limit(limit).Find(&files).Error
 	return files, err
 }
 
