@@ -24,16 +24,26 @@ type InfraNode struct {
 // HealthAggregator periodically probes all registered nodes' /healthz endpoints
 // and manages online session tracking.
 type HealthAggregator struct {
-	db         *gorm.DB
-	interval   time.Duration
-	client     *http.Client
-	stopCh     chan struct{}
-	stopped    bool
-	mu         sync.Mutex
-	infraNodes []InfraNode
-	failures   map[string]int
-	failuresMu sync.Mutex
-	alerter    *AlertEvaluator
+	db              *gorm.DB
+	interval        time.Duration
+	client          *http.Client
+	stopCh          chan struct{}
+	stopped         bool
+	mu              sync.Mutex
+	infraNodes      []InfraNode
+	failures        map[string]int
+	failuresMu      sync.Mutex
+	alerter         *AlertEvaluator
+	snapshotSaver   func(statusData string)
+	lastSnapshotAt  time.Time
+	snapshotInterval time.Duration
+}
+
+// SetSnapshotSaver registers a callback to persist dashboard snapshots.
+// Snapshots are written every snapshotInterval (default 5 min).
+func (a *HealthAggregator) SetSnapshotSaver(saver func(statusData string)) {
+	a.snapshotSaver = saver
+	a.snapshotInterval = 5 * time.Minute
 }
 
 // NewHealthAggregator creates a new health aggregator.
@@ -121,6 +131,65 @@ func (a *HealthAggregator) probeAll() {
 			a.probeServiceNode(node)
 		}
 	}
+
+	if a.snapshotSaver != nil && time.Since(a.lastSnapshotAt) >= a.snapshotInterval {
+		a.lastSnapshotAt = time.Now()
+		snap := a.buildSnapshotJSON(nodes)
+		a.snapshotSaver(snap)
+	}
+}
+
+func (a *HealthAggregator) buildSnapshotJSON(nodes []model.DockerNode) string {
+	type moduleSnap struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	serviceNodes := make(map[string][]model.DockerNode)
+	infraNodes := make([]model.DockerNode, 0)
+	for _, n := range nodes {
+		if n.NodeType == "infrastructure" {
+			infraNodes = append(infraNodes, n)
+		} else {
+			serviceNodes[n.Service] = append(serviceNodes[n.Service], n)
+		}
+	}
+
+	var modules []moduleSnap
+	moduleDefs := []struct{ key, name, service string }{
+		{"files", "云存储", "user-file-svc"},
+		{"im", "即时通讯", "im-svc"},
+		{"docker", "Docker管理", "docker-svc"},
+		{"camera", "视频监控", "camera-svc"},
+		{"collab", "在线文档", "collab-svc"},
+		{"infra", "基础设施", ""},
+	}
+	for _, def := range moduleDefs {
+		var ns []model.DockerNode
+		if def.key == "infra" {
+			ns = infraNodes
+		} else {
+			ns = serviceNodes[def.service]
+		}
+		status := "green"
+		if len(ns) == 0 {
+			status = "red"
+		} else {
+			for _, n := range ns {
+				switch n.Status {
+				case "offline":
+					status = "red"
+				case "unresponsive":
+					if status != "red" {
+						status = "yellow"
+					}
+				}
+			}
+		}
+		modules = append(modules, moduleSnap{Name: def.name, Status: status})
+	}
+
+	data, _ := json.Marshal(modules)
+	return string(data)
 }
 
 // Consecutive failure thresholds.

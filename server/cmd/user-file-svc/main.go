@@ -68,7 +68,7 @@ func main() {
 		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -146,6 +146,12 @@ func main() {
 	systemH := handler.NewSystemHandler(db, minioClient)
 	go systemH.StartMetricsCollector()
 
+	healthHistorySvc := service.NewHealthHistoryService(db)
+	healthHistoryH := handler.NewHealthHistoryHandler(healthHistorySvc)
+
+	// Start resource metrics collection every minute
+	go service.CollectResourceMetrics(healthHistorySvc)
+
 	nodeH := handler.NewNodeHandler(db)
 	alertH := handler.NewAlertHandler(db)
 
@@ -166,6 +172,9 @@ func main() {
 	aggregator.RegisterInfra(system.InfraNode{
 		Name: "minio", Host: cfg.MinIOHost(), Port: 9000,
 		ProbeFn: system.HTTPProbe(fmt.Sprintf("http://%s:9000/minio/health/live", cfg.MinIOHost())),
+	})
+	aggregator.SetSnapshotSaver(func(statusData string) {
+		healthHistorySvc.SaveSnapshot(statusData)
 	})
 	aggregator.Start()
 	defer aggregator.Stop()
@@ -308,6 +317,12 @@ func main() {
 			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)
 			admin.GET("/metrics/history", systemH.HandleMetricsHistory)
 			admin.GET("/nodes", nodeH.HandleListNodes)
+			// 服务状态历史
+			status := admin.Group("/status")
+			{
+				status.GET("/history", healthHistoryH.HandleGetHistory)
+				status.GET("/resources", healthHistoryH.HandleGetResources)
+			}
 			admin.GET("/nodes/:name", nodeH.HandleGetNode)
 			admin.GET("/nodes/:name/sessions", nodeH.HandleGetNodeSessions)
 			admin.POST("/nodes", nodeH.HandleAddNode)
