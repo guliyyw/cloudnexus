@@ -4,45 +4,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-CloudNexus is a self-hosted collaboration platform with four Go microservices, AI inference, media streaming, and a React frontend.
+CloudNexus is a self-hosted collaboration platform with five Go microservices, AI inference, media streaming, and a React frontend.
 
 ```
 client/                    React 18 + TypeScript + Vite + Ant Design 6 + Zustand 5
 server/
   cmd/
-    user-file-svc/         用户认证 + 文件管理 (port 8081)
+    user-file-svc/         用户认证 + 文件管理 + RBAC + 管理后台 (port 8081)
     im-svc/                即时通讯 + WebSocket (port 8082)
     docker-svc/            Docker 容器管理 (port 8083)
     camera-svc/            摄像头管理 + AI 识别 + 人脸考勤 (port 8085)
+    collab-svc/            在线文档协作 + Yjs WebSocket (port 8086)
   internal/
-    userfile/              handler → service → repository 三层
-    im/                    handler → service → repository 三层 (含 WebSocket Hub)
-    dockermgr/             handler → service → repository 三层
-    camera/                handler → service → repository 三层 (含人脸/考勤)
-  pkg/                     跨服务共享库
+    userfile/              handler → service → repository 三层 (17 handler, 13 service, 6 repository)
+    im/                    handler → service → repository 三层 (含 WebSocket Hub + 好友 + 拉黑)
+    dockermgr/             handler → service 两层 (无 repository，直接调用 Docker API)
+    camera/                handler → service → repository 三层 (含人脸/考勤/发现)
+    collab/                handler → service 两层 (Yjs DocHub + Redis Pub/Sub)
+  pkg/                     跨服务共享库 (18个包)
     auth/                  JWT 生成与解析 (HS256)
-    middleware/             AuthRequired (JWT), Logger, CORS
-    model/                 GORM 模型: User, File, Conversation, Message, Friend, Camera, FaceProfile...
-    config/                YAML 配置加载
-    database/              PostgreSQL 连接 (GORM)
+    middleware/             AuthRequired, AdminRequired, RequirePermission (RBAC), Logger, CORS
+    model/                 GORM 模型 (18个模型文件: User, File, Conversation, Message, Friend, Camera, FaceProfile, AlertRule, Permission, Role...)
+    config/                YAML 配置加载 + 环境变量覆盖
+    database/              PostgreSQL 连接 (GORM) + Snowflake ID 自动生成回调
     cache/                 Redis 连接
     storage/               MinIO 客户端
     crypto/                bcrypt 密码哈希
     errors/                AppError (Code + Message + Err) 与标准哨兵错误
     response/              APIResponse{Code, Message, Data} 统一 JSON 响应
     logger/                 Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
-    migration/              版本化 SQL 迁移 (schema_migrations 追踪表)
+    migration/              版本化 SQL 迁移 (18个迁移 + schema_migrations 追踪表 + go:embed)
     snowflake/              Twitter Snowflake ID 生成器
-    system/                健康检查构建器 + 节点注册与心跳
+    system/                健康检查构建器 + 节点注册与心跳 + 健康聚合器 + 告警评估器
+    captcha/               图片验证码生成 + Redis 存储
+    email/                 SMTP 邮件发送
   config/
     config.single.yaml     本机开发配置 (hostnames = localhost)
     config.docker.yaml     Docker 部署配置 (hostnames = 容器名)
+    config.cluster.yaml    集群部署配置 (hostnames = 基础设施 IP)
 deploy/
-  ai-inference/            YOLOv8 Python 推理服务 Dockerfile
+  ai-inference/            YOLOv8 Python 推理服务 (FastAPI)
   mediamtx/                MediaMTX RTSP→HLS 流媒体配置
   nginx/                   Nginx 反向代理 + 静态文件
-  docker-compose.single.yml  单机部署 (PostgreSQL + Redis + MinIO + 4 Go 服务 + AI + MediaMTX)
-  docker-compose.cluster.yml 集群部署模板
+  docker-compose.single.yml  单机部署 (12 服务: 5 Go + nginx + AI + MediaMTX + PG + Redis + MinIO)
+  docker-compose.cluster.yml 集群部署模板 (5 Go 服务 + nginx，共享基础设施)
+  deploy.sh                远程自动部署脚本
+  k8s/                     Kubernetes 资源 (预留)
 docs/                      openapi.yaml, architecture.md, database.md, deployment.md, development.md, progress.md, test-data.md
 ```
 
@@ -61,7 +68,7 @@ docker compose -f docker-compose.single.yml up --build -d
 # Access at http://localhost (only port 80 exposed)
 ```
 
-All four Go services are built via multi-stage Docker builds from `server/Dockerfile` with a `SERVICE` build arg (e.g., `SERVICE=camera-svc`). The Docker Compose file builds all four in parallel.
+All five Go services are built via multi-stage Docker builds from `server/Dockerfile` with a `SERVICE` build arg (e.g., `SERVICE=camera-svc`). The Docker Compose file builds all five in parallel.
 
 ### Individual services (host development)
 
@@ -71,6 +78,7 @@ CONFIG_PATH=config/config.single.yaml go run ./cmd/user-file-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/im-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/docker-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/camera-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/collab-svc &
 ```
 
 ### Infrastructure only
@@ -109,8 +117,10 @@ The frontend dev server proxies /api requests to the correct backend service bas
 - `/api/v1/faces` → `localhost:8085`
 - `/api/v1/detect-image` → `localhost:8085`
 - `/api/v1/detect-video` → `localhost:8085`
+- `/api/v1/collab` → `localhost:8086`
 - `/api/*` → `localhost:8081` (catch-all, must be last)
-- `/ws` → `http://localhost:8082` (WebSocket; Vite target must be http://, not ws://)
+- `/ws/collab` → `http://localhost:8086` (WebSocket for collab-svc; Vite target must be http://, not ws://)
+- `/ws` → `http://localhost:8082` (WebSocket for im-svc; Vite target must be http://, not ws://)
 
 ### Frontend API client
 `client/src/services/api.ts` creates a shared axios instance (`/api/v1` base, 30s timeout). Two interceptors:
@@ -171,7 +181,7 @@ Message `msg_type` values: `text`, `image`, `video`, `file`, `system`.
 - On WebSocket message: `updateLastMessage` always called (updates sidebar preview for the conversation). If message is for a non-current conversation, `incrementUnread` is also called (real-time badge increment). Both methods update conversations array in Zustand store.
 
 ### ID generation
-All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5. Snowflake must be initialized before database connection.
+All model IDs are generated via Snowflake algorithm (`pkg/snowflake/`). A GORM `Before("gorm:create")` callback in `pkg/database/postgres.go` auto-generates IDs for any model with an `ID` field whose value is zero. Each service gets a unique node ID: user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5, collab-svc=6. Snowflake must be initialized before database connection.
 
 **JSON serialization**: All `uint64` ID fields use `json:"id,string"` tags to serialize as JSON strings, preventing JavaScript `number` precision loss (JS `number` max safe integer is 2^53-1, while Snowflake uint64 can exceed this). All frontend TypeScript ID types are `string`.
 
@@ -183,11 +193,16 @@ Nginx runs in Docker (`deploy/docker-compose.single.yml`) as the single entry po
 - `/api/v1/faces` → camera-svc:8085
 - `/api/v1/detect-image` → camera-svc:8085
 - `/api/v1/detect-video` → camera-svc:8085
+- `/api/v1/collab/*` → user-file-svc:8081 (REST API handled by user-file-svc)
 - `/api/*` → user-file-svc:8081 (catch-all, must be after more specific routes)
-- `/ws` → im-svc:8082 (WebSocket upgrade)
+- `/ws/collab/*` → collab-svc:8086 (Yjs WebSocket for collaborative editing)
+- `/ws` → im-svc:8082 (IM WebSocket upgrade)
+- `/cam_*/` → mediamtx:8888 (HLS video stream proxy with cookie workaround)
 - `/healthz` → user-file-svc:8081 (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc,camera-svc}` for per-service probing
 - `/` → Serves `client/dist/` static files with SPA `try_files` fallback
 - `//api/*` → 308 redirect to `/api/*` (handles double-slash from misconfigured clients like Apifox)
+
+Upstream blocks: `user_file_backend`, `im_backend` (ip_hash sticky), `docker_backend`, `camera_backend`, `mediamtx_hls`, `collab_backend`.
 
 Config is at `deploy/nginx/nginx.conf` and is volume-mounted (restart, not rebuild, to apply changes).
 The frontend connects to `window.location.host` for both API calls and WebSocket. Vite proxy config is retained as an alternative for devs who prefer not to run nginx.
@@ -238,9 +253,12 @@ Shares are created per-file with an optional password (bcrypt hashed) and expiry
 - Keep terminal/log viewer areas dark (`#1e1e1e`) regardless of theme
 
 ### Frontend routing
-Public routes (no auth, no layout chrome): `/login`, `/register`, `/s/:code`
-Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/shares`, `/chat`, `/friends`, `/docker`, `/cameras`, `/faces`, `/attendance`, `/admin`
+Public routes (no auth, no layout chrome): `/login`, `/register`, `/forgot-password`, `/reset-password`, `/forbidden`, `/s/:code`
+Protected routes (wrapped in `ProtectedRoute > AppLayout`): `/files`, `/files/:id/edit`, `/shares`, `/chat`, `/friends`, `/docker`, `/cameras`, `/cameras/:id`, `/faces`, `/attendance`, `/documents`, `/documents/:id`, `/trash`, `/settings`
+Admin routes (wrapped in `AdminRoute`): `/admin`
 Catch-all redirects to `/files`
+
+Layout sidebar has 11 navigation items: 文件管理, 我的分享, 即时通讯, 好友, Docker管理, 摄像头, 人脸库, 考勤记录, 在线文档, 回收站, 管理后台(admin only). Quota usage bar at sidebar bottom.
 
 ### Docker permission model
 docker-svc uses container labels for ownership (no PostgreSQL needed):
@@ -250,9 +268,9 @@ docker-svc uses container labels for ownership (no PostgreSQL needed):
 - Handler helpers: `getUserID(c)`, `isAdmin(c)`, `getUsername(c)` extract values from Gin context
 
 ### Health check endpoints
-All three services return a uniform detailed `/healthz` JSON:
+All five services return a uniform detailed `/healthz` JSON:
 ```json
-{"status":"ok","service":"im-svc","uptime":"2m6s","go_version":"go1.26.2","goroutines":10,"memory_mb":3,"components":{"database":"ok","redis":"ok"}}
+{"status":"ok","service":"im-svc","uptime":"2m6s","go_version":"go1.25.0","goroutines":10,"memory_mb":3,"components":{"database":"ok","redis":"ok"}}
 ```
 Shared builder: `pkg/system/health.go` → `HealthzHandler(serviceName, ...ComponentCheck)` runs checks in parallel.
 
@@ -261,6 +279,7 @@ Per-service checks:
 - **im-svc**: database (PostgreSQL ping), redis (Ping)
 - **docker-svc**: docker (GET /_ping on Docker Engine API)
 - **camera-svc**: database (PostgreSQL ping)
+- **collab-svc**: database (PostgreSQL ping), redis (Ping)
 
 Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/{user-file-svc,im-svc,docker-svc,camera-svc}` for per-service probing.
 
@@ -269,7 +288,7 @@ Nginx routes: `/healthz` → user-file-svc (aggregated); `/healthz/{user-file-sv
 - `NewNodeRegistrar(db, name, host, serviceName, port)` — node name defaults to container hostname (`os.Hostname()`), overridable via `NODE_NAME` env var. Host defaults to `detectHostIP()` (first private IPv4), or `localhost` as last resort; overridable via `NODE_HOST`.
 - `Start()`: upserts node by logical identity `(host, port, service)` — same logical service after rebuild merges into the existing record (updates name/container_name). Only heartbeat fields updated; status is managed by HealthAggregator. Old sessions are closed and node_name updated to preserve history.
 - `Stop()`: marks node `status=offline`, closes stop channel.
-- Wired in all three services and infrastructure nodes (postgres/redis/minio) via `HealthAggregator.RegisterInfra()`.
+- Wired in all five services and infrastructure nodes (postgres/redis/minio) via `HealthAggregator.RegisterInfra()`.
 - Database model: `pkg/model/docker.go` — `DockerNode` with `NodeType` (service/infrastructure), `Service`, `ContainerName`, `Version`, `TotalOnlineSeconds`, `OfflineSince`.
 
 ### Health aggregator
@@ -315,6 +334,30 @@ camera-svc (port 8085) manages camera CRUD, streams, AI recognition, face librar
 
 **Object detection**: `POST /cameras/:id/recognition/start` → camera-svc spawns a goroutine that reads frames via ffmpeg, sends to AI inference, and stores `RecognitionEvent` rows (class, confidence, bbox, snapshot_url).
 
+**Video file analysis**: `POST /api/v1/detect-video` → camera-svc sends the file to AI inference's `/detect-video` endpoint which uses cv2 to extract frames at configurable intervals, runs YOLO on each, and returns timestamped detection results.
+
+### Collaborative document editing (collab-svc)
+
+collab-svc (port 8086) provides real-time collaborative document editing via Yjs CRDT:
+
+- **WebSocket endpoint**: `GET /ws/collab/:id` — Yjs sync protocol, auth via `?token=` query param
+- **DocHub**: similar pattern to IM Hub, manages `map[string]*DocRoom` (one per document), each room maintains a Yjs document and broadcasts changes to all connected clients
+- **Storage**: documents persisted to MinIO (keyed by file ID), loaded on first connection, periodically saved
+- **Cross-node sync**: Redis Pub/Sub channel `collab:broadcast` — when a node receives a Yjs update, it publishes to Redis; other nodes forward the update to their local clients
+- **REST API**: collab CRUD endpoints (`/api/v1/collab`) handled by user-file-svc (file management), collab-svc only handles WebSocket synchronization
+- **Frontend**: TipTap editor with Yjs collaboration extension + code highlighting (lowlight) + task lists + BubbleMenu toolbar + Markdown paste conversion
+
+### RBAC permission system
+
+Role-Based Access Control implemented in user-file-svc:
+
+- **Three-layer model**: `Permission` (code like `file:read`) → `Role` (name/code) → `UserRole` (user-role mapping)
+- **Middleware**: `RequirePermission(permCode string)` checks if the authenticated user has the required permission through any of their assigned roles. Admin check: `hasPermission("*")` grants all.
+- **Pre-seeded roles**: `super_admin` (all permissions), `admin` (most management permissions), `user` (basic permissions)
+- **Frontend**: `useAccess()` hook provides `hasPermission(code)`, `hasRole(code)`, `isAdmin` for conditional UI rendering. `AccessControl` component wraps children with permission checks.
+- **Admin routes**: protected by `AdminRequired()` middleware (checks `is_admin` field OR `super_admin`/`admin` role)
+- **Permission groups**: file (read/write/delete/share), docker (read/control/admin), camera (read/control/admin), face (read/write/admin), attendance (read/admin), user (admin), system (admin)
+
 ### Face recognition & attendance
 
 Face recognition is a **browser + backend** split:
@@ -353,7 +396,11 @@ No test files exist yet. Infrastructure tests require running Docker services. A
 - **ID types**: All IDs are `string` on the frontend and `uint64` with `json:",string"` on the backend. Never use `number` for IDs in TypeScript code.
 - **WebSocket stale closures**: `useWebSocket` uses `handlerRef` pattern. Always use the ref to access current React state inside WebSocket callbacks — never close over state directly in `useEffect([], [])`.
 - **Nginx config is volume-mounted**: Changes to `deploy/nginx/nginx.conf` only need `docker compose restart nginx`, not a full rebuild.
-- **Node registration**: All four services register themselves as nodes via `NodeRegistrar`. Node host is auto-detected via `detectHostIP()` (first private IPv4) unless overridden by `NODE_HOST` env var. Heartbeat upsert does NOT overwrite `status` — only `host`, `port`, `last_heartbeat`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
+- **Node registration**: All five services register themselves as nodes via `NodeRegistrar`. Node host is auto-detected via `detectHostIP()` (first private IPv4) unless overridden by `NODE_HOST` env var. Heartbeat upsert does NOT overwrite `status` — only `host`, `port`, `last_heartbeat`. Infrastructure nodes (PostgreSQL, Redis, MinIO) are registered by the `HealthAggregator` in user-file-svc. The aggregator performs TCP/HTTP health probes for all nodes with progressive status: healthy → unresponsive (2 failures/~30s) → offline (5 failures/~75s).
 - **camera-svc depends on MediaMTX + AI inference**: ensure both are running before testing camera features. MediaMTX API at `:8889`, HLS at `:8888`. AI inference at `:8000`.
+- **collab-svc depends on MinIO + Redis**: document persistence uses MinIO, cross-node sync uses Redis Pub/Sub. The service does NOT call AutoMigrate — it reads the `files` table read-only for document metadata.
 - **Face recognition requires face-api.js models**: model weights must be in `client/public/models/`. Without them, face detection silently produces no results.
 - **MinIO thumbnail storage**: `FaceProfile.thumbnail_url` stores the object key (e.g., `faces/123.jpg`), not a full URL. Access via `GET /api/v1/faces/:id/thumbnail?token=`. Old profiles from before MinIO deployment may have `data:image/...` URLs that return 404 from the thumbnail API.
+- **RBAC seeding**: `SeedRBAC()` runs on first startup (if no permissions exist), creates default permissions/roles and assigns `super_admin` role to the default admin user. `AssignDefaultRoleToAllUsers()` assigns `user` role to any users without roles.
+- **Chunk upload**: files > 10MB are automatically split into chunks. System config `upload.sequential_mode` and `upload.max_concurrent_chunks` control upload behavior. Incomplete uploads can be resumed via `initChunkUpload` which returns completed chunk indices.
+- **Trash/recycle bin**: files are soft-deleted (set `deleted_at`), moved to trash. `CleanupScheduler` runs every hour to permanently delete files older than 30 days in trash.

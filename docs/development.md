@@ -1,6 +1,6 @@
 # CloudNexus 开发指南
 
-> 版本：v1.0.0 | 更新：2026-05-06
+> 版本：v1.1.0 | 更新：2026-05-15
 
 ## 1. 环境准备
 
@@ -47,51 +47,133 @@ cloudnexus/
 ├── client/                          # 前端 (React + TypeScript + Vite)
 │   └── src/
 │       ├── components/              # 可复用 UI 组件
-│       ├── pages/                   # 页面级组件
+│       │   ├── Layout.tsx           # 应用主布局 (侧边栏 + 顶栏)
+│       │   ├── ErrorBoundary.tsx    # 错误边界
+│       │   ├── PreviewModal.tsx     # 文件预览模态框
+│       │   ├── ShareModal.tsx       # 分享创建模态框
+│       │   ├── UploadModal.tsx      # 文件上传模态框
+│       │   ├── FilePickerModal.tsx  # 云盘文件选择器
+│       │   ├── DirectoryPickerModal.tsx # 目录选择器
+│       │   ├── FileVersionPanel.tsx # 文件版本历史面板
+│       │   ├── AccessControl.tsx    # 权限控制组件
+│       │   ├── FaceOverlay.tsx      # 人脸边界框叠加层
+│       │   ├── FaceRegisterModal.tsx # 人脸注册模态框
+│       │   └── VideoAnalysisPanel.tsx # 视频分析控制面板
+│       ├── pages/                   # 页面级组件 (20个)
+│       │   ├── LoginPage.tsx        # 登录
+│       │   ├── RegisterPage.tsx     # 注册
+│       │   ├── ForgotPasswordPage.tsx # 忘记密码
+│       │   ├── ResetPasswordPage.tsx  # 重置密码
+│       │   ├── ForbiddenPage.tsx    # 403 无权限
+│       │   ├── FileListPage.tsx     # 文件管理
+│       │   ├── MySharesPage.tsx     # 我的分享
+│       │   ├── ShareAccessPage.tsx  # 分享落地页 (公开)
+│       │   ├── ChatPage.tsx         # 即时通讯
+│       │   ├── FriendPage.tsx       # 好友管理
+│       │   ├── DockerPage.tsx       # Docker 管理
+│       │   ├── CameraListPage.tsx   # 摄像头列表
+│       │   ├── CameraLiveView.tsx   # 实时监控画面
+│       │   ├── FaceLibraryPage.tsx  # 人脸库管理
+│       │   ├── FaceAttendancePage.tsx # 考勤记录
+│       │   ├── DocumentListPage.tsx # 在线文档列表
+│       │   ├── DocumentEditorPage.tsx # 文档编辑器
+│       │   ├── RecycleBinPage.tsx   # 回收站
+│       │   ├── UserSettingsPage.tsx # 用户设置
+│       │   └── AdminPage.tsx        # 管理后台
 │       ├── hooks/                   # 自定义 React Hooks
+│       │   ├── useWebSocket.ts      # WebSocket 连接管理 (IM)
+│       │   ├── useAccess.ts         # 权限与角色检查
+│       │   └── useChunkUpload.ts    # 分块上传 (断点续传)
 │       ├── services/                # 后端 API 调用封装
+│       │   ├── api.ts               # axios 实例 + 拦截器
+│       │   ├── file.ts              # 文件/分享/版本/分块/回收站/配额 API
+│       │   ├── chat.ts              # IM/好友/导入导出 API
+│       │   ├── docker.ts            # Docker 容器/镜像 API
+│       │   ├── camera.ts            # 摄像头/人脸/考勤/检测 API
+│       │   ├── admin.ts             # 管理后台/节点/告警/配额 API
+│       │   ├── captcha.ts           # 验证码 API
+│       │   ├── verify.ts            # 邮箱/手机验证 API
+│       │   └── collab.ts            # 在线文档 API
 │       ├── stores/                  # 状态管理 (Zustand)
+│       │   ├── authStore.ts         # 用户认证状态
+│       │   ├── fileStore.ts         # 文件列表状态
+│       │   ├── chatStore.ts         # 聊天状态
+│       │   ├── friendStore.ts       # 好友状态
+│       │   ├── dockerStore.ts       # Docker 状态
+│       │   └── quotaStore.ts        # 配额状态
 │       └── utils/                   # 工具函数
+│           ├── format.ts            # 文件大小格式化
+│           ├── preview.ts           # 文件预览类型判断
+│           ├── cameraDiscovery.ts   # 局域网摄像头发现
+│           ├── faceDetection.ts     # 人脸检测 (face-api.js)
+│           ├── faceTracker.ts       # 人脸跟踪 (IoU 匹配)
+│           └── videoRecorder.ts     # Canvas 视频录制
 │
 ├── server/                          # Go 后端
 │   ├── cmd/                         # 服务入口 (每个子目录 = 一个服务)
-│   │   ├── user-file-svc/           # 用户 & 文件服务
-│   │   ├── im-svc/                  # 即时通讯服务
-│   │   └── docker-svc/              # Docker 管理服务
+│   │   ├── user-file-svc/           # 用户 & 文件服务 (8081)
+│   │   ├── im-svc/                  # 即时通讯服务 (8082)
+│   │   ├── docker-svc/              # Docker 管理服务 (8083)
+│   │   ├── camera-svc/              # 摄像头 & AI 服务 (8085)
+│   │   └── collab-svc/              # 在线文档协作服务 (8086)
 │   ├── internal/                    # 服务私有逻辑 (Go 编译器强制隔离)
 │   │   ├── userfile/                # handler → service → repository
-│   │   ├── im/
-│   │   └── dockermgr/
-│   ├── pkg/                         # 跨服务共享包
+│   │   │   ├── handler/             # user, file, share, trash, chunk, quota, system, captcha, verify, session, reset, delete, oauth, node, alert, search, role (17个)
+│   │   │   ├── service/             # user, file, share, trash, chunk, quota, verify, session, reset, delete, oauth, role, cleanup_scheduler (13个)
+│   │   │   └── repository/          # user, file, share, quota, chunk, role (6个)
+│   │   ├── im/                      # handler → service → repository
+│   │   │   ├── handler/             # im, friend
+│   │   │   ├── service/             # hub (WebSocket), im, blocklist, presence
+│   │   │   └── repository/          # im
+│   │   ├── dockermgr/               # handler → service
+│   │   │   ├── handler/             # docker
+│   │   │   └── service/             # docker, endpoint
+│   │   ├── camera/                  # handler → service → repository
+│   │   │   ├── handler/             # camera, face
+│   │   │   ├── service/             # camera, recognition, face, discovery
+│   │   │   └── repository/          # camera
+│   │   └── collab/                  # handler → service
+│   │       ├── handler/             # collab
+│   │       └── service/             # hub (Yjs WebSocket)
+│   ├── pkg/                         # 跨服务共享包 (18个)
 │   │   ├── auth/                    # JWT 令牌生成与校验
-│   │   ├── middleware/              # Gin 中间件 (CORS, 日志, 认证)
-│   │   ├── database/               # PostgreSQL 连接 + Snowflake ID 回调
+│   │   ├── middleware/              # Gin 中间件 (CORS, Logger, AuthRequired, AdminRequired, RequirePermission)
+│   │   ├── database/                # PostgreSQL 连接 + Snowflake ID 回调
 │   │   ├── cache/                   # Redis 客户端
 │   │   ├── storage/                 # MinIO 对象存储客户端
 │   │   ├── config/                  # YAML 配置加载
-│   │   ├── model/                   # 共享数据模型
+│   │   ├── model/                   # 共享数据模型 (18个模型文件)
 │   │   ├── snowflake/               # Snowflake ID 生成
-│   │   ├── response/               # HTTP 统一响应格式
+│   │   ├── response/                # HTTP 统一响应格式
 │   │   ├── errors/                  # 错误码定义 (AppError + 哨兵错误)
 │   │   ├── logger/                  # Zap 封装 (环形缓冲 + 按天分文件 + 30天清理)
 │   │   ├── migration/               # 版本化 SQL 迁移 (go:embed + schema_migrations)
-│   │   └── crypto/                  # bcrypt 密码哈希
+│   │   ├── crypto/                  # bcrypt 密码哈希
+│   │   ├── captcha/                 # 图片验证码生成 + Redis 存储
+│   │   ├── email/                   # SMTP 邮件发送
+│   │   └── system/                  # 健康检查 + 节点注册 + 健康聚合 + 告警评估
 │   ├── config/                      # 配置文件
 │   │   ├── config.single.yaml       # 宿主机开发
 │   │   ├── config.docker.yaml       # Docker 部署
 │   │   └── config.cluster.yaml      # 集群部署
+│   ├── bin/linux/                   # 预编译 Linux 二进制文件 (部署用)
 │   ├── Dockerfile                   # 多阶段构建 (SERVICE build arg)
 │   ├── .dockerignore
 │   └── go.mod
 │
 ├── deploy/                          # 部署配置
-│   ├── docker-compose.single.yml    # 单机全栈 Docker Compose
+│   ├── docker-compose.single.yml    # 单机全栈 Docker Compose (12个服务)
 │   ├── docker-compose.cluster.yml   # 集群应用服务
+│   ├── deploy.sh                    # 远程自动部署脚本
 │   ├── nginx/nginx.conf             # 反向代理 + 静态文件
+│   ├── mediamtx/mediamtx.yml        # 流媒体服务器配置
+│   ├── ai-inference/                # AI 推理服务
+│   │   ├── Dockerfile               # Python YOLOv8 镜像
+│   │   └── app.py                   # FastAPI 推理 API
 │   └── k8s/                         # Kubernetes 资源 (预留)
 │
 ├── docs/                            # 项目文档
-│   ├── openapi.yaml                  # OpenAPI 3.0 接口规范
+│   ├── openapi.yaml                 # OpenAPI 3.0 接口规范
 │   ├── database.md                  # 数据库设计
 │   ├── deployment.md                # 部署指南
 │   ├── development.md               # 开发指南 (本文件)
@@ -128,16 +210,15 @@ Go 服务在宿主机运行，基础设施 + nginx 在 Docker 中：
 cd deploy
 docker compose -f docker-compose.single.yml up -d postgres redis minio
 
-# 2. 修改 nginx.conf 将 proxy_pass 指向 host.docker.internal
-# （或使用 Vite 自带的代理，见 3.3）
-
-# 3. 启动 Go 服务（使用 localhost 配置）
+# 2. 启动 Go 服务（使用 localhost 配置）
 cd server
 CONFIG_PATH=config/config.single.yaml go run ./cmd/user-file-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/im-svc &
 CONFIG_PATH=config/config.single.yaml go run ./cmd/docker-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/camera-svc &
+CONFIG_PATH=config/config.single.yaml go run ./cmd/collab-svc &
 
-# 4. 启动前端
+# 3. 启动前端
 cd client && npm run dev
 # 访问 http://localhost:3000 (Vite 自带代理)
 ```
@@ -149,10 +230,15 @@ cd client && npm run dev
 ```bash
 cd client && npm run dev
 # Vite 自动代理：
-#   /api/v1/im/*    → localhost:8082
-#   /api/v1/docker/* → localhost:8083
-#   /api/*          → localhost:8081
-#   /ws             → localhost:8082
+#   /api/v1/im/*        → localhost:8082
+#   /api/v1/docker/*    → localhost:8083
+#   /api/v1/cameras/*   → localhost:8085
+#   /api/v1/faces/*     → localhost:8085
+#   /api/v1/detect-*    → localhost:8085
+#   /api/v1/collab/*    → localhost:8086
+#   /api/*              → localhost:8081
+#   /ws/collab/*        → localhost:8086 (WebSocket)
+#   /ws                 → localhost:8082 (WebSocket)
 ```
 
 ### 3.4 编译命令
@@ -163,6 +249,9 @@ go build ./cmd/...
 
 # 编译单个服务
 go build -o bin/user-file-svc ./cmd/user-file-svc
+
+# 交叉编译 Linux (部署用)
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/linux/ ./cmd/...
 
 # Docker 构建单个服务
 docker build --build-arg SERVICE=user-file-svc -t user-file-svc .
@@ -211,7 +300,24 @@ repository (数据层) → 数据库操作、缓存访问
 - 状态管理使用 Zustand
 - **ID 类型**：所有 ID 为 `string` 类型（对应后端 Snowflake uint64）
 
-### 4.4 文件命名
+### 4.4 RBAC 权限控制
+
+后端通过 `middleware.RequirePermission(permCode)` 中间件控制 API 访问，前端通过 `useAccess` Hook 控制 UI 元素可见性：
+
+```go
+// 后端：路由注册时指定所需权限
+api.POST("/file/upload", fileHandler.HandleUpload, middleware.RequirePermission("file:write"))
+```
+
+```typescript
+// 前端：条件渲染受控 UI
+const { hasPermission } = useAccess();
+{hasPermission('file:write') && <UploadButton />}
+```
+
+预置角色：`super_admin`（全部权限）、`admin`（管理权限）、`user`（基本权限）。
+
+### 4.5 文件命名
 
 - Go: `snake_case.go`
 - TypeScript: `PascalCase.tsx` (组件), `camelCase.ts` (工具)
@@ -221,12 +327,13 @@ repository (数据层) → 数据库操作、缓存访问
 
 ## 5. 配置说明
 
-两个配置文件对应不同部署模式：
+三个配置文件对应不同部署模式：
 
 | 文件 | host 值 | 用途 |
 |------|---------|------|
 | `config.single.yaml` | `localhost` | 宿主机开发 |
 | `config.docker.yaml` | `postgres`, `redis`, `minio` | Docker 部署 |
+| `config.cluster.yaml` | 基础设施服务器 IP | 集群部署 |
 
 通过 `CONFIG_PATH` 环境变量指定，每个 `main.go` 已支持。
 
@@ -236,11 +343,11 @@ repository (数据层) → 数据库操作、缓存访问
 
 以"在用户服务中新增获取用户列表接口"为例：
 
-1. **定义模型** — 在 `pkg/model/` 中已有 `User` 结构体
-2. **编写 repository** — `internal/userfile/repository/user.go` 中添加 `ListUsers()`
-3. **编写 service** — `internal/userfile/service/user.go` 中添加 `GetUserList()`
-4. **编写 handler** — `internal/userfile/handler/user.go` 中添加 `HandleListUsers`
-5. **注册路由** — 在 `cmd/user-file-svc/main.go` 中添加路由
+1. **定义模型** — 在 `pkg/model/` 中添加/复用模型结构体
+2. **编写 repository** — `internal/userfile/repository/` 中添加数据访问方法
+3. **编写 service** — `internal/userfile/service/` 中添加业务逻辑
+4. **编写 handler** — `internal/userfile/handler/` 中添加 HTTP 处理函数
+5. **注册路由** — 在 `cmd/user-file-svc/main.go` 中添加路由（含权限中间件）
 6. **更新文档** — 在 `docs/openapi.yaml` 中记录新接口
 
 ---
