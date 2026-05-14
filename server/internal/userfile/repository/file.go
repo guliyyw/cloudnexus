@@ -96,6 +96,16 @@ func (r *FileRepository) FindAllByParent(userID, parentID uint64) ([]model.File,
 	return files, err
 }
 
+func (r *FileRepository) FindCollabDocs(userID uint64, page, pageSize int) ([]model.File, int64, error) {
+	var files []model.File
+	var total int64
+	query := r.db.Model(&model.File{}).Where("user_id = ? AND collab_type = ? AND is_dir = false AND deleted_at IS NULL", userID, "doc")
+	query.Count(&total)
+	offset := (page - 1) * pageSize
+	err := query.Order("updated_at DESC").Offset(offset).Limit(pageSize).Find(&files).Error
+	return files, total, err
+}
+
 func (r *FileRepository) BatchCreate(files []*model.File) error {
 	return r.db.Create(&files).Error
 }

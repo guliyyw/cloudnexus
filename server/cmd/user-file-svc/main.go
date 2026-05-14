@@ -263,7 +263,17 @@ func main() {
 		}
 	}
 
-		shares := api.Group("/shares")
+		collab := api.Group("/collab")
+			collab.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+			{
+				collab.GET("", middleware.RequirePermission("file:read"), fileH.HandleListCollabDocs)
+				collab.POST("", middleware.RequirePermission("file:write"), fileH.HandleCreateCollab)
+				collab.GET("/:id", middleware.RequirePermission("file:read"), fileH.HandleGetFileMeta)
+				collab.PUT("/:id", middleware.RequirePermission("file:write"), fileH.HandleMove)
+				collab.DELETE("/:id", middleware.RequirePermission("file:delete"), fileH.HandleDelete)
+			}
+
+			shares := api.Group("/shares")
 		shares.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
 		{
 			shares.GET("/my", shareH.HandleListMyShares)

@@ -124,6 +124,16 @@ func (s *FileService) ListFiles(userID, parentID uint64, page, pageSize int) ([]
 	return s.repo.FindByUserAndParent(userID, parentID, page, pageSize)
 }
 
+func (s *FileService) ListCollabDocs(userID uint64, page, pageSize int) ([]model.File, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.FindCollabDocs(userID, page, pageSize)
+}
+
 func (s *FileService) DeleteFile(userID, fileID uint64) error {
 	file, err := s.repo.FindByID(fileID)
 	if err != nil {

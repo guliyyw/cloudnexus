@@ -10,7 +10,7 @@ type ChunkUpload struct {
 	MimeType       string  `json:"mime_type" gorm:"size:128"`
 	ParentID       uint64  `json:"parent_id,string" gorm:"default:0"`
 	TotalChunks    int     `json:"total_chunks" gorm:"not null"`
-	Completed      []int32 `json:"completed" gorm:"type:integer[];default:'{}'"`
+	Completed      Int32Array `json:"completed" gorm:"type:integer[];default:'{}'"`
 	Status         string  `json:"status" gorm:"not null;size:20;default:uploading"`
 	VersionMessage string  `json:"version_message" gorm:"size:256"`
 }

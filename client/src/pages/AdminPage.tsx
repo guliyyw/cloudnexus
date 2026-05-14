@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Tabs, Descriptions, Spin, Progress, Input, Select, Modal, Form, InputNumber, Switch } from 'antd'
 import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, DashboardOutlined, FileTextOutlined, CloudServerOutlined, AreaChartOutlined, DownloadOutlined, ClusterOutlined, PlusOutlined, DeleteOutlined, ClockCircleOutlined, HistoryOutlined, BellOutlined, SettingOutlined, CloudUploadOutlined, HddOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -23,7 +23,11 @@ function UserManagement() {
   const [quotaInfoLoading, setQuotaInfoLoading] = useState(false)
   const [currentQuotaInfo, setCurrentQuotaInfo] = useState<UserQuotaInfo | null>(null)
   const [quotaTiers, setQuotaTiers] = useState<QuotaTier[]>([])
-  const tierSizeMap = useRef<Record<string, number>>({})
+  const tierSizeMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    quotaTiers.forEach((t) => { map[t.id] = t.storage_limit })
+    return map
+  }, [quotaTiers])
   const pageSize = 20
 
   const fetchUsers = async () => {
@@ -42,9 +46,6 @@ function UserManagement() {
   useEffect(() => {
     adminApi.getQuotaTiers().then((tiers) => {
       setQuotaTiers(tiers)
-      const map: Record<string, number> = {}
-      tiers.forEach((t) => { map[t.id] = t.storage_limit })
-      tierSizeMap.current = map
     }).catch(() => {})
   }, [])
 
@@ -123,7 +124,7 @@ function UserManagement() {
       render: (_: any, record: AdminUser) => {
         const used = record.storage_used || 0
         const customLimit = record.storage_limit
-        const tierDefault = (record.tier_id && tierSizeMap.current[record.tier_id]) ? tierSizeMap.current[record.tier_id] : 1073741824
+        const tierDefault = (record.tier_id && tierSizeMap[record.tier_id]) ? tierSizeMap[record.tier_id] : 1073741824
         const effectiveLimit = customLimit || tierDefault
         const pct = effectiveLimit > 0 ? Math.round((used / effectiveLimit) * 100) : 0
         return (
@@ -1341,15 +1342,36 @@ function QuotaTierPanel() {
 
   useEffect(() => { fetchTiers() }, [])
 
+  const parseStorageInput = (v: string): number => {
+    const s = v.trim().toLowerCase()
+    const num = parseFloat(s)
+    if (isNaN(num)) return 0
+    if (s.endsWith('tb')) return Math.round(num * 1099511627776)
+    if (s.endsWith('gb')) return Math.round(num * 1073741824)
+    if (s.endsWith('mb')) return Math.round(num * 1048576)
+    if (s.endsWith('kb')) return Math.round(num * 1024)
+    return Math.round(num)
+  }
+
   const handleCreate = () => {
     setEditingTier(null)
     form.resetFields()
+    form.setFieldsValue({ storage_limit: '' })
     setModalOpen(true)
   }
 
   const handleEdit = (tier: QuotaTier) => {
     setEditingTier(tier)
-    form.setFieldsValue(tier)
+    // Convert bytes to readable format for editing
+    const gb = tier.storage_limit / 1073741824
+    const mb = tier.storage_limit / 1048576
+    if (gb >= 1 && gb % 1 === 0) {
+      form.setFieldsValue({ ...tier, storage_limit: `${gb}GB` })
+    } else if (mb >= 1) {
+      form.setFieldsValue({ ...tier, storage_limit: `${mb}MB` })
+    } else {
+      form.setFieldsValue({ ...tier, storage_limit: `${tier.storage_limit}B` })
+    }
     setModalOpen(true)
   }
 
@@ -1365,13 +1387,25 @@ function QuotaTierPanel() {
 
   const handleSave = async () => {
     const values = await form.validateFields()
+    const raw = values.storage_limit
+    let storageLimit: number
+    if (typeof raw === 'string') {
+      storageLimit = parseStorageInput(raw)
+      if (storageLimit <= 0) {
+        message.error('请输入有效的存储上限，如 500MB, 2GB, 1TB')
+        return
+      }
+    } else {
+      storageLimit = raw
+    }
+    const payload = { ...values, storage_limit: storageLimit }
     setSaving(true)
     try {
       if (editingTier) {
-        await adminApi.updateQuotaTier(editingTier.id, values)
+        await adminApi.updateQuotaTier(editingTier.id, payload)
         message.success('已更新')
       } else {
-        await adminApi.createQuotaTier(values)
+        await adminApi.createQuotaTier(payload)
         message.success('已创建')
       }
       setModalOpen(false)
@@ -1422,8 +1456,8 @@ function QuotaTierPanel() {
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入等级名称' }]}>
             <Input placeholder="例如: free, premium, enterprise" />
           </Form.Item>
-          <Form.Item name="storage_limit" label="存储上限 (字节)" rules={[{ required: true, message: '请输入存储上限' }]}>
-            <InputNumber min={1} style={{ width: '100%' }} placeholder="例如: 1073741824 (1GB)" />
+          <Form.Item name="storage_limit" label="存储上限" rules={[{ required: true, message: '请输入存储上限' }]}>
+            <Input placeholder="例如: 500MB, 2GB, 1TB" style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} />

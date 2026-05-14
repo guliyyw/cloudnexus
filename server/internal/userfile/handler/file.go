@@ -314,6 +314,50 @@ func (h *FileHandler) HandleCreateCollab(c *gin.Context) {
 	c.JSON(http.StatusCreated, response.OKWithData(file))
 }
 
+func (h *FileHandler) HandleListCollabDocs(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	files, total, err := h.svc.ListCollabDocs(userID, page, pageSize)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	type item struct {
+		ID          uint64 `json:"id,string"`
+		Title       string `json:"title"`
+		OwnerID     uint64 `json:"owner_id,string"`
+		LastEditor  string `json:"last_editor"`
+		Version     int64  `json:"version"`
+		CreatedAt   string `json:"created_at"`
+		UpdatedAt   string `json:"updated_at"`
+	}
+	items := make([]item, 0, len(files))
+	for _, f := range files {
+		items = append(items, item{
+			ID:         f.ID,
+			Title:      f.Name,
+			OwnerID:    f.UserID,
+			LastEditor: "",
+			Version:    1,
+			CreatedAt:  f.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:  f.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+	if items == nil {
+		items = []item{}
+	}
+
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	}))
+}
+
 func (h *FileHandler) HandleGetFileMeta(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)

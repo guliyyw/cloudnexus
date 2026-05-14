@@ -20,8 +20,7 @@ type Config struct {
 func NewPostgres(cfg Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{
 		Logger:                                   logger.Default.LogMode(logger.Warn),
-		DisableForeignKeyConstraintWhenMigrating: true,
-		PrepareStmt:                              true,
+			DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return nil, err

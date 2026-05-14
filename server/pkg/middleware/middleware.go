@@ -110,11 +110,9 @@ func AuthRequired(secret string, revoker ...TokenRevoker) gin.HandlerFunc {
 		token := header
 		if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 			token = token[7:]
-		} else if token == "" {
-			// 仅 WebSocket 升级请求允许通过 query param 传递 token
-			if strings.EqualFold(c.GetHeader("Upgrade"), "websocket") {
-				token = c.Query("token")
-			}
+		}
+		if token == "" {
+			token = c.Query("token")
 		}
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "缺少认证令牌"})

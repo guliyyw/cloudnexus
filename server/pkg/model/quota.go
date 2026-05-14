@@ -21,7 +21,7 @@ type UserQuota struct {
 // GetEffectiveLimit returns the effective storage limit for this quota.
 // If StorageLimit is set (custom override), use it; otherwise look up from tier.
 func (q *UserQuota) GetEffectiveLimit(tiers map[uint64]int64) int64 {
-	if q.StorageLimit != nil {
+	if q.StorageLimit != nil && *q.StorageLimit > 0 {
 		return *q.StorageLimit
 	}
 	if q.TierID != nil {
