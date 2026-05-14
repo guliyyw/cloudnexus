@@ -18,10 +18,8 @@ import DockerPage from './pages/DockerPage'
 import AdminPage from './pages/AdminPage'
 import MySharesPage from './pages/MySharesPage'
 import UserSettingsPage from './pages/UserSettingsPage'
-import CameraListPage from './pages/CameraListPage'
+import CameraPage from './pages/CameraPage'
 import CameraLiveView from './pages/CameraLiveView'
-import FaceLibraryPage from './pages/FaceLibraryPage'
-import FaceAttendancePage from './pages/FaceAttendancePage'
 import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
 import RecycleBinPage from './pages/RecycleBinPage'
@@ -100,10 +98,8 @@ export default function App() {
               <Route path="/chat" element={<PageTransition><ErrorBoundary><ChatPage /></ErrorBoundary></PageTransition>} />
               <Route path="/friends" element={<PageTransition><ErrorBoundary><FriendPage /></ErrorBoundary></PageTransition>} />
               <Route path="/docker" element={<PageTransition><ErrorBoundary><DockerPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/cameras" element={<PageTransition><ErrorBoundary><CameraListPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/cameras" element={<PageTransition><ErrorBoundary><CameraPage /></ErrorBoundary></PageTransition>} />
               <Route path="/cameras/:id" element={<PageTransition><ErrorBoundary><CameraLiveView /></ErrorBoundary></PageTransition>} />
-              <Route path="/faces" element={<PageTransition><ErrorBoundary><FaceLibraryPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/attendance" element={<PageTransition><ErrorBoundary><FaceAttendancePage /></ErrorBoundary></PageTransition>} />
               <Route path="/documents" element={<PageTransition><ErrorBoundary><DocumentListPage /></ErrorBoundary></PageTransition>} />
               <Route path="/documents/:id" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
               <Route path="/album" element={<PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition>} />

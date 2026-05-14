@@ -320,9 +320,10 @@ export default function FileListPage() {
           <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
           <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建协作文档</Button>
           <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
-          <Text type="secondary" style={{ marginLeft: 8 }}>
-            拖拽文件到目录名即可上传到该目录
-          </Text>
+        </Space>
+        <Space>
+          <Button icon={<ShareAltOutlined />} onClick={() => navigate('/shares')}>我的分享</Button>
+          <Button icon={<DeleteOutlined />} onClick={() => navigate('/trash')}>回收站</Button>
         </Space>
         <Space>
           <Input.Search

@@ -4,15 +4,11 @@ import { Button, Dropdown, Avatar, Drawer, Menu, Grid, Typography } from 'antd'
 import {
   DashboardOutlined,
   CloudOutlined,
-  ShareAltOutlined,
   MessageOutlined,
   TeamOutlined,
   ContainerOutlined,
   VideoCameraOutlined,
-  SmileOutlined,
-  ClockCircleOutlined,
   FileTextOutlined,
-  DeleteOutlined,
   PictureOutlined,
   CustomerServiceOutlined,
   SettingOutlined,
@@ -51,7 +47,6 @@ export default function TopNav() {
   const navItems: NavItem[] = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '首页', path: '/dashboard' },
     { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files' },
-    { key: 'shares', icon: <ShareAltOutlined />, label: '分享', path: '/shares' },
     { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat' },
     { key: 'friends', icon: <TeamOutlined />, label: '好友', path: '/friends' },
     { key: 'docker', icon: <ContainerOutlined />, label: 'Docker', path: '/docker' },
@@ -59,9 +54,6 @@ export default function TopNav() {
     { key: 'album', icon: <PictureOutlined />, label: '相册', path: '/album' },
     { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐', path: '/music' },
     { key: 'docs', icon: <FileTextOutlined />, label: '文档', path: '/documents' },
-    { key: 'faces', icon: <SmileOutlined />, label: '人脸库', path: '/faces' },
-    { key: 'attendance', icon: <ClockCircleOutlined />, label: '考勤', path: '/attendance' },
-    { key: 'trash', icon: <DeleteOutlined />, label: '回收站', path: '/trash' },
   ]
 
   const adminItems: NavItem[] = [
