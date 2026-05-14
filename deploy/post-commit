@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# =============================================================================
+# CloudNexus Git Post-Commit Hook — 每次提交后自动部署
+# 安装: cp deploy/post-commit .git/hooks/post-commit && chmod +x .git/hooks/post-commit
+# 跳过: GIT_SKIP_DEPLOY=1 git commit -m "..."
+# =============================================================================
+
+if [ "${GIT_SKIP_DEPLOY:-0}" = "1" ]; then
+  echo "[deploy] 跳过自动部署"
+  exit 0
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel)"
+
+echo "[deploy] 提交后自动部署中..."
+bash "${REPO_ROOT}/deploy/deploy.sh" auto
