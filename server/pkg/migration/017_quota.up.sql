@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS quota_tiers (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quota_tiers_name ON quota_tiers(name);
 
-CREATE TABLE IF NOT EXISTS user_quotas (
+CREATE TABLE IF NOT EXISTS user_quota (
     user_id       BIGINT PRIMARY KEY,
     storage_used  BIGINT NOT NULL DEFAULT 0,
     storage_limit BIGINT,

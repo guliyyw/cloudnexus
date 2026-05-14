@@ -19,7 +19,7 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
-import * as fileApi from '../services/file'
+import { useQuotaStore } from '../stores/quotaStore'
 import { formatFileSize } from '../utils/format'
 
 const { Header, Sider, Content } = AntLayout
@@ -33,7 +33,7 @@ export default function AppLayout() {
   const { logout, user, fetchProfile } = useAuthStore()
   const screens = useBreakpoint()
   const isMobile = !screens.md
-  const [quota, setQuota] = useState<fileApi.QuotaInfo | null>(null)
+  const { quota, fetchQuota } = useQuotaStore()
 
   useEffect(() => {
     if (!user) fetchProfile()
@@ -41,7 +41,7 @@ export default function AppLayout() {
   useEffect(() => { setCollapsed(!!isMobile) }, [isMobile])
 
   useEffect(() => {
-    fileApi.getQuota().then(setQuota).catch(() => {})
+    fetchQuota()
   }, [])
 
   const { token: themeToken } = theme.useToken()

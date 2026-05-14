@@ -1,2 +1,2 @@
-DROP TABLE IF EXISTS user_quotas;
+DROP TABLE IF EXISTS user_quota;
 DROP TABLE IF EXISTS quota_tiers;

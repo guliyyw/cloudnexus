@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as fileApi from '../services/file'
 import type { FileItem } from '../services/file'
+import { useQuotaStore } from './quotaStore'
 
 interface FileState {
   files: FileItem[]
@@ -58,17 +59,20 @@ export const useFileStore = create<FileState>((set, get) => ({
       console.warn('部分文件上传失败:', result.errors)
     }
     await get().fetchFiles()
+    useQuotaStore.getState().fetchQuota()
     return result
   },
 
   remove: async (id: string) => {
     await fileApi.deleteFile(id)
     await get().fetchFiles()
+    useQuotaStore.getState().fetchQuota()
   },
 
   batchRemove: async (ids: string[]) => {
     const result = await fileApi.batchDeleteFiles(ids)
     await get().fetchFiles()
+    useQuotaStore.getState().fetchQuota()
     return result
   },
 

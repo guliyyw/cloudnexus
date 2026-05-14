@@ -194,6 +194,7 @@ func (s *FileService) BatchDelete(userID uint64, ids []uint64) (int64, []string)
 		}
 		if !file.IsDir {
 			s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
+			_ = s.quotaRepo.AddStorageUsed(userID, -file.Size)
 		}
 		validIDs = append(validIDs, id)
 	}

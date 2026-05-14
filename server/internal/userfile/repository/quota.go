@@ -35,6 +35,8 @@ func (r *QuotaRepository) UpdateStorageUsed(userID uint64, used int64) error {
 }
 
 func (r *QuotaRepository) AddStorageUsed(userID uint64, delta int64) error {
+	// Ensure the user quota record exists before updating
+	_, _ = r.GetOrCreateQuota(userID)
 	return r.db.Model(&model.UserQuota{}).
 		Where("user_id = ?", userID).
 		Update("storage_used", gorm.Expr("storage_used + ?", delta)).Error
