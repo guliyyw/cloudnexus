@@ -162,6 +162,7 @@ func main() {
 
 	nodeH := handler.NewNodeHandler(db)
 	alertH := handler.NewAlertHandler(db)
+	adminStatsH := handler.NewAdminStatsHandler(db)
 
 	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "user-file-svc", 8081)
 	nodeReg.Start()
@@ -344,6 +345,7 @@ func main() {
 		admin.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
 		admin.Use(middleware.AdminRequired())
 		{
+			admin.GET("/stats", adminStatsH.HandleAdminStats)
 			admin.GET("/users", userH.HandleAdminListUsers)
 			admin.PUT("/users/:id/toggle-admin", userH.HandleAdminToggleAdmin)
 			admin.PUT("/users/:id/toggle-status", userH.HandleAdminToggleStatus)

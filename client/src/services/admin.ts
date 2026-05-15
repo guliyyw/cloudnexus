@@ -333,3 +333,20 @@ export async function getSystemConfig(): Promise<SystemConfig[]> {
 export async function updateSystemConfig(key: string, value: string): Promise<void> {
   await api.put('/admin/config', { key, value })
 }
+
+// ── 管理统计 ──
+
+export interface AdminStats {
+  user_count: number
+  file_count: number
+  storage_used_bytes: number
+  album_count: number
+  album_file_count: number
+  music_track_count: number
+  playlist_count: number
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  const res = await api.get('/admin/stats')
+  return res.data.data
+}

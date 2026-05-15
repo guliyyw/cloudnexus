@@ -9,6 +9,7 @@ import {
   UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
   PaperClipOutlined, DownloadOutlined, EyeOutlined,
   PictureOutlined, LinkOutlined, UploadOutlined,
+  CustomerServiceOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
@@ -20,9 +21,13 @@ import type { FriendRequest } from '../services/chat'
 import FilePickerModal from '../components/FilePickerModal'
 import { getDownloadUrl, getPreviewUrl, uploadFile, getFileList, createDirectory } from '../services/file'
 import { fetchLinkPreview, exportConversation, importConversation } from '../services/chat'
+import { getAlbums, addFilesToAlbum } from '../services/album'
+import { usePlayerStore } from '../stores/playerStore'
+import type { Track } from '../services/music'
 import { isPreviewable } from '../utils/preview'
 import { formatFileSize } from '../utils/format'
 import type { FileItem } from '../services/file'
+import type { Album } from '../services/album'
 
 const { Text } = Typography
 
@@ -58,6 +63,10 @@ export default function ChatPage() {
   const [importing, setImporting] = useState(false)
   const [linkPreviews, setLinkPreviews] = useState<Record<string, { url: string; title: string; description: string; image: string; site_name: string }>>({})
   const fetchedMsgIds = useRef<Set<string>>(new Set())
+  const [albumPickerOpen, setAlbumPickerOpen] = useState(false)
+  const [albums, setAlbums] = useState<Album[]>([])
+  const [addToAlbumFileId, setAddToAlbumFileId] = useState<string>('')
+  const play = usePlayerStore((s) => s.play)
 
   // URL regex for link detection
   const urlRegex = /https?:\/\/[^\s<]+[^\s<.,;:!?)}\]'"`>]/g
@@ -307,6 +316,40 @@ export default function ChatPage() {
     }
   }
 
+  const handleOpenAlbumPicker = async (fileId: string) => {
+    setAddToAlbumFileId(fileId)
+    setAlbumPickerOpen(true)
+    try {
+      const res = await getAlbums(1, 100)
+      setAlbums(res.albums)
+    } catch { /* ignore */ }
+  }
+
+  const handleAddToAlbum = async (albumId: string) => {
+    try {
+      await addFilesToAlbum(albumId, [addToAlbumFileId])
+      message.success('已添加到相册')
+      setAlbumPickerOpen(false)
+    } catch {
+      message.error('添加失败')
+    }
+  }
+
+  const handlePlayInMusic = (fc: { file_id: string; file_name: string; mime_type: string; file_size: number }) => {
+    const track: Track = {
+      id: fc.file_id,
+      title: fc.file_name,
+      artist: '',
+      album: '',
+      duration: 0,
+      source: 'cloud',
+      mime_type: fc.mime_type,
+      file_size: fc.file_size,
+    }
+    play(track)
+    message.success('已添加到播放队列')
+  }
+
   const handleLeaveGroup = async () => {
     if (!currentConvId) return
     Modal.confirm({
@@ -497,6 +540,18 @@ export default function ChatPage() {
                                   <Button type="link" size="small" icon={<EyeOutlined />}
                                     href={getPreviewUrl(fc.file_id)} target="_blank">
                                     预览
+                                  </Button>
+                                )}
+                                {fc.mime_type?.startsWith('image/') && (
+                                  <Button type="link" size="small" icon={<PictureOutlined />}
+                                    onClick={() => handleOpenAlbumPicker(fc.file_id)}>
+                                    相册
+                                  </Button>
+                                )}
+                                {fc.mime_type?.startsWith('audio/') && (
+                                  <Button type="link" size="small" icon={<CustomerServiceOutlined />}
+                                    onClick={() => handlePlayInMusic(fc)}>
+                                    播放
                                   </Button>
                                 )}
                                 <Button type="link" size="small" icon={<DownloadOutlined />}
@@ -769,6 +824,32 @@ export default function ChatPage() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Album Picker Modal */}
+      <Modal
+        title="选择相册"
+        open={albumPickerOpen}
+        onCancel={() => setAlbumPickerOpen(false)}
+        footer={null}
+        width={400}
+      >
+        <List
+          dataSource={albums}
+          locale={{ emptyText: '暂无相册，请先创建相册' }}
+          renderItem={(album) => (
+            <List.Item
+              style={{ cursor: 'pointer', padding: '8px 12px', borderRadius: 6 }}
+              onClick={() => handleAddToAlbum(album.id)}
+            >
+              <List.Item.Meta
+                avatar={<PictureOutlined style={{ fontSize: 20 }} />}
+                title={<Text strong>{album.name}</Text>}
+                description={`${album.file_count} 个文件`}
+              />
+            </List.Item>
+          )}
+        />
       </Modal>
 
       {/* Add Member Modal */}
