@@ -68,7 +68,7 @@ func main() {
 		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}, &model.Album{}, &model.AlbumFile{}, &model.ExifMetadata{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}, &model.Album{}, &model.AlbumFile{}, &model.ExifMetadata{}, &model.PublicTrack{}, &model.Playlist{}, &model.PlaylistTrack{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -144,6 +144,10 @@ func main() {
 	albumRepo := repository.NewAlbumRepository(db)
 	albumSvc := service.NewAlbumService(albumRepo, fileRepo)
 	albumH := handler.NewAlbumHandler(albumSvc)
+
+	musicRepo := repository.NewMusicRepository(db)
+	musicSvc := service.NewMusicService(musicRepo, fileRepo, minioClient, cfg.MinIO.Bucket)
+	musicH := handler.NewMusicHandler(musicSvc)
 
 	cleanupScheduler := service.NewCleanupScheduler(trashSvc, quotaSvc, chunkRepo)
 	cleanupScheduler.Start()
@@ -311,6 +315,22 @@ func main() {
 			albums.GET("/:id/files", middleware.RequirePermission("file:read"), albumH.HandleGetFiles)
 			albums.POST("/:id/files", middleware.RequirePermission("file:write"), albumH.HandleAddFiles)
 			albums.DELETE("/:id/files/:fileId", middleware.RequirePermission("file:delete"), albumH.HandleRemoveFile)
+		}
+
+		music := api.Group("/music")
+		music.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		{
+			music.GET("/library", musicH.HandleGetLibrary)
+			music.POST("/library/upload", middleware.AdminRequired(), musicH.HandleUploadTrack)
+			music.DELETE("/library/:id", middleware.AdminRequired(), musicH.HandleDeleteTrack)
+			music.GET("/tracks/:id/stream", musicH.HandleStream)
+			music.GET("/playlists", musicH.HandleListPlaylists)
+			music.POST("/playlists", musicH.HandleCreatePlaylist)
+			music.GET("/playlists/:id", musicH.HandleGetPlaylist)
+			music.PUT("/playlists/:id", musicH.HandleUpdatePlaylist)
+			music.DELETE("/playlists/:id", musicH.HandleDeletePlaylist)
+			music.POST("/playlists/:id/tracks", musicH.HandleAddTrackToPlaylist)
+			music.DELETE("/playlists/:id/tracks/:trackId", musicH.HandleRemoveTrackFromPlaylist)
 		}
 
 		dashSvc := service.NewDashboardService(db)

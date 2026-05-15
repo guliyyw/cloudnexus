@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Layout as AntLayout, Grid } from 'antd'
 import TopNav from './layout/TopNav'
+import GlobalPlayer from './player/GlobalPlayer'
 import { useQuotaStore } from '../stores/quotaStore'
 import { useEffect } from 'react'
 
@@ -31,6 +32,7 @@ export default function AppLayout() {
       }}>
         <Outlet />
       </Content>
+      <GlobalPlayer />
     </AntLayout>
   )
 }
