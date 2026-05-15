@@ -1,6 +1,6 @@
 # CloudNexus 架构设计
 
-> 版本：v1.2.0 | 更新：2026-05-15
+> 版本：v1.3.0 | 更新：2026-05-15
 
 ## 1. 项目概述
 
@@ -11,6 +11,8 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 - Docker 管理 (容器生命周期、多主机)
 - 视频监控 (摄像头管理、AI 识别、人脸考勤)
 - 在线文档 (协作编辑、Markdown 增强)
+- 相册管理 (网格/时间线浏览、EXIF 元数据、灯箱预览)
+- 音乐播放 (双源音乐库、全局播放器、播放列表、歌单导入导出)
 
 支持桌面端 (Windows/macOS/Linux)、Web 端、安卓移动端。
 
@@ -170,6 +172,27 @@ CloudNexus 是一个自托管、数据私有的协作平台，目标覆盖：
 ```
 
 校验码 = SHA256(`conversation_id|message_count|last_seq`)，确保导出文件完整性。
+
+### 4.8 相册浏览
+
+```
+客户端 → nginx(:80) → user-file-svc → PostgreSQL
+    ├── 创建相册 + 添加文件 (仅存引用，不复制文件)
+    ├── 三种视图: grid (平面) / timeline (按 EXIF 拍摄时间月份分组) / folder (按目录分组)
+    └── 相册分享: 复用 Share 模型 (share_type=album) → 公开落地页
+```
+
+EXIF 提取：文件上传时异步 goroutine 解析 image/jpeg、image/tiff，存储相机型号、拍摄时间、GPS、ISO、光圈等元数据。
+
+### 4.9 音乐播放
+
+```
+客户端 → nginx(:80) → user-file-svc
+    ├── 音乐库: 双源合并 (public_tracks 表 + files 表 audio/*)
+    ├── 音频流: GET /music/tracks/:id/stream (Range 请求 → 206 Partial Content)
+    ├── 播放列表: CRUD + 歌曲排序 + JSON/M3U 导入导出
+    └── 全局播放器: Zustand playerStore → 单个 <audio> 元素
+```
 
 ## 5. 技术栈
 

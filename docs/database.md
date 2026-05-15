@@ -1,6 +1,6 @@
 # CloudNexus 数据库设计文档
 
-> 版本：v1.1.0 | 数据库：PostgreSQL 15 | ORM：GORM
+> 版本：v1.2.0 | 数据库：PostgreSQL 15 | ORM：GORM
 
 ## 1. 设计原则
 
@@ -567,7 +567,135 @@ CREATE INDEX idx_recognition_events_created_at ON recognition_events(created_at)
 
 ---
 
-## 11. ER 关系图
+## 11. 相册模块 (v0.2.0 新增)
+
+### albums — 相册表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| owner_id | BIGINT | NOT NULL, INDEX | 所属用户 |
+| name | VARCHAR(200) | NOT NULL | 相册名称 |
+| description | TEXT | | 相册描述 |
+| cover_file_id | BIGINT | | 封面文件 ID |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+
+**索引：**
+```sql
+CREATE INDEX idx_albums_owner_id ON albums(owner_id);
+```
+**设计要点：** 相册仅存储文件引用（file_id），不复制文件数据。file_count 为实时聚合字段（GORM `-` tag）。
+
+### album_files — 相册文件关联表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| album_id | BIGINT | PK (联合) | 关联 albums.id |
+| file_id | BIGINT | PK (联合) | 关联 files.id |
+| added_at | TIMESTAMPTZ | NOT NULL | 添加时间 |
+
+**联合主键：** `(album_id, file_id)`
+
+### exif_metadata — EXIF 元数据表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| file_id | BIGINT | PK | 关联 files.id |
+| make | VARCHAR(100) | | 相机制造商 |
+| model | VARCHAR(100) | | 相机型号 |
+| datetime_taken | TIMESTAMPTZ | | 拍摄时间 |
+| latitude | DOUBLE PRECISION | | GPS 纬度 |
+| longitude | DOUBLE PRECISION | | GPS 经度 |
+| iso | INTEGER | | ISO 感光度 |
+| f_number | DOUBLE PRECISION | | 光圈值 |
+| exposure_time | VARCHAR(20) | | 曝光时间 |
+| focal_length | DOUBLE PRECISION | | 焦距 (mm) |
+
+**设计要点：** 文件上传时异步 goroutine 使用 `github.com/rwcarlsen/goexif/exif` 解析 image/jpeg、image/tiff EXIF 数据。时间线视图按 `datetime_taken` 月份分组。
+
+---
+
+## 12. 音乐模块 (v0.2.0 新增)
+
+### public_tracks — 公共音乐库表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| title | VARCHAR(300) | NOT NULL | 歌曲标题 |
+| artist | VARCHAR(200) | | 艺术家 |
+| album | VARCHAR(200) | | 专辑名 |
+| duration | INT | DEFAULT 0 | 时长 (秒) |
+| track_num | INT | | 音轨号 |
+| storage_key | VARCHAR(500) | NOT NULL | MinIO 存储 key |
+| mime_type | VARCHAR(50) | | MIME 类型 |
+| file_size | BIGINT | | 文件大小 |
+| uploaded_by | BIGINT | | 上传者 |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+
+### playlists — 播放列表表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| owner_id | BIGINT | NOT NULL, INDEX | 所属用户 |
+| name | VARCHAR(200) | NOT NULL | 播放列表名称 |
+| is_public | BOOLEAN | DEFAULT false | 是否公开 |
+| created_at | TIMESTAMPTZ | NOT NULL | |
+| updated_at | TIMESTAMPTZ | NOT NULL | |
+
+**设计要点：** track_count 为实时聚合字段（GORM `-` tag）。
+
+### playlist_tracks — 播放列表歌曲表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| playlist_id | BIGINT | PK (联合) | 关联 playlists.id |
+| track_id | BIGINT | PK (联合) | 歌曲 ID |
+| source | VARCHAR(10) | NOT NULL | 来源: public / cloud |
+| sort_order | INT | DEFAULT 0 | 排序序号 |
+
+**联合主键：** `(playlist_id, track_id)`
+**设计要点：** `source` 区分公共音乐库 (`public`) 和用户云盘音频 (`cloud`)。拖拽排序更新 `sort_order`。
+
+---
+
+## 13. 系统监控历史表 (v0.2.0 新增)
+
+### dashboard_health_history — 健康状态快照表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| timestamp | TIMESTAMPTZ | NOT NULL, INDEX | 快照时间 |
+| status_data | TEXT | NOT NULL | 健康状态 JSON (各模块绿/黄/红) |
+| type | VARCHAR(20) | NOT NULL, INDEX | 快照类型: health / resources |
+
+**设计要点：** HealthAggregator 探测循环每 5 分钟写入一次，24 小时保留期。复用环形缓冲思路控制内存。
+
+### resource_metrics_history — 资源指标历史表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK | Snowflake ID |
+| timestamp | TIMESTAMPTZ | NOT NULL, INDEX | 采样时间 |
+| service | VARCHAR(30) | NOT NULL, INDEX | 服务名称 |
+| cpu_percent | DOUBLE PRECISION | | CPU 使用率 % |
+| memory_used | BIGINT | | 内存使用 (bytes) |
+| memory_total | BIGINT | | 内存总量 (bytes) |
+| disk_used | BIGINT | | 磁盘使用 (bytes) |
+| disk_total | BIGINT | | 磁盘总量 (bytes) |
+
+**索引：**
+```sql
+CREATE INDEX idx_resource_metrics_svc_time ON resource_metrics_history(service, timestamp);
+```
+**设计要点：** 每分钟采集一次，复用 Docker 容器 CPU/内存数据。服务状态页的 recharts 折线图数据源。
+
+---
+
+## 14. ER 关系图
 
 ```
 users ──1:N──> refresh_tokens
@@ -578,10 +706,15 @@ users ──1:N──> files
 users ──1:N──> file_shares
 users ──1:N──> cameras
 users ──1:N──> face_profiles
+users ──1:N──> albums
+users ──1:N──> playlists
+albums ──< album_files >── files
+files  ──1:1──> exif_metadata
 files  ──1:N──> file_versions
 cameras ──1:N──> recognition_events
 cameras ──1:N──> face_recognition_events
 face_profiles ──1:N──> face_attendance_sessions
+playlists ──< playlist_tracks >── public_tracks
 users ──< conversation_members >── conversations
 conversations ──1:N──> messages
 users ──1:N──> messages
@@ -596,6 +729,8 @@ users ──1:N──> chunk_uploads
 users ──1:N──> email_verifications
 users ──1:N──> phone_verifications
 users ──< blocklists >── users (拉黑关系)
+dashboard_health_history
+resource_metrics_history
 docker_nodes
 node_online_sessions
 system_configs
@@ -604,7 +739,7 @@ schema_migrations (版本化 SQL 迁移追踪)
 
 ---
 
-## 12. 集群模式注意事项
+## 15. 集群模式注意事项
 
 - 主键使用 Snowflake uint64，天然支持分布式全局唯一，无需额外配置
 - 集群模式下各服务使用不同的 Snowflake node ID (user-file-svc=1, im-svc=2, docker-svc=3, camera-svc=5, collab-svc=6)

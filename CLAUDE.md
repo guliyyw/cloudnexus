@@ -376,6 +376,30 @@ Face recognition is a **browser + backend** split:
 
 **Important**: Delete operations on attendance must verify face profile ownership via `FindFaceProfileByID()` before deleting, as the face profile carries the `owner_id`.
 
+### Album system (user-file-svc)
+
+Albums provide photo/video organization with reference-only storage (no file duplication):
+
+- **Models**: `Album` (name/description/cover_file_id/owner) + `AlbumFile` (album_id+file_id joint PK) + `ExifMetadata` (camera make/model, datetime_taken, GPS, ISO, aperture, etc.)
+- **Endpoints**: `GET/POST /api/v1/albums`, `PUT/DELETE /api/v1/albums/:id`, `POST /api/v1/albums/:id/files`, `DELETE /api/v1/albums/:id/files/:fileId`
+- **Views**: `?view=grid` (default flat list), `?view=timeline` (grouped by EXIF datetime_taken month), `?view=folder` (grouped by directory path)
+- **EXIF extraction**: async goroutine on image upload using `github.com/rwcarlsen/goexif/exif`, stores metadata in `exif_metadata` table
+- **Album sharing**: reuses Share model with `share_type=album`, same password+expiry pattern as file sharing. `POST /api/v1/albums/:id/share` creates share, `GET /api/v1/share/album/:code` is the public landing page
+- **Frontend**: AlbumPage (grid/timeline/folder views), AlbumDetailPage (file list + batch operations), Lightbox (fullscreen zoom/rotate/keyboard nav/slideshow), album picker modal for adding files from PreviewModal and ChatPage
+
+### Music system (user-file-svc)
+
+Dual-source music library combining server-managed public tracks and user cloud drive audio:
+
+- **Models**: `PublicTrack` (title/artist/album/duration/storage_key), `Playlist` (owner/name/is_public), `PlaylistTrack` (playlist_id+track_id+source+sort_order)
+- **Dual sources**: `?source=public` queries `public_tracks` table; `?source=private` queries user's `files` table (mime_type LIKE 'audio/%'); `?source=all` merges both
+- **Endpoints**: `GET /api/v1/music/library`, `POST /api/v1/music/library/upload` (admin), `DELETE /api/v1/music/library/:id` (admin), `GET /api/v1/music/tracks/:id/stream` (Range request for seek), `GET /api/v1/music/tracks/:id/lyrics`
+- **Playlist endpoints**: `GET/POST /api/v1/music/playlists`, `PUT/DELETE /api/v1/music/playlists/:id`, `POST /api/v1/music/playlists/:id/tracks`, `DELETE /api/v1/music/playlists/:id/tracks/:trackId`
+- **Import/Export**: `POST /api/v1/music/playlists/:id/import` (multipart JSON/M3U), `GET /api/v1/music/playlists/:id/export?format=json|m3u`. M3U parsing via `#EXTINF` regex
+- **Frontend**: MusicPage (public/private tabs, search, track table), PlaylistPage (card list + import/export), PlaylistDetailPage (sortable track table + add from library)
+- **Global player**: Zustand `playerStore` — single `<audio>` element, MiniPlayer (fixed bottom bar, draggable, collapsible), FullPlayer (cover art + progress + queue + lyrics), supports sequential/shuffle/repeat-one/repeat-all modes
+- **Lyrics**: parsed from `[mm:ss.xx]text` LRC format via regex, scroll-synced with `currentTime`, "no lyrics" placeholder when unavailable
+
 ### Nginx load balancing
 `deploy/nginx/nginx.conf` — upstream blocks for multi-server deployment:
 - `user_file_backend`: user-file-svc instances (default: single server, add more for multi-server)
