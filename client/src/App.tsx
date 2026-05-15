@@ -24,6 +24,7 @@ import DocumentListPage from './pages/DocumentListPage'
 import DocumentEditorPage from './pages/DocumentEditorPage'
 import RecycleBinPage from './pages/RecycleBinPage'
 import AlbumPage from './pages/AlbumPage'
+import AlbumDetailPage from './pages/AlbumDetailPage'
 import MusicPage from './pages/MusicPage'
 import ServiceStatusPage from './pages/ServiceStatusPage'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -103,6 +104,7 @@ export default function App() {
               <Route path="/documents" element={<PageTransition><ErrorBoundary><DocumentListPage /></ErrorBoundary></PageTransition>} />
               <Route path="/documents/:id" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
               <Route path="/album" element={<PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/album/:id" element={<PageTransition><ErrorBoundary><AlbumDetailPage /></ErrorBoundary></PageTransition>} />
               <Route path="/music" element={<PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition>} />
               <Route path="/trash" element={<PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition>} />
               <Route path="/settings" element={<PageTransition><ErrorBoundary><UserSettingsPage /></ErrorBoundary></PageTransition>} />

@@ -68,7 +68,7 @@ func main() {
 		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}, &model.Album{}, &model.AlbumFile{}, &model.ExifMetadata{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -140,6 +140,10 @@ func main() {
 	trashH := handler.NewTrashHandler(trashSvc)
 
 	quotaH := handler.NewQuotaHandler(quotaSvc, fileRepo)
+
+	albumRepo := repository.NewAlbumRepository(db)
+	albumSvc := service.NewAlbumService(albumRepo, fileRepo)
+	albumH := handler.NewAlbumHandler(albumSvc)
 
 	cleanupScheduler := service.NewCleanupScheduler(trashSvc, quotaSvc, chunkRepo)
 	cleanupScheduler.Start()
@@ -294,6 +298,19 @@ func main() {
 			share.GET("/:code", shareH.HandleGetShareByCode)
 			share.POST("/:code/verify", shareH.HandleVerifyPassword)
 			share.GET("/:code/download", shareH.HandleDownloadShare)
+		}
+
+		albums := api.Group("/albums")
+		albums.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		{
+			albums.POST("", middleware.RequirePermission("file:write"), albumH.HandleCreate)
+			albums.GET("", middleware.RequirePermission("file:read"), albumH.HandleList)
+			albums.GET("/:id", middleware.RequirePermission("file:read"), albumH.HandleGet)
+			albums.PUT("/:id", middleware.RequirePermission("file:write"), albumH.HandleUpdate)
+			albums.DELETE("/:id", middleware.RequirePermission("file:delete"), albumH.HandleDelete)
+			albums.GET("/:id/files", middleware.RequirePermission("file:read"), albumH.HandleGetFiles)
+			albums.POST("/:id/files", middleware.RequirePermission("file:write"), albumH.HandleAddFiles)
+			albums.DELETE("/:id/files/:fileId", middleware.RequirePermission("file:delete"), albumH.HandleRemoveFile)
 		}
 
 		dashSvc := service.NewDashboardService(db)
