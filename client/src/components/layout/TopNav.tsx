@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button, Dropdown, Avatar, Drawer, Menu, Grid, Typography } from 'antd'
 import {
@@ -11,10 +11,13 @@ import {
   FileTextOutlined,
   PictureOutlined,
   CustomerServiceOutlined,
+  UnorderedListOutlined,
   SettingOutlined,
   LogoutOutlined,
   UserOutlined,
   MenuOutlined,
+  ShareAltOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../../stores/authStore'
 import { useAccess } from '../../hooks/useAccess'
@@ -31,23 +34,6 @@ interface NavItem {
   adminOnly?: boolean
 }
 
-const sectionLabels: Record<string, string> = {
-  '/dashboard': '',
-  '/files': '文件管理',
-  '/shares': '我的分享',
-  '/chat': '即时通讯',
-  '/friends': '好友',
-  '/docker': 'Docker 管理',
-  '/cameras': '摄像头管理',
-  '/album': '相册',
-  '/music': '音乐',
-  '/documents': '在线文档',
-  '/trash': '回收站',
-  '/settings': '个人设置',
-  '/admin': '管理后台',
-  '/status': '系统状态',
-}
-
 export default function TopNav() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -61,20 +47,18 @@ export default function TopNav() {
     if (!user) fetchProfile()
   }, [])
 
-  const currentSection = useMemo(() => {
-    const base = '/' + location.pathname.split('/')[1]
-    return sectionLabels[base] || ''
-  }, [location.pathname])
-
-  const allNavItems: NavItem[] = [
+const allNavItems: NavItem[] = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '首页', path: '/dashboard' },
     { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files' },
+    { key: 'shares', icon: <ShareAltOutlined />, label: '我的分享', path: '/shares' },
+    { key: 'trash', icon: <DeleteOutlined />, label: '回收站', path: '/trash' },
     { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat' },
     { key: 'friends', icon: <TeamOutlined />, label: '好友', path: '/friends' },
     { key: 'docker', icon: <ContainerOutlined />, label: 'Docker', path: '/docker' },
     { key: 'camera', icon: <VideoCameraOutlined />, label: '摄像头', path: '/cameras' },
     { key: 'album', icon: <PictureOutlined />, label: '相册', path: '/album' },
     { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐', path: '/music' },
+    { key: 'playlist', icon: <UnorderedListOutlined />, label: '播放列表', path: '/playlist' },
     { key: 'docs', icon: <FileTextOutlined />, label: '文档', path: '/documents' },
     ...(isAdmin ? [
       { key: 'admin', icon: <SettingOutlined />, label: '管理后台', path: '/admin', adminOnly: true },
@@ -128,8 +112,9 @@ export default function TopNav() {
           left: 0,
           right: 0,
           height: 56,
-          background: '#fff',
-          borderBottom: '1px solid #f0eeeb',
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -158,11 +143,6 @@ export default function TopNav() {
           >
             CloudNexus
           </span>
-          {!isMobile && currentSection && (
-            <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>
-              {currentSection}
-            </Text>
-          )}
         </div>
         <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
           <Avatar

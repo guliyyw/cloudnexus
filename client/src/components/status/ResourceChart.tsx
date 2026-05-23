@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { colors } from '../../theme/tokens'
+import { colors, chart as chartTokens } from '../../theme/tokens'
 import type { ResourcePoint } from '../../services/status'
 
 const { Text } = Typography
@@ -66,11 +66,11 @@ export default function ResourceChart({ services, serviceFilter }: Props) {
             </Text>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTokens.gridStroke} />
+                <XAxis dataKey="time" tick={{ fontSize: 10, fill: chartTokens.tickFill }} interval="preserveStartEnd" />
                 <YAxis
                   yAxisId="left"
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 10, fill: chartTokens.tickFill }}
                   domain={[0, 100]}
                   unit="%"
                   width={40}
@@ -78,13 +78,13 @@ export default function ResourceChart({ services, serviceFilter }: Props) {
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 10, fill: chartTokens.tickFill }}
                   domain={[0, 'auto']}
                   tickFormatter={(v: number) => formatMemory(v)}
                   width={60}
                 />
                 <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                  contentStyle={{ fontSize: chartTokens.tooltip.fontSize, borderRadius: chartTokens.tooltip.borderRadius, background: chartTokens.tooltip.background, border: chartTokens.tooltip.border, color: chartTokens.tooltip.color }}
                   formatter={(value: any, name: any) => {
                     const v = typeof value === 'number' ? value : Number(value || 0)
                     const n = String(name || '')

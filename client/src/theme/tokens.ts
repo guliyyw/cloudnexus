@@ -1,11 +1,11 @@
 export const colors = {
-  primary: '#e8964a',
-  primaryLight: '#fef3e7',
-  primaryDark: '#d4853a',
-  bg: '#fafaf8',
-  bgCard: '#ffffff',
-  text: '#1a1a1a',
-  textSecondary: '#8c8c8c',
+  primary: '#81ecfe',
+  primaryLight: 'rgba(129,236,254,0.08)',
+  primaryDark: '#5ac8d8',
+  bg: '#000000',
+  bgCard: 'rgba(255,255,255,0.04)',
+  text: '#f4f4f4',
+  textSecondary: '#888888',
   success: '#52c41a',
   warning: '#faad14',
   error: '#ff4d4f',
@@ -15,16 +15,16 @@ export const colors = {
 };
 
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 14,
-  xl: 20,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 500,
 };
 
 export const shadow = {
-  card: '0 1px 3px rgba(0,0,0,0.06)',
-  hover: '0 4px 16px rgba(0,0,0,0.1)',
-  modal: '0 8px 32px rgba(0,0,0,0.15)',
+  card: '0 0 20px rgba(129,236,254,0.04)',
+  hover: '0 0 40px rgba(129,236,254,0.1)',
+  modal: '0 0 60px rgba(0,0,0,0.5)',
 };
 
 export const spacing = {
@@ -39,4 +39,16 @@ export const motion = {
   fast: '0.15s',
   normal: '0.25s',
   slow: '0.4s',
+};
+
+export const chart = {
+  gridStroke: 'rgba(255,255,255,0.06)',
+  tickFill: '#888',
+  tooltip: {
+    fontSize: 12,
+    borderRadius: 8,
+    background: 'rgba(0,0,0,0.9)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#f4f4f4',
+  },
 };

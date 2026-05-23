@@ -300,7 +300,24 @@ repository (数据层) → 数据库操作、缓存访问
 - 状态管理使用 Zustand
 - **ID 类型**：所有 ID 为 `string` 类型（对应后端 Snowflake uint64）
 
-### 4.4 RBAC 权限控制
+### 4.4 主题系统
+
+项目采用暗色主题 (Active Theory 风格)：纯黑背景 `#000000`、青蓝主色 `#81ecfe`、玻璃态卡片。
+
+**颜色 Token** 统一定义在 `theme/tokens.ts`：
+
+```typescript
+import { colors, radius, shadow, spacing, motion, chart } from '../theme/tokens'
+// colors.primary, colors.text, colors.textSecondary, colors.bgCard ...
+// chart.gridStroke, chart.tickFill, chart.tooltip ...
+```
+
+- 组件内联样式硬编码颜色时，优先引用 `tokens.ts` 中的值
+- Ant Design 组件通过 `App.tsx` 的 `ConfigProvider theme` 自动适配暗色，80% 组件无需手动设色
+- Recharts 图表使用 `chart` Token 对象统一网格线、刻度、提示框样式
+- 全局效果（点阵背景、暗角、滚动条）在 `index.css` 中通过 CSS 伪元素实现
+
+### 4.5 RBAC 权限控制
 
 后端通过 `middleware.RequirePermission(permCode)` 中间件控制 API 访问，前端通过 `useAccess` Hook 控制 UI 元素可见性：
 
@@ -317,7 +334,7 @@ const { hasPermission } = useAccess();
 
 预置角色：`super_admin`（全部权限）、`admin`（管理权限）、`user`（基本权限）。
 
-### 4.5 文件命名
+### 4.6 文件命名
 
 - Go: `snake_case.go`
 - TypeScript: `PascalCase.tsx` (组件), `camelCase.ts` (工具)
