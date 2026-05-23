@@ -4,36 +4,26 @@
 
 body {
   margin: 0;
-  background: #04050a;
-  color: #f4f4f4;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
 }
 
-/* 暗色滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ── 暗色主题 body ── */
+[data-theme="dark"] body {
+  background: #04050a;
+  color: #f4f4f4;
 }
 
-::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.02);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.18);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.28);
+/* ── 亮色主题 body ── */
+[data-theme="light"] body {
+  background: #fafaf8;
+  color: #1a1a1a;
 }
 
 /*
- * Layer 1: 径向光晕 — 顶部中央柔和青蓝光斑，模拟环境光
- * 替代原有机械点阵网格
+ * Layer 1: 径向光晕（仅暗色）
  */
-body::before {
+[data-theme="dark"] body::before {
   content: '';
   position: fixed;
   top: 0;
@@ -48,11 +38,14 @@ body::before {
     radial-gradient(ellipse 30% 50% at 20% 60%, rgba(129,236,254,0.02) 0%, transparent 50%);
 }
 
+[data-theme="light"] body::before {
+  content: none;
+}
+
 /*
- * Layer 2: SVG 噪点纹理 — 模拟 activetheory.net 的胶片颗粒感
- * feTurbulence 生成分形噪点，覆盖全屏，极低透明度
+ * Layer 2: SVG 噪点纹理（仅暗色）
  */
-body::after {
+[data-theme="dark"] body::after {
   content: '';
   position: fixed;
   top: 0;
@@ -67,10 +60,14 @@ body::after {
   opacity: 0.035;
 }
 
+[data-theme="light"] body::after {
+  content: none;
+}
+
 /*
- * Layer 3: 暗角效果 — 边缘加深，聚焦中心
+ * Layer 3: 暗角效果（仅暗色）
  */
-#bg-vignette {
+[data-theme="dark"] #bg-vignette {
   position: fixed;
   top: 0;
   left: 0;
@@ -81,10 +78,14 @@ body::after {
   background: radial-gradient(ellipse at center, transparent 45%, rgba(2,3,8,0.6) 100%);
 }
 
+[data-theme="light"] #bg-vignette {
+  display: none;
+}
+
 /*
- * Layer 4: 慢速旋转光斑 — 模拟 WebGL 粒子/光运动感
+ * Layer 4: 慢速旋转光斑（仅暗色）
  */
-#bg-blob {
+[data-theme="dark"] #bg-blob {
   position: fixed;
   top: -30%;
   left: -20%;
@@ -100,10 +101,45 @@ body::after {
   transform-origin: center center;
 }
 
+[data-theme="light"] #bg-blob {
+  display: none;
+}
+
 @keyframes rotate-blob {
   from { transform: rotate(0deg) scale(1); }
   25%  { transform: rotate(1deg) scale(1.02); }
   50%  { transform: rotate(0deg) scale(1); }
   75%  { transform: rotate(-1deg) scale(0.98); }
   to   { transform: rotate(0deg) scale(1); }
+}
+
+/* ── 滚动条 ── */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.02);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.28);
+}
+
+[data-theme="light"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #d9d6d0;
+  border-radius: 3px;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #bfbbb4;
 }

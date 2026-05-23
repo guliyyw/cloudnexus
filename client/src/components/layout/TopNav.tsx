@@ -18,8 +18,11 @@ import {
   MenuOutlined,
   ShareAltOutlined,
   DeleteOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../../stores/authStore'
+import { useThemeStore } from '../../stores/themeStore'
 import { useAccess } from '../../hooks/useAccess'
 import { colors } from '../../theme/tokens'
 
@@ -38,6 +41,7 @@ export default function TopNav() {
   const navigate = useNavigate()
   const location = useLocation()
   const { logout, user, fetchProfile } = useAuthStore()
+  const { isDark, toggleTheme } = useThemeStore()
   const { isAdmin } = useAccess()
   const screens = useBreakpoint()
   const isMobile = !screens.md
@@ -112,9 +116,9 @@ const allNavItems: NavItem[] = [
           left: 0,
           right: 0,
           height: 56,
-          background: 'rgba(0,0,0,0.85)',
+          background: isDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -144,13 +148,22 @@ const allNavItems: NavItem[] = [
             CloudNexus
           </span>
         </div>
-        <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
-          <Avatar
-            size={isMobile ? 32 : 36}
-            icon={<UserOutlined />}
-            style={{ backgroundColor: colors.primary, cursor: 'pointer', flexShrink: 0 }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Button
+            type="text"
+            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+            onClick={toggleTheme}
+            title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+            style={{ color: colors.textSecondary, fontSize: 18 }}
           />
-        </Dropdown>
+          <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
+            <Avatar
+              size={isMobile ? 32 : 36}
+              icon={<UserOutlined />}
+              style={{ backgroundColor: colors.primary, cursor: 'pointer', flexShrink: 0 }}
+            />
+          </Dropdown>
+        </div>
       </div>
 
       <Drawer

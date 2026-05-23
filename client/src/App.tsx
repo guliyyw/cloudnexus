@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ConfigProvider } from 'antd'
+import { ConfigProvider, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
+import { useThemeStore } from './stores/themeStore'
 import { AuthGuard, AdminGuard } from './components/Guard'
 import AppLayout from './components/Layout'
 import PageTransition from './components/PageTransition'
@@ -26,56 +27,124 @@ import RecycleBinPage from './pages/RecycleBinPage'
 import AlbumPage from './pages/AlbumPage'
 import AlbumDetailPage from './pages/AlbumDetailPage'
 import MusicPage from './pages/MusicPage'
+import PlaylistPage from './pages/PlaylistPage'
+import PlaylistDetailPage from './pages/PlaylistDetailPage'
 import ServiceStatusPage from './pages/ServiceStatusPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { colors } from './theme/tokens'
 
-const theme = {
-  token: {
-    colorPrimary: colors.primary,
-    colorPrimaryBg: colors.primaryLight,
-    colorPrimaryBorder: '#f5d5b0',
-    colorBgLayout: colors.bg,
-    colorBgContainer: colors.bgCard,
-    colorBgElevated: colors.bgCard,
-    colorBorderSecondary: '#f0eeeb',
-    colorText: colors.text,
-    colorTextSecondary: colors.textSecondary,
-    borderRadius: 10,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    boxShadowSecondary: '0 2px 8px rgba(0,0,0,0.06)',
-    controlHeight: 38,
-    colorLink: colors.primary,
-  },
-  components: {
-    Button: {
-      borderRadius: 8,
-      controlHeight: 38,
-    },
-    Card: {
-      borderRadiusLG: 12,
-      paddingLG: 24,
-    },
-    Table: {
-      borderRadius: 10,
-      headerBg: '#fafaf8',
-      headerColor: '#6b6b6b',
-    },
-    Input: {
-      borderRadius: 8,
-      controlHeight: 38,
-    },
-    Modal: {
-      borderRadiusLG: 14,
-    },
-    Menu: {
-      itemBg: 'transparent',
-      subMenuItemBg: 'transparent',
-    },
-  },
-}
+const { darkAlgorithm, defaultAlgorithm } = antdTheme
 
 export default function App() {
+  const isDark = useThemeStore((s) => s.isDark)
+
+  const theme = {
+    algorithm: isDark ? darkAlgorithm : defaultAlgorithm,
+    token: {
+      colorPrimary: colors.primary,
+      colorPrimaryBg: colors.primaryLight,
+      colorPrimaryBorder: isDark ? 'rgba(129,236,254,0.25)' : '#f5d5b0',
+      colorPrimaryHover: isDark ? '#a0f0ff' : colors.primaryDark,
+      colorPrimaryActive: colors.primaryDark,
+      colorBgLayout: colors.bg,
+      colorBgContainer: colors.bgCard,
+      colorBgElevated: isDark ? 'rgba(255,255,255,0.06)' : colors.bgCard,
+      colorBgSpotlight: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.02)',
+      colorBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      colorBorderSecondary: isDark ? 'rgba(255,255,255,0.04)' : '#f0eeeb',
+      colorText: colors.text,
+      colorTextSecondary: colors.textSecondary,
+      colorTextTertiary: isDark ? '#666666' : '#999999',
+      borderRadius: isDark ? 12 : 10,
+      borderRadiusLG: 16,
+      borderRadiusSM: 8,
+      borderRadiusXS: 4,
+      boxShadow: isDark
+        ? '0 0 20px rgba(0,0,0,0.3)'
+        : '0 1px 3px rgba(0,0,0,0.04)',
+      boxShadowSecondary: isDark
+        ? '0 0 40px rgba(0,0,0,0.4)'
+        : '0 2px 8px rgba(0,0,0,0.06)',
+      controlHeight: isDark ? 40 : 38,
+      colorLink: colors.primary,
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      colorSplit: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      wireframe: false,
+    },
+    components: {
+      Button: {
+        borderRadius: isDark ? 500 : 8,
+        controlHeight: isDark ? 40 : 38,
+        defaultBg: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+        defaultBorderColor: isDark ? 'rgba(255,255,255,0.12)' : '#d9d9d9',
+        defaultColor: colors.text,
+        defaultHoverBg: isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f5',
+        defaultHoverBorderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.primary,
+        primaryShadow: isDark ? '0 0 20px rgba(129,236,254,0.3)' : 'none',
+        fontWeight: 500,
+      },
+      Card: {
+        borderRadiusLG: isDark ? 16 : 12,
+        paddingLG: 24,
+      },
+      Table: {
+        borderRadius: isDark ? 12 : 10,
+        headerBg: isDark ? 'rgba(255,255,255,0.03)' : '#fafaf8',
+        headerColor: isDark ? '#666666' : '#6b6b6b',
+        rowHoverBg: isDark
+          ? 'rgba(129,236,254,0.04)'
+          : 'rgba(232,150,74,0.04)',
+        borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#f0eeeb',
+      },
+      Input: {
+        borderRadius: isDark ? 500 : 8,
+        controlHeight: isDark ? 40 : 38,
+        activeBorderColor: colors.primary,
+        hoverBorderColor: isDark
+          ? 'rgba(129,236,254,0.3)'
+          : 'rgba(232,150,74,0.3)',
+        colorBgContainer: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+      },
+      Modal: {
+        borderRadiusLG: isDark ? 16 : 14,
+        headerBg: 'transparent',
+        contentBg: isDark ? 'rgba(0,0,0,0.95)' : '#ffffff',
+      },
+      Menu: {
+        itemBg: 'transparent',
+        subMenuItemBg: 'transparent',
+        darkItemBg: 'transparent',
+        itemSelectedBg: isDark
+          ? 'rgba(129,236,254,0.1)'
+          : 'rgba(232,150,74,0.1)',
+        itemSelectedColor: colors.primary,
+      },
+      Tag: {
+        defaultBg: isDark ? 'rgba(255,255,255,0.06)' : '#f5f5f5',
+        defaultColor: colors.textSecondary,
+      },
+      Progress: {
+        remainingColor: isDark ? 'rgba(255,255,255,0.04)' : '#f0f0f0',
+      },
+      Slider: {
+        railBg: isDark ? 'rgba(255,255,255,0.1)' : '#f0f0f0',
+        trackBg: colors.primary,
+        handleColor: colors.primary,
+      },
+      Tabs: {
+        itemSelectedColor: colors.primary,
+        inkBarColor: colors.primary,
+        colorBgContainer: 'transparent',
+      },
+      Breadcrumb: {
+        lastColor: colors.textSecondary,
+        linkColor: colors.textSecondary,
+      },
+      Switch: {
+        colorPrimary: colors.primary,
+      },
+    },
+  }
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
@@ -106,6 +175,8 @@ export default function App() {
               <Route path="/album" element={<PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition>} />
               <Route path="/album/:id" element={<PageTransition><ErrorBoundary><AlbumDetailPage /></ErrorBoundary></PageTransition>} />
               <Route path="/music" element={<PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/playlist" element={<PageTransition><ErrorBoundary><PlaylistPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/playlist/:id" element={<PageTransition><ErrorBoundary><PlaylistDetailPage /></ErrorBoundary></PageTransition>} />
               <Route path="/trash" element={<PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition>} />
               <Route path="/settings" element={<PageTransition><ErrorBoundary><UserSettingsPage /></ErrorBoundary></PageTransition>} />
             </Route>
