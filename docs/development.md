@@ -302,7 +302,18 @@ repository (数据层) → 数据库操作、缓存访问
 
 ### 4.4 主题系统
 
-项目采用暗色主题 (Active Theory 风格)：纯黑背景 `#000000`、青蓝主色 `#81ecfe`、玻璃态卡片。
+项目支持**暗色主题** (Active Theory 风格) 和**亮色主题** (暖橙风格)，通过 TopNav 按钮一键切换。
+
+- **暗色**: 深蓝黑背景 `#04050a`、青蓝主色 `#81ecfe`、玻璃态卡片、四层 CSS 背景（光晕/噪点/暗角/旋转光斑）
+- **亮色**: 暖白背景 `#fafaf8`、暖橙主色 `#e8964a`、无背景装饰层
+
+**核心架构**: `tokens.ts` 中定义双套 Token，`colors`/`radius`/`shadow`/`chart` 导出为可变对象。切换主题时 `applyTheme()` 通过 `Object.assign` 原地更新属性值，29 个组件文件无需修改即可响应主题变更。
+
+**状态管理**: `stores/themeStore.ts` (Zustand)，持久化到 `localStorage` (key: `cloudnexus-theme`)。初始化时从 localStorage 读取并设置 `<html data-theme="dark|light">`。
+
+**CSS 选择器**: 所有暗色背景层包裹在 `[data-theme="dark"]` 中，亮色模式用 `content: none`/`display: none` 隐藏。滚动条样式分别定义。`index.html` 中有防闪烁内联脚本，在首帧渲染前设置 `data-theme`。
+
+**Ant Design**: `App.tsx` ConfigProvider 根据 `isDark` 动态使用 `theme.darkAlgorithm` / `theme.defaultAlgorithm`，token 和 components 中的硬编码值按主题分支。
 
 **颜色 Token** 统一定义在 `theme/tokens.ts`：
 
@@ -313,9 +324,9 @@ import { colors, radius, shadow, spacing, motion, chart } from '../theme/tokens'
 ```
 
 - 组件内联样式硬编码颜色时，优先引用 `tokens.ts` 中的值
-- Ant Design 组件通过 `App.tsx` 的 `ConfigProvider theme` 自动适配暗色，80% 组件无需手动设色
+- Ant Design 组件通过 `App.tsx` 的 `ConfigProvider theme` 自动适配，80% 组件无需手动设色
 - Recharts 图表使用 `chart` Token 对象统一网格线、刻度、提示框样式
-- 全局效果（点阵背景、暗角、滚动条）在 `index.css` 中通过 CSS 伪元素实现
+- 暗色全局效果（光晕/噪点/暗角/旋转光斑）在 `index.css` 中通过 CSS 伪元素实现
 
 ### 4.5 RBAC 权限控制
 
