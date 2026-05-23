@@ -84,25 +84,18 @@ export const motion = { fast: '0.15s', normal: '0.25s', slow: '0.4s' }
 export const colors = { ...darkColors }
 export const radius = { ...darkRadius }
 export const shadow = { ...darkShadow }
-export const chart = { ...darkChart }
-
-let _current: ThemeMode = 'dark'
-
-export function getTheme(): ThemeMode {
-  return _current
-}
+export const chart = { ...darkChart, tooltip: { ...darkChart.tooltip } }
 
 export function applyTheme(t: ThemeMode): void {
-  _current = t
   if (t === 'light') {
     Object.assign(colors, lightColors)
     Object.assign(radius, lightRadius)
     Object.assign(shadow, lightShadow)
-    Object.assign(chart, lightChart)
+    Object.assign(chart, { ...lightChart, tooltip: { ...lightChart.tooltip } })
   } else {
     Object.assign(colors, darkColors)
     Object.assign(radius, darkRadius)
     Object.assign(shadow, darkShadow)
-    Object.assign(chart, darkChart)
+    Object.assign(chart, { ...darkChart, tooltip: { ...darkChart.tooltip } })
   }
 }

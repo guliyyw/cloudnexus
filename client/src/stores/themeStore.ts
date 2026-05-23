@@ -9,6 +9,9 @@ function readStored(): ThemeMode {
     const v = localStorage.getItem(STORAGE_KEY)
     if (v === 'light' || v === 'dark') return v
   } catch { /* localStorage 不可用 */ }
+  try {
+    if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light'
+  } catch { /* matchMedia 不可用 */ }
   return 'dark'
 }
 
