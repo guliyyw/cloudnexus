@@ -64,7 +64,7 @@ export default function DocumentListPage() {
       key: 'title',
       render: (t: string, r: CollabDocument) => (
         <a onClick={() => navigate(`/documents/${r.id}`)} style={{ fontWeight: 500 }}>
-          <FileTextOutlined style={{ marginRight: 8, color: '#e8964a' }} />
+          <FileTextOutlined style={{ marginRight: 8, color: '#81ecfe' }} />
           {t}
         </a>
       ),

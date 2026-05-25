@@ -74,3 +74,29 @@ export function getStreamUrl(trackId: string, source: string): string {
   const token = localStorage.getItem('access_token')
   return `/api/v1/music/tracks/${trackId}/stream?source=${source}&token=${token}`
 }
+
+export async function getLyrics(trackId: string, source: string): Promise<string | null> {
+  try {
+    const res = await api.get(`/music/tracks/${trackId}/lyrics`, { params: { source } })
+    return res.data.data?.lyrics || null
+  } catch {
+    return null
+  }
+}
+
+export async function exportPlaylist(id: string, format: 'json' | 'm3u' = 'json'): Promise<Blob> {
+  const res = await api.get(`/music/playlists/${id}/export`, {
+    params: { format },
+    responseType: 'blob',
+  })
+  return res.data as Blob
+}
+
+export async function importPlaylist(id: string, file: File, format: string): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('format', format)
+  await api.post(`/music/playlists/${id}/import`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}

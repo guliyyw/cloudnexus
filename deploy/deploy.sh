@@ -16,7 +16,8 @@
 set -euo pipefail
 
 # ── 配置 ──
-REMOTE_HOST="${DEPLOY_HOST:-121.43.145.157}"
+# SECURITY: 移除硬编码 IP，必须从环境变量设置
+REMOTE_HOST="${DEPLOY_HOST:?ERROR: DEPLOY_HOST is required}"
 REMOTE_USER="${DEPLOY_USER:-user}"
 REMOTE_HOME="/home/${REMOTE_USER}/cloudnexus"
 REMOTE_DEPLOY="${REMOTE_HOME}/deploy"

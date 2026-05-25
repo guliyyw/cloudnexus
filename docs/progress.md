@@ -1,6 +1,6 @@
 # CloudNexus 开发进度
 
-> 当前版本：v0.2.0-dev | 更新：2026-05-15
+> 当前版本：v0.2.0-dev | 更新：2026-05-26
 >
 > 版本策略：**v0.1.0 已正式发布**（Phase 1–4 完成并测试通过），v0.2.0 开发中
 
@@ -480,10 +480,94 @@
 
 ---
 
+### Phase 6 — 前端模块化重构 + 后端工具链完善 ✅
+
+**目标：** 大型页面组件拆分、音乐播放器全功能完善、后端通用工具包、RBAC 精细化管理
+
+**总预估：** 约 18 人天 (实际完成)
+
+#### 6.1 前端模块化重构
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| R1 | AdminPage 拆分 — UserManagement / SystemStatus / LogViewer / SystemConfigPanel / QuotaTierPanel / AlertRulesManagement / ClusterNodes / HistoricalMetrics 独立组件 | 2d | ✅ |
+| R2 | ChatPage 拆分 — ConversationList / ChatInput / MessageArea / MemberPanel 独立组件 | 2d | ✅ |
+| R3 | 各组件接口统一 (Props 类型定义、事件回调规范) | 0.5d | ✅ |
+
+#### 6.2 音乐播放器全功能
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| M1 | FullPlayer 全屏播放器 — 封面艺术、进度条、播放模式切换 (顺序/随机/单曲/循环) | 1.5d | ✅ |
+| M2 | LyricsPanel 歌词面板 — LRC 解析 + 滚动同步 + 无歌词占位 | 1d | ✅ |
+| M3 | PlaylistPage 播放列表卡片列表 + PlaylistDetailPage 可排序曲目表 + 添加歌曲 | 2d | ✅ |
+| M4 | playlistStore — playlist CRUD 前端状态管理 (Zustand) | 1d | ✅ |
+| M5 | 播放器全局状态增强 — MiniPlayer 可拖拽收折 + 队列管理 + 播放历史 | 1d | ✅ |
+
+#### 6.3 后端通用工具包
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| U1 | pkg/httputil/error.go — 统一 HTTP 错误类型 + 错误码映射 | 0.5d | ✅ |
+| U2 | pkg/httputil/gin.go — Gin 上下文辅助函数 (参数解析/响应) | 0.5d | ✅ |
+| U3 | pkg/httputil/websocket.go — WebSocket 升级与连接管理工具 | 0.5d | ✅ |
+
+#### 6.4 权限与安全增强
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| P1 | RBAC 中间件完善 (pkg/middleware/rbac.go) — 多角色权限聚合 + 超级管理员通配符 | 1d | ✅ |
+| P2 | JWT 认证增强 — 设备指纹 + 强制下线标记 + 活跃会话追踪 | 1d | ✅ |
+| P3 | 邮件系统增强 — HTML 模板邮件 + 多场景验证码 (注册/重置/注销) | 0.5d | ✅ |
+
+#### 6.5 相册与导航增强
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| A1 | 相册文件夹视图 — AlbumFolder 组件 (按目录树结构展示) | 1d | ✅ |
+| A2 | 相册分享后端 — album_share.go handler + 复用 share 模块 | 1d | ✅ |
+| N1 | 前端导航工具 — navigate.ts 统一导航函数 + 跨模块跳转 | 0.5d | ✅ |
+
+#### 6.6 部署与配置优化
+
+| 编号 | 任务 | 预估 | 状态 |
+|------|------|------|------|
+| D1 | docker-compose.single.yml 优化 — 服务依赖、健康检查、资源限制 | 0.5d | ✅ |
+| D2 | AI 推理服务 Dockerfile 优化 — CUDA 支持 + 模型预加载 | 0.5d | ✅ |
+| D3 | 服务配置统一 — 新增邮箱 SMTP 配置项、JWT 增强配置 | 0.5d | ✅ |
+
+#### 6.7 数据库变更概要
+
+| 表名 | 模块 | 说明 |
+|------|------|------|
+| `album_shares` | 相册 | 复用 `shares` 表，新增 `share_type=album` 支持 |
+| `user_sessions` | 认证 | 扩展字段：设备信息、最后活跃时间、强制下线标记 |
+| - | 权限 | RBAC 权限集合扩展到 50+ 权限码 |
+
+#### 6.8 新增 API 端点（摘要）
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/albums/:id/share` | POST | 创建相册分享链接 |
+| `/api/v1/music/playlists` | GET / POST | 播放列表列表 / 创建 |
+| `/api/v1/music/playlists/:id` | PUT / DELETE | 编辑 / 删除播放列表 |
+| `/api/v1/music/playlists/:id/tracks` | POST | 添加歌曲到播放列表 |
+| `/api/v1/music/playlists/:id/tracks/:trackId` | DELETE | 从播放列表移除歌曲 |
+| `/api/v1/music/playlists/:id/import` | POST | 导入歌单 (JSON/M3U) |
+| `/api/v1/music/playlists/:id/export` | GET | 导出歌单 (JSON/M3U) |
+| `/api/v1/music/tracks/:id/lyrics` | GET | 获取歌词 LRC |
+| `/api/v1/music/tracks/:id/stream` | GET | 音频流 (Range 请求) |
+| `/api/v1/user/sessions` | GET | 活跃会话列表 |
+| `/api/v1/user/sessions/:id` | DELETE | 强制下线某会话 |
+| `/api/v1/admin/roles` | GET / POST / PUT / DELETE | 角色 CRUD 管理 |
+| `/api/v1/admin/roles/:id/permissions` | PUT | 分配角色权限 |
+
+---
 ## 5. 变更记录
 
 | 日期 | 版本 | 变更内容 | 作者 |
 |------|------|----------|------|
+| 2026-05-26 | v0.2.0-dev | feat: Phase 6 完成 — 前端模块化重构(Admin/Chat拆分)、音乐播放器全功能(全屏+歌词+歌单)、httputil工具包、RBAC增强、JWT会话管理、相册分享 | CloudNexus 团队 |
 | 2026-05-23 | v0.2.0-dev | feat: 暗色/亮色主题切换 — TopNav 切换按钮 + 双主题 Token 系统 + 可变对象零侵入策略 + localStorage 持久化 + 防闪烁预加载 | CloudNexus 团队 |
 | 2026-05-23 | v0.2.0-dev | style: 暗色主题全面重设计 — Active Theory 风格 (纯黑背景 + 青蓝主色 + 玻璃态卡片 + 药丸按钮 + CSS 点阵背景 + 图表暗色 Token) | CloudNexus 团队 |
 | 2026-05-15 | **v0.2.0** | 🎉 **Phase 5 完成** — 全局 UI 重构、导航仪表盘、路由拆分、服务状态页、相册（网格/时间线/灯箱）、音乐库+全局播放器+歌单、跨模块集成、管理统计扩展 | CloudNexus 团队 |

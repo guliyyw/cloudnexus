@@ -57,7 +57,8 @@ async def detect(image: UploadFile = File(...), authorization: str = Header(defa
     if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
         raise HTTPException(status_code=401, detail="Unauthorized")
     contents = await image.read()
-    tmp_path = f"/tmp/{image.filename or 'frame.jpg'}"
+    # SECURITY: 使用 UUID 生成安全的临时文件名，防止路径遍历攻击
+    tmp_path = f"/tmp/{uuid.uuid4().hex}.jpg"
     with open(tmp_path, "wb") as f:
         f.write(contents)
 

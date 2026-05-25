@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Upload, Button, Select, Table, Tag, Space, message, Spin, Typography } from 'antd'
 import { VideoCameraOutlined, InboxOutlined, DeleteOutlined } from '@ant-design/icons'
 import { detectVideo, type VideoDetectResponse, type VideoDetection } from '../services/camera'
+import { colors } from '../theme/tokens'
 
 const { Dragger } = Upload
 const { Text } = Typography
@@ -102,7 +103,7 @@ export default function VideoAnalysisPanel({ open }: Props) {
           >
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
             <p style={{ fontWeight: 500 }}>点击或拖拽视频文件到此区域</p>
-            <p style={{ color: '#8c8c8c' }}>支持 MP4、AVI、MOV、MKV 等常见格式</p>
+            <p style={{ color: colors.textSecondary }}>支持 MP4、AVI、MOV、MKV 等常见格式</p>
           </Dragger>
         </div>
       ) : (
@@ -114,7 +115,7 @@ export default function VideoAnalysisPanel({ open }: Props) {
                 <Button size="small" icon={<DeleteOutlined />} onClick={handleRemove}>移除</Button>
               </Space>
               <Space>
-                <span style={{ color: '#8c8c8c' }}>采样间隔</span>
+                <span style={{ color: colors.textSecondary }}>采样间隔</span>
                 <Select value={interval} onChange={setInterval} size="small" style={{ width: 100 }}>
                   <Select.Option value={0.5}>0.5秒</Select.Option>
                   <Select.Option value={1}>1秒</Select.Option>
@@ -159,7 +160,7 @@ export default function VideoAnalysisPanel({ open }: Props) {
             {analyzing && (
               <div style={{ textAlign: 'center', padding: 40 }}>
                 <Spin size="large" />
-                <div style={{ marginTop: 12, color: '#8c8c8c' }}>正在分析视频...</div>
+                <div style={{ marginTop: 12, color: colors.textSecondary }}>正在分析视频...</div>
               </div>
             )}
           </div>

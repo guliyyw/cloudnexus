@@ -55,7 +55,7 @@ export default function AlbumGrid({ files, selectedIds, onSelect, onPreview }: P
                   width: '100%',
                   paddingTop: '100%',
                   position: 'relative',
-                  background: '#f5f5f5',
+                  background: 'rgba(255,255,255,0.04)',
                 }}
               >
                 {isImage ? (
@@ -83,7 +83,7 @@ export default function AlbumGrid({ files, selectedIds, onSelect, onPreview }: P
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: 48,
-                      color: '#d9d9d9',
+                      color: 'rgba(255,255,255,0.2)',
                     }}
                   >
                     <FileOutlined />

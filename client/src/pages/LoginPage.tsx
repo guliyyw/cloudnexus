@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Typography } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
+import { colors } from '../theme/tokens'
 
 const { Title, Text } = Typography
 
@@ -16,7 +17,7 @@ export default function LoginPage() {
     try {
       await login(values.username, values.password)
       message.success('登录成功')
-      navigate('/files')
+      navigate('/dashboard')
     } catch (err: any) {
       message.error(err.response?.data?.message || '登录失败')
     } finally {
@@ -25,10 +26,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Title level={3}>CloudNexus</Title>
+          <Title level={3} style={{ color: colors.primary }}>CloudNexus</Title>
           <Text type="secondary">自托管协作平台</Text>
         </div>
         <Form onFinish={onFinish} size="large">

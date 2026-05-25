@@ -34,6 +34,7 @@ func (h *SessionHandler) HandleListSessions(c *gin.Context) {
 }
 
 func (h *SessionHandler) HandleRevokeSession(c *gin.Context) {
+	userID := c.GetUint64("user_id")
 	jti := c.Param("jti")
 	if jti == "" {
 		c.JSON(http.StatusBadRequest, response.Error(400, "缺少会话标识"))
@@ -46,7 +47,8 @@ func (h *SessionHandler) HandleRevokeSession(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.RevokeSession(jti); err != nil {
+	// SECURITY: 增加用户归属验证，确保只能撤销自己的会话
+	if err := h.svc.RevokeSessionByUser(jti, userID); err != nil {
 		handleError(c, err)
 		return
 	}

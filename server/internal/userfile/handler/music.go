@@ -10,6 +10,7 @@ import (
 	"github.com/cloudnexus/server/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type MusicHandler struct {
@@ -245,4 +246,79 @@ func (h *MusicHandler) HandleRemoveTrackFromPlaylist(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.OK("移除成功"))
+}
+
+func (h *MusicHandler) HandleGetLyrics(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	trackID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的 ID"))
+		return
+	}
+	source := c.DefaultQuery("source", "public")
+
+	lyrics, err := h.svc.GetLyrics(trackID, source, userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"lyrics": lyrics,
+	}))
+}
+
+func (h *MusicHandler) HandleExportPlaylist(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的 ID"))
+		return
+	}
+	format := c.DefaultQuery("format", "json")
+
+	content, err := h.svc.ExportPlaylist(id, userID, format)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	filename := uuid.New().String()
+	ext := "json"
+	if format == "m3u" {
+		ext = "m3u"
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.%s\"", filename, ext))
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(content))
+}
+
+func (h *MusicHandler) HandleImportPlaylist(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的 ID"))
+		return
+	}
+	format := c.PostForm("format")
+	if format == "" {
+		format = "json"
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请上传文件"))
+		return
+	}
+	defer file.Close()
+
+	data := make([]byte, header.Size)
+	if _, err := io.ReadFull(file, data); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "读取文件失败"))
+		return
+	}
+
+	if err := h.svc.ImportPlaylist(id, userID, data, format); err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OK("导入成功"))
 }

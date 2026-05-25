@@ -50,7 +50,7 @@ export default function MusicPage() {
       dataIndex: 'index',
       width: 50,
       render: (_: unknown, __: unknown, idx: number) => (
-        <span style={{ color: '#8c8c8c', fontSize: 12 }}>{idx + 1}</span>
+        <span style={{ color: colors.textSecondary, fontSize: 12 }}>{idx + 1}</span>
       ),
     },
     {
@@ -59,7 +59,7 @@ export default function MusicPage() {
       render: (text: string, record: Track) => (
         <div>
           <div style={{ fontWeight: 500, fontSize: 13 }}>{text}</div>
-          <span style={{ fontSize: 11, color: '#8c8c8c' }}>{record.artist || '未知艺术家'}</span>
+          <span style={{ fontSize: 11, color: colors.textSecondary }}>{record.artist || '未知艺术家'}</span>
         </div>
       ),
     },

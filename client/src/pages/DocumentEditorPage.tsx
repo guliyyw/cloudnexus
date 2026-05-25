@@ -249,14 +249,14 @@ export default function DocumentEditorPage() {
         }}>
           <Button icon={<DownloadOutlined />}>导出</Button>
         </Dropdown>
-        <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+        <span style={{ fontSize: 12, color: '#888' }}>
           {user?.username || 'anonymous'}
         </span>
       </div>
 
       <div style={{
-        background: '#fff',
-        border: '1px solid #f0eeeb',
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.06)',
         borderRadius: 12,
         padding: 24,
         minHeight: 500,
@@ -265,9 +265,9 @@ export default function DocumentEditorPage() {
           <>
             <BubbleMenu editor={editor}>
               <div style={{
-                display: 'flex', gap: 2, background: '#fff',
-                border: '1px solid #e8e8e8', borderRadius: 8, padding: 4,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                display: 'flex', gap: 2, background: 'rgba(0,0,0,0.9)',
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 4,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
               }}>
                 <Button size="small" type="text"
                   onClick={() => editor.chain().focus().toggleBold().run()}
@@ -286,7 +286,7 @@ export default function DocumentEditorPage() {
                 </Button>
                 <Button size="small" type="text"
                   onClick={() => editor.chain().focus().toggleCode().run()}
-                  style={{ fontFamily: 'monospace', background: editor.isActive('code') ? '#f0f0f0' : undefined }}>
+                  style={{ fontFamily: 'monospace', background: editor.isActive('code') ? 'rgba(255,255,255,0.06)' : undefined }}>
                   {'</>'}
                 </Button>
                 <Button size="small" type="text"

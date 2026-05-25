@@ -11,11 +11,12 @@ import (
 )
 
 type AlbumHandler struct {
-	svc *service.AlbumService
+	svc      *service.AlbumService
+	shareSvc *service.ShareService
 }
 
-func NewAlbumHandler(svc *service.AlbumService) *AlbumHandler {
-	return &AlbumHandler{svc: svc}
+func NewAlbumHandler(svc *service.AlbumService, shareSvc *service.ShareService) *AlbumHandler {
+	return &AlbumHandler{svc: svc, shareSvc: shareSvc}
 }
 
 func (h *AlbumHandler) HandleCreate(c *gin.Context) {
@@ -141,6 +142,7 @@ func (h *AlbumHandler) HandleRemoveFile(c *gin.Context) {
 }
 
 func (h *AlbumHandler) HandleGetFiles(c *gin.Context) {
+	userID := c.GetUint64("user_id")
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的相册 ID"))
@@ -154,7 +156,7 @@ func (h *AlbumHandler) HandleGetFiles(c *gin.Context) {
 	if pageSize < 1 || pageSize > 200 {
 		pageSize = 50
 	}
-	files, total, err := h.svc.GetFiles(id, page, pageSize)
+	files, total, err := h.svc.GetFiles(id, userID, page, pageSize)
 	if err != nil {
 		handleError(c, err)
 		return

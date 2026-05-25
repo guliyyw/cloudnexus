@@ -57,7 +57,7 @@ export default function AlbumTimeline({ files, onPreview }: Props) {
                   borderRadius: 6,
                   overflow: 'hidden',
                   aspectRatio: '1',
-                  background: '#f5f5f5',
+                  background: 'rgba(255,255,255,0.04)',
                 }}
               >
                 {file.mime_type?.startsWith('image/') ? (
@@ -68,7 +68,7 @@ export default function AlbumTimeline({ files, onPreview }: Props) {
                     loading="lazy"
                   />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d9d9d9' }}>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)' }}>
                     {file.name}
                   </div>
                 )}

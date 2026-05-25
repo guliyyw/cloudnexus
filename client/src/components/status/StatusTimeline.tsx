@@ -41,7 +41,7 @@ export default function StatusTimeline({ snapshots }: Props) {
                 snap.modules.map((mod) => (
                   <Tag
                     key={mod.name}
-                    color={statusColorMap[mod.status] || '#d9d9d9'}
+                    color={statusColorMap[mod.status] || '#555'}
                     style={{ fontSize: 11, lineHeight: '18px', margin: 0 }}
                   >
                     {mod.name}

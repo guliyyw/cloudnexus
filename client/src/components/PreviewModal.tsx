@@ -7,6 +7,7 @@ import { getAlbums, addFilesToAlbum } from '../services/album'
 import type { Album } from '../services/album'
 import { usePlayerStore } from '../stores/playerStore'
 import type { Track } from '../services/music'
+import { colors } from '../theme/tokens'
 
 const { Text } = Typography
 
@@ -113,10 +114,16 @@ export default function PreviewModal({ file, open, onClose }: Props) {
           </audio>
         )}
         {isPdf && (
-          <iframe src={getPreviewUrl(file.id)} style={{ width: '100%', height: '70vh', border: 'none' }} />
+          // SECURITY: 添加 sandbox 属性限制 iframe 权限
+          <iframe
+            src={getPreviewUrl(file.id)}
+            style={{ width: '100%', height: '70vh', border: 'none' }}
+            sandbox="allow-scripts allow-same-origin"
+            title="PDF Preview"
+          />
         )}
         {!isImage && !isVideo && !isAudio && !isPdf && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+          <div style={{ textAlign: 'center', padding: 40, color: colors.textSecondary }}>
             <p>此文件类型不支持在线预览</p>
             <Button type="link" href={getDownloadUrl(file.id)} download={file.name}>点击下载</Button>
           </div>

@@ -4,6 +4,7 @@ import { Form, Input, Button, Card, message, Typography, Progress, Space } from 
 import { UserOutlined, LockOutlined, MailOutlined, SafetyOutlined } from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
 import { getCaptcha } from '../services/captcha'
+import { colors } from '../theme/tokens'
 
 const { Title, Text } = Typography
 
@@ -59,10 +60,10 @@ export default function RegisterPage() {
   const strength = getPasswordStrength(password)
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Title level={3}>CloudNexus</Title>
+          <Title level={3} style={{ color: colors.primary }}>CloudNexus</Title>
           <Text type="secondary">创建新账号</Text>
         </div>
         <Form onFinish={onFinish} size="large">
@@ -94,7 +95,7 @@ export default function RegisterPage() {
           )}
           <Form.Item style={{ marginBottom: 8 }}>
             <Space align="start">
-              {captchaImg && <img src={captchaImg} alt="验证码" style={{ height: 40, cursor: 'pointer', border: '1px solid #d9d9d9', borderRadius: 4 }} onClick={fetchCaptcha} />}
+              {captchaImg && <img src={captchaImg} alt="验证码" style={{ height: 40, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4 }} onClick={fetchCaptcha} />}
               <Button type="link" size="small" onClick={fetchCaptcha} style={{ padding: 0 }}>换一张</Button>
             </Space>
           </Form.Item>

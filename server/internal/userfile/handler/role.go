@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
+	"github.com/cloudnexus/server/pkg/httputil"
 	"github.com/cloudnexus/server/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -40,7 +41,7 @@ func (h *RoleHandler) HandleCreateRole(c *gin.Context) {
 	}
 	role, err := h.svc.CreateRole(req.Name, req.Code, req.Description)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, response.OKWithData(role))
@@ -64,7 +65,7 @@ func (h *RoleHandler) HandleUpdateRole(c *gin.Context) {
 	}
 	role, err := h.svc.UpdateRole(id, req.Name, req.Description)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.OKWithData(role))
@@ -77,7 +78,7 @@ func (h *RoleHandler) HandleDeleteRole(c *gin.Context) {
 		return
 	}
 	if err := h.svc.DeleteRole(id); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.OK("已删除"))
@@ -108,7 +109,7 @@ func (h *RoleHandler) HandleAssignPermissions(c *gin.Context) {
 		return
 	}
 	if err := h.svc.AssignRolePermissions(roleID, req.PermissionIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.OK("已分配"))
@@ -145,7 +146,7 @@ func (h *RoleHandler) HandleAssignUserRole(c *gin.Context) {
 		return
 	}
 	if err := h.svc.AssignUserRole(operatorID, userID, req.RoleID); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.OK("已分配"))
@@ -163,7 +164,7 @@ func (h *RoleHandler) HandleRemoveUserRole(c *gin.Context) {
 		return
 	}
 	if err := h.svc.RemoveUserRole(userID, roleID); err != nil {
-		c.JSON(http.StatusInternalServerError, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, response.OK("已移除"))

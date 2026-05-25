@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { getStreamUrl } from '../../services/music'
 import MiniPlayer from './MiniPlayer'
+import FullPlayer from './FullPlayer'
 
 export default function GlobalPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const {
     queue, currentIndex, isPlaying, volume, isMuted, mode,
-    setPlaying, setTime, setDuration, next, isMiniVisible,
+    setPlaying, setTime, setDuration, next, isMiniVisible, isFullScreen,
   } = usePlayerStore()
 
   const track = queue[currentIndex]
@@ -59,7 +60,8 @@ export default function GlobalPlayer() {
         }}
         onError={() => setPlaying(false)}
       />
-      {isMiniVisible && <MiniPlayer />}
+      {isFullScreen && <FullPlayer />}
+      {isMiniVisible && !isFullScreen && <MiniPlayer />}
     </>
   )
 }

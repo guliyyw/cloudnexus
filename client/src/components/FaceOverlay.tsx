@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { colors } from '../theme/tokens'
 
 export interface FaceBox {
   x: number
@@ -40,7 +41,7 @@ export default function FaceOverlay({
       const w = f.width * sx
       const h = f.height * sy
 
-      ctx.strokeStyle = f.name ? '#52c41a' : '#e8964a'
+      ctx.strokeStyle = f.name ? colors.success : colors.primary
       ctx.lineWidth = 2
       ctx.strokeRect(x, y, w, h)
 

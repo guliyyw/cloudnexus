@@ -5,6 +5,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// TODO: OAuth 令牌应加密存储
+// 当前 AccessToken/RefreshToken 明文存储在数据库中，存在泄露风险
+// 建议实现：
+// 1. 在配置中添加 oauth_encryption_key
+// 2. 存储 AES-GCM 加密后的令牌
+// 3. 读取时解密
+
 type OAuthService struct {
 	db *gorm.DB
 }
@@ -14,6 +21,7 @@ func NewOAuthService(db *gorm.DB) *OAuthService {
 }
 
 func (s *OAuthService) BindOAuth(userID uint64, provider, openID, accessToken, refreshToken string) error {
+	// TODO: 加密 accessToken 和 refreshToken
 	binding := &model.OAuthBinding{
 		UserID:       userID,
 		Provider:     provider,

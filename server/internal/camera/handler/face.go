@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/camera/service"
+	"github.com/cloudnexus/server/pkg/httputil"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 
@@ -36,9 +37,9 @@ func (h *FaceHandler) HandleGetThumbnail(c *gin.Context) {
 
 // HandleListProfiles returns all face profiles for the current user.
 func (h *FaceHandler) HandleListProfiles(c *gin.Context) {
-	profiles, err := h.svc.ListProfiles(getUserID(c))
+	profiles, err := h.svc.ListProfiles(httputil.GetUserID(c))
 	if err != nil {
-		c.JSON(500, response.Error(500, "查询人脸库失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	if profiles == nil {
@@ -55,16 +56,16 @@ func (h *FaceHandler) HandleCreateProfile(c *gin.Context) {
 		ThumbnailURL string    `json:"thumbnail_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, response.Error(400, "参数错误: name 和 embedding 必填"))
+		httputil.BadRequest(c, "参数错误: name 和 embedding 必填")
 		return
 	}
 	if len(req.Embedding) == 0 {
-		c.JSON(400, response.Error(400, "embedding 不能为空"))
+		httputil.BadRequest(c, "embedding 不能为空")
 		return
 	}
-	p, err := h.svc.CreateProfile(getUserID(c), req.Name, req.Embedding, req.ThumbnailURL)
+	p, err := h.svc.CreateProfile(httputil.GetUserID(c), req.Name, req.Embedding, req.ThumbnailURL)
 	if err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(201, response.OKWithData(gin.H{"profile": p}))
@@ -74,22 +75,18 @@ func (h *FaceHandler) HandleCreateProfile(c *gin.Context) {
 func (h *FaceHandler) HandleUpdateProfile(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(400, response.Error(400, "无效的人脸 ID"))
+		httputil.BadRequest(c, "无效的人脸 ID")
 		return
 	}
 	var req struct {
 		Name string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Name == "" {
-		c.JSON(400, response.Error(400, "参数错误: name 必填"))
+		httputil.BadRequest(c, "参数错误: name 必填")
 		return
 	}
-	if err := h.svc.UpdateProfile(id, getUserID(c), req.Name); err != nil {
-		if appErr, ok := err.(interface{ Code() int }); ok {
-			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
-			return
-		}
-		c.JSON(500, response.Error(500, err.Error()))
+	if err := h.svc.UpdateProfile(id, httputil.GetUserID(c), req.Name); err != nil {
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("更新成功"))
@@ -99,15 +96,11 @@ func (h *FaceHandler) HandleUpdateProfile(c *gin.Context) {
 func (h *FaceHandler) HandleDeleteProfile(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(400, response.Error(400, "无效的人脸 ID"))
+		httputil.BadRequest(c, "无效的人脸 ID")
 		return
 	}
-	if err := h.svc.DeleteProfile(id, getUserID(c)); err != nil {
-		if appErr, ok := err.(interface{ Code() int }); ok {
-			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
-			return
-		}
-		c.JSON(500, response.Error(500, err.Error()))
+	if err := h.svc.DeleteProfile(id, httputil.GetUserID(c)); err != nil {
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("删除成功"))
@@ -120,12 +113,12 @@ func (h *FaceHandler) HandleMatchFace(c *gin.Context) {
 		CameraID  string    `json:"camera_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.Embedding) == 0 {
-		c.JSON(400, response.Error(400, "参数错误: embedding 必填"))
+		httputil.BadRequest(c, "参数错误: embedding 必填")
 		return
 	}
-	result, err := h.svc.MatchEmbedding(getUserID(c), req.Embedding)
+	result, err := h.svc.MatchEmbedding(httputil.GetUserID(c), req.Embedding)
 	if err != nil {
-		c.JSON(500, response.Error(500, "匹配失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 
@@ -146,12 +139,12 @@ func (h *FaceHandler) HandleMatchFace(c *gin.Context) {
 func (h *FaceHandler) HandleGetDailyAttendance(c *gin.Context) {
 	date := c.DefaultQuery("date", "")
 	if date == "" {
-		c.JSON(400, response.Error(400, "date 参数必填"))
+		httputil.BadRequest(c, "date 参数必填")
 		return
 	}
 	attendance, err := h.svc.GetDailyAttendance(date)
 	if err != nil {
-		c.JSON(500, response.Error(500, "查询考勤失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	if attendance == nil {
@@ -167,14 +160,14 @@ func (h *FaceHandler) HandleGetDailyAttendance(c *gin.Context) {
 func (h *FaceHandler) HandleGetAttendanceByFace(c *gin.Context) {
 	faceID, err := strconv.ParseUint(c.Query("face_id"), 10, 64)
 	if err != nil || faceID == 0 {
-		c.JSON(400, response.Error(400, "face_id 参数必填"))
+		httputil.BadRequest(c, "face_id 参数必填")
 		return
 	}
 	dateFrom := c.DefaultQuery("date_from", "")
 	dateTo := c.DefaultQuery("date_to", "")
 	sessions, err := h.svc.GetAttendanceByFace(faceID, dateFrom, dateTo)
 	if err != nil {
-		c.JSON(500, response.Error(500, "查询考勤失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	if sessions == nil {
@@ -189,7 +182,7 @@ func (h *FaceHandler) HandleGetAttendanceByFace(c *gin.Context) {
 func (h *FaceHandler) HandleListFaceEvents(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
+		httputil.BadRequest(c, "无效的摄像头 ID")
 		return
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -204,7 +197,7 @@ func (h *FaceHandler) HandleListFaceEvents(c *gin.Context) {
 
 	events, total, err := h.svc.ListEvents(id, offset, pageSize)
 	if err != nil {
-		c.JSON(500, response.Error(500, "查询人脸识别事件失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	if events == nil {
@@ -223,12 +216,12 @@ func (h *FaceHandler) HandleListFaceEvents(c *gin.Context) {
 func (h *FaceHandler) HandleClearFaceEvents(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
+		httputil.BadRequest(c, "无效的摄像头 ID")
 		return
 	}
 	count, err := h.svc.ClearFaceEvents(id)
 	if err != nil {
-		c.JSON(500, response.Error(500, "清空人脸识别记录失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))
@@ -238,15 +231,11 @@ func (h *FaceHandler) HandleClearFaceEvents(c *gin.Context) {
 func (h *FaceHandler) HandleDeleteAttendanceSession(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(400, response.Error(400, "无效的考勤记录 ID"))
+		httputil.BadRequest(c, "无效的考勤记录 ID")
 		return
 	}
-	if err := h.svc.DeleteSession(id, getUserID(c)); err != nil {
-		if appErr, ok := err.(interface{ Code() int }); ok {
-			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
-			return
-		}
-		c.JSON(500, response.Error(500, err.Error()))
+	if err := h.svc.DeleteSession(id, httputil.GetUserID(c)); err != nil {
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("删除成功"))
@@ -256,21 +245,17 @@ func (h *FaceHandler) HandleDeleteAttendanceSession(c *gin.Context) {
 func (h *FaceHandler) HandleClearAttendance(c *gin.Context) {
 	faceID, err := strconv.ParseUint(c.Query("face_id"), 10, 64)
 	if err != nil || faceID == 0 {
-		c.JSON(400, response.Error(400, "face_id 参数必填"))
+		httputil.BadRequest(c, "face_id 参数必填")
 		return
 	}
 	date := c.Query("date")
 	if date == "" {
-		c.JSON(400, response.Error(400, "date 参数必填"))
+		httputil.BadRequest(c, "date 参数必填")
 		return
 	}
-	count, err := h.svc.ClearAttendanceByFaceDate(faceID, getUserID(c), date)
+	count, err := h.svc.ClearAttendanceByFaceDate(faceID, httputil.GetUserID(c), date)
 	if err != nil {
-		if appErr, ok := err.(interface{ Code() int }); ok {
-			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
-			return
-		}
-		c.JSON(500, response.Error(500, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{"deleted": count}))
@@ -280,12 +265,12 @@ func (h *FaceHandler) HandleClearAttendance(c *gin.Context) {
 func (h *FaceHandler) HandleGetAttendanceStatus(c *gin.Context) {
 	date := c.DefaultQuery("date", "")
 	if date == "" {
-		c.JSON(400, response.Error(400, "date 参数必填"))
+		httputil.BadRequest(c, "date 参数必填")
 		return
 	}
-	items, signedCount, unsignedCount, err := h.svc.GetAttendanceStatus(getUserID(c), date)
+	items, signedCount, unsignedCount, err := h.svc.GetAttendanceStatus(httputil.GetUserID(c), date)
 	if err != nil {
-		c.JSON(500, response.Error(500, "查询考勤状态失败"))
+		httputil.HandleError(c, err)
 		return
 	}
 	if items == nil {

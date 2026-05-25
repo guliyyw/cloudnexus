@@ -135,11 +135,11 @@ export default function UserSettingsPage() {
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Avatar size={64} icon={<UserOutlined />} src={avatar}
-            style={{ backgroundColor: '#e8964a' }} />
+            style={{ backgroundColor: '#81ecfe' }} />
           <div>
             <Title level={4} style={{ margin: 0 }}>{user?.username}</Title>
             <Text type="secondary">{user?.email}</Text>
-            {user?.is_admin && <Text type="secondary" style={{ marginLeft: 8, color: '#e8964a' }}>(管理员)</Text>}
+            {user?.is_admin && <Text type="secondary" style={{ marginLeft: 8, color: '#81ecfe' }}>(管理员)</Text>}
           </div>
         </div>
       </Card>

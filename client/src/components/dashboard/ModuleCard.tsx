@@ -24,8 +24,8 @@ export default function ModuleCard({ icon, name, status, detail, onClick }: Prop
       style={{
         background: colors.bgCard,
         borderRadius: radius.lg,
-        padding: '20px 24px',
-        border: '1px solid #f0eeeb',
+        padding: '24px 28px',
+        border: '1px solid rgba(255,255,255,0.06)',
         cursor: 'pointer',
         transition: 'box-shadow 0.25s ease, transform 0.15s ease',
         boxShadow: shadow.card,
@@ -43,16 +43,16 @@ export default function ModuleCard({ icon, name, status, detail, onClick }: Prop
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
-      <div style={{ fontSize: 32, color: colors.primary, flexShrink: 0 }}>{icon}</div>
+      <div style={{ fontSize: 40, color: colors.primary, flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2, color: colors.text }}>{name}</div>
+        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2, color: colors.text }}>{name}</div>
         <Text type="secondary" style={{ fontSize: 12 }} ellipsis>{detail}</Text>
       </div>
       <div style={{ flexShrink: 0 }}>
         <div
           style={{
-            width: 12,
-            height: 12,
+            width: 14,
+            height: 14,
             borderRadius: '50%',
             backgroundColor: statusColor[status],
             animation: status !== 'green' ? 'pulse 1.5s ease-in-out infinite' : undefined,

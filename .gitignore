@@ -34,6 +34,10 @@ server/tmp/
 # Docker volumes
 deploy/data/
 
+# SECURITY: TLS 证书私钥文件不应提交到版本控制
+deploy/nginx/certs/*.pem
+deploy/nginx/certs/*.key
+
 # Screenshots
 screenshots/
 

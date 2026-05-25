@@ -79,6 +79,29 @@ func (s *SessionService) RevokeSession(jti string) error {
 	return nil
 }
 
+// RevokeSessionByUser 撤销指定用户的会话（增加用户归属验证）
+func (s *SessionService) RevokeSessionByUser(jti string, userID uint64) error {
+	// 先验证会话是否属于该用户
+	var sess model.UserSession
+	if err := s.db.Where("jti = ? AND user_id = ?", jti, userID).First(&sess).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return apperrors.NewAppError(404, "会话不存在或不属于当前用户", err)
+		}
+		return err
+	}
+
+	if err := s.db.Model(&model.UserSession{}).Where("jti = ? AND user_id = ?", jti, userID).Update("is_active", false).Error; err != nil {
+		return err
+	}
+	if s.rdb != nil {
+		ttl := time.Until(sess.ExpiresAt)
+		if ttl > 0 {
+			s.rdb.Set(context.Background(), fmt.Sprintf("jti:%s", jti), "revoked", ttl)
+		}
+	}
+	return nil
+}
+
 func (s *SessionService) RevokeAllSessions(userID uint64, exceptJTI string) error {
 	result := s.db.Model(&model.UserSession{}).
 		Where("user_id = ? AND is_active = true AND jti != ?", userID, exceptJTI).

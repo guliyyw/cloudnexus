@@ -218,7 +218,7 @@ export default function DockerPage() {
                                 type="circle"
                                 percent={Math.min(s.cpu_percent, 100)}
                                 size={60}
-                                strokeColor="#e8964a"
+                                strokeColor="#81ecfe"
                                 format={(p) => `${p?.toFixed(1)}%`}
                               />
                             </div>
@@ -228,11 +228,11 @@ export default function DockerPage() {
                                 type="circle"
                                 percent={Math.min(s.memory_percent, 100)}
                                 size={60}
-                                strokeColor="#d4a06a"
+                                strokeColor="#5ac8d8"
                                 format={(p) => `${p?.toFixed(1)}%`}
                               />
                             </div>
-                            <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                            <div style={{ fontSize: 12, color: '#888' }}>
                               <div>内存使用: {formatBytes(s.memory_usage)}</div>
                               <div>内存限制: {s.memory_limit > 0 ? formatBytes(s.memory_limit) : '无限制'}</div>
                             </div>

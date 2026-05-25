@@ -93,7 +93,7 @@ export default function ServiceStatusPage() {
             children: (
               <div>
                 {summary && (
-                  <div style={{ marginBottom: 16, color: '#8c8c8c', fontSize: 12 }}>
+                  <div style={{ marginBottom: 16, color: colors.textSecondary, fontSize: 12 }}>
                     共 {summary.total} 个模块，{summary.healthy} 个正常
                     {summary.warning > 0 && `，${summary.warning} 个警告`}
                     {summary.error > 0 && `，${summary.error} 个异常`}

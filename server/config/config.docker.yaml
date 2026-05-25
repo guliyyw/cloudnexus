@@ -7,13 +7,13 @@ database:
 
 redis:
   addr: "redis:6379"
-  password: ""
+  password: "cloudnexus"
   db: 0
 
 minio:
   endpoint: "minio:9000"
   access_key: "minioadmin"
-  secret_key: "minioadmin"
+  secret_key: "cloudnexus"
   use_ssl: false
   bucket: "cloudnexus"
 
@@ -22,7 +22,7 @@ log:
   format: "json"
 
 jwt:
-  access_secret: "change-me-in-production"
-  refresh_secret: "change-me-in-production-refresh"
+  access_secret: "cloudnexus-dev-jwt-access-secret-key"
+  refresh_secret: "cloudnexus-dev-jwt-refresh-secret-key"
   access_ttl_sec: 28800
   refresh_ttl_sec: 604800

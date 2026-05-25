@@ -11,6 +11,7 @@ import {
   PauseCircleOutlined,
 } from '@ant-design/icons'
 import type { FileItem } from '../../services/file'
+import { colors } from '../../theme/tokens'
 
 const { Text } = Typography
 
@@ -208,7 +209,7 @@ export default function Lightbox({ files, currentIndex: initialIndex, onClose }:
                 href={getDownloadUrl(file)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: '#e8964a' }}
+                style={{ color: colors.primary }}
               >
                 打开原文件
               </a>

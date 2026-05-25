@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -287,7 +288,11 @@ func (s *UserService) SeedDefaultAdmin() {
 	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
 	if password == "" {
 		password = generateRandomPassword(16)
-		log.Printf("[seed] 未设置 DEFAULT_ADMIN_PASSWORD，已生成随机密码: %s", password)
+		// 安全警告：不要将密码输出到日志
+		// 密码仅在此输出到 stderr，且仅在首次启动时显示
+		fmt.Fprintf(os.Stderr, "\n[SECURITY WARNING] 未设置 DEFAULT_ADMIN_PASSWORD，已生成随机密码。\n")
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] 请立即登录并修改密码，或设置 DEFAULT_ADMIN_PASSWORD 环境变量。\n")
+		fmt.Fprintf(os.Stderr, "[SECURITY WARNING] 用户名: %s, 密码: %s\n\n", username, password)
 	}
 
 	hashed, err := crypto.HashPassword(password)

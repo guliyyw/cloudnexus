@@ -10,8 +10,18 @@ RUN pip install --no-cache-dir \
 
 RUN pip install --no-cache-dir ultralytics fastapi uvicorn python-multipart
 
+# SECURITY: 创建非 root 用户运行
+RUN useradd --create-home --shell /bin/bash appuser
+
 COPY ai-inference/app.py /app/app.py
 COPY ai-inference/yolov8n.pt /app/yolov8n.pt
+
 WORKDIR /app
+
+# 设置目录权限
+RUN chown -R appuser:appuser /app
+
+# 切换到非 root 用户
+USER appuser
 
 CMD ["python", "/app/app.py"]

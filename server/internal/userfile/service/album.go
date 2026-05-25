@@ -121,7 +121,15 @@ func (s *AlbumService) RemoveFile(albumID, fileID, userID uint64) error {
 	return s.albumRepo.RemoveFile(albumID, fileID)
 }
 
-func (s *AlbumService) GetFiles(albumID uint64, page, pageSize int) ([]model.File, int64, error) {
+func (s *AlbumService) GetFiles(albumID, userID uint64, page, pageSize int) ([]model.File, int64, error) {
+	// 校验相册所有权
+	album, err := s.albumRepo.FindByID(albumID)
+	if err != nil {
+		return nil, 0, apperrors.NewAppError(404, "相册不存在", apperrors.ErrNotFound)
+	}
+	if album.OwnerID != userID {
+		return nil, 0, apperrors.NewAppError(403, "无权访问此相册", apperrors.ErrForbidden)
+	}
 	ids, err := s.albumRepo.FindFileIDsByAlbum(albumID)
 	if err != nil {
 		return nil, 0, err

@@ -1,56 +1,53 @@
-import { useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import api from '../services/api'
 
-interface JWTClaims {
+// SECURITY: 不再从客户端解析 JWT，改为从后端 API 获取权限
+// 防止用户篡改 localStorage 中的 token 来伪造管理员权限
+
+interface UserPermissions {
   user_id: number
   username: string
   is_admin: boolean
   roles: string[]
   permissions: string[]
-  jti: string
-}
-
-function parseJWT(): JWTClaims | null {
-  const token = localStorage.getItem('access_token')
-  if (!token) return null
-  try {
-    const payload = token.split('.')[1]
-    const decoded = JSON.parse(atob(payload))
-    return {
-      user_id: decoded.user_id,
-      username: decoded.username,
-      is_admin: decoded.is_admin || false,
-      roles: decoded.roles || [],
-      permissions: decoded.permissions || [],
-      jti: decoded.jti,
-    }
-  } catch {
-    return null
-  }
 }
 
 export function useAccess() {
-  // Re-parse on every render to pick up token changes (login/logout/refresh)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-  const claims = useMemo(() => parseJWT(), [token])
+  const [perms, setPerms] = useState<UserPermissions | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchPermissions = useCallback(async () => {
+    try {
+      const res = await api.get('/user/permissions')
+      setPerms(res.data.data)
+    } catch {
+      setPerms(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchPermissions()
+  }, [fetchPermissions])
 
   const hasPermission = (perm: string) => {
-    if (!claims) return false
-    if (claims.is_admin) return true
-    return claims.permissions.includes(perm) || claims.permissions.includes('*')
+    if (!perms) return false
+    if (perms.is_admin) return true
+    return perms.permissions.includes(perm) || perms.permissions.includes('*')
   }
 
-  const hasAnyPermission = (...perms: string[]) => {
-    return perms.some((p) => hasPermission(p))
+  const hasAnyPermission = (...permsList: string[]) => {
+    return permsList.some((p) => hasPermission(p))
   }
 
   const hasRole = (role: string) => {
-    if (!claims) return false
-    if (claims.is_admin) return true
-    return claims.roles.includes(role)
+    if (!perms) return false
+    if (perms.is_admin) return true
+    return perms.roles.includes(role)
   }
 
-  const isAdmin = claims?.is_admin || false
+  const isAdmin = perms?.is_admin || false
 
-  return { hasPermission, hasAnyPermission, hasRole, isAdmin, claims }
+  return { hasPermission, hasAnyPermission, hasRole, isAdmin, claims: perms, loading, refetch: fetchPermissions }
 }

@@ -13,6 +13,7 @@ export interface PlayerState {
   isMuted: boolean
   mode: PlayMode
   isMiniVisible: boolean
+  isFullScreen: boolean
 
   play: (track?: Track, queue?: Track[]) => void
   pause: () => void
@@ -28,6 +29,7 @@ export interface PlayerState {
   setDuration: (d: number) => void
   showMini: () => void
   hideMini: () => void
+  toggleFullScreen: () => void
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -40,6 +42,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isMuted: false,
   mode: 'sequential',
   isMiniVisible: false,
+  isFullScreen: false,
 
   play: (track?: Track, queue?: Track[]) => {
     if (queue) {
@@ -84,4 +87,5 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setDuration: (d: number) => set({ duration: d }),
   showMini: () => set({ isMiniVisible: true }),
   hideMini: () => set({ isMiniVisible: false }),
+  toggleFullScreen: () => set((s) => ({ isFullScreen: !s.isFullScreen })),
 }))

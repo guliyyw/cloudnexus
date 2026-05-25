@@ -605,7 +605,7 @@ export default function CameraLiveView() {
               )}
             </div>
             {mjpegMode && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c', textAlign: 'center' }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: '#888', textAlign: 'center' }}>
                 直连摄像头 MJPEG 流，视频数据不经过服务器
               </div>
             )}

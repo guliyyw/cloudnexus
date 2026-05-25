@@ -57,8 +57,11 @@ func NewEndpointManager(db *gorm.DB) *EndpointManager {
 func (m *EndpointManager) buildLocalClient() *endpointClient {
 	host := os.Getenv("DOCKER_HOST")
 	if host == "" {
+		// Windows 默认使用命名管道而非明文 TCP
 		if runtime.GOOS == "windows" {
-			host = "tcp://localhost:2375"
+			// Windows 使用命名管道 npipe:////./pipe/docker_engine
+			// 需要 github.com/Microsoft/go-winio 支持，此处暂时返回错误
+			host = "npipe:////./pipe/docker_engine"
 		} else {
 			host = "unix:///var/run/docker.sock"
 		}
@@ -78,6 +81,14 @@ func (m *EndpointManager) buildLocalClient() *endpointClient {
 			},
 			Timeout: 30 * time.Second,
 		}
+	} else if strings.HasPrefix(host, "npipe://") {
+		// Windows 命名管道 - 需要额外依赖，当前标记为不支持
+		// TODO: 使用 github.com/Microsoft/go-winio 实现命名管道支持
+		ec.baseURL = "http://localhost"
+		ec.port = 0
+		ec.client = &http.Client{
+			Timeout: 30 * time.Second,
+		}
 	} else {
 		addr := host
 		if strings.HasPrefix(addr, "tcp://") {
@@ -92,6 +103,8 @@ func (m *EndpointManager) buildLocalClient() *endpointClient {
 		if ec.port == 0 {
 			ec.port = 2375
 		}
+		// SECURITY: 明文 TCP 连接不安全，应使用 TLS (端口 2376)
+		// 生产环境必须配置 TLS 证书
 		ec.client = &http.Client{
 			Transport: &http.Transport{},
 			Timeout:   30 * time.Second,

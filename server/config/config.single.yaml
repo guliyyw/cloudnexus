@@ -3,18 +3,21 @@ server:
   host: "0.0.0.0"
 
 database:
-  dsn: "host=localhost user=cloudnexus password=cloudnexus dbname=cloudnexus port=5432 sslmode=disable"
+  # 请通过环境变量 CLOUDNEXUS_DB_DSN 设置真实密码
+  dsn: "host=localhost user=cloudnexus password=${DB_PASSWORD} dbname=cloudnexus port=5432 sslmode=require"
 
 redis:
   addr: "localhost:6379"
-  password: ""
+  # 请通过环境变量 CLOUDNEXUS_REDIS_PASSWORD 设置密码
+  password: "${REDIS_PASSWORD}"
   db: 0
 
 minio:
   endpoint: "localhost:9000"
-  access_key: "minioadmin"
-  secret_key: "minioadmin"
-  use_ssl: false
+  # 请通过环境变量设置 MinIO 凭证
+  access_key: "${MINIO_ACCESS_KEY}"
+  secret_key: "${MINIO_SECRET_KEY}"
+  use_ssl: true
   bucket: "cloudnexus"
 
 log:
@@ -22,7 +25,8 @@ log:
   format: "console"
 
 jwt:
-  access_secret: "change-me-in-production"
-  refresh_secret: "change-me-in-production-refresh"
+  # 请通过环境变量设置强密钥，至少 32 字节随机字符串
+  access_secret: "${JWT_ACCESS_SECRET}"
+  refresh_secret: "${JWT_REFRESH_SECRET}"
   access_ttl_sec: 28800
   refresh_ttl_sec: 604800

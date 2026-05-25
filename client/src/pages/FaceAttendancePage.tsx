@@ -162,11 +162,11 @@ export default function FaceAttendancePage() {
     },
     {
       title: '签到时间', dataIndex: 'check_in', key: 'check_in', width: 180,
-      render: (t: string | null) => t ? <Tag color="green">{new Date(t).toLocaleTimeString()}</Tag> : <span style={{ color: '#999' }}>—</span>,
+      render: (t: string | null) => t ? <Tag color="green">{new Date(t).toLocaleTimeString()}</Tag> : <span style={{ color: '#888' }}>—</span>,
     },
     {
       title: '签退时间', dataIndex: 'check_out', key: 'check_out', width: 180,
-      render: (t: string | null) => t ? <Tag color="orange">{new Date(t).toLocaleTimeString()}</Tag> : <span style={{ color: '#999' }}>—</span>,
+      render: (t: string | null) => t ? <Tag color="orange">{new Date(t).toLocaleTimeString()}</Tag> : <span style={{ color: '#888' }}>—</span>,
     },
     {
       title: '出现次数', dataIndex: 'session_count', key: 'session_count', width: 80,

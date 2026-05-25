@@ -7,6 +7,7 @@ import {
   StepBackwardOutlined,
   SoundOutlined,
   CloseOutlined,
+  ExpandOutlined,
 } from '@ant-design/icons'
 import { usePlayerStore } from '../../stores/playerStore'
 import { colors, radius, shadow } from '../../theme/tokens'
@@ -24,7 +25,7 @@ export default function MiniPlayer() {
   const {
     queue, currentIndex, isPlaying, currentTime, duration,
     volume, isMuted, pause, resume, next, prev, seek, setVolume,
-    hideMini,
+    hideMini, toggleFullScreen,
   } = usePlayerStore()
   const [showVol, setShowVol] = useState(false)
 
@@ -39,14 +40,15 @@ export default function MiniPlayer() {
         left: 0,
         right: 0,
         height: 64,
-        background: '#fff',
-        borderTop: '1px solid #f0eeeb',
+        background: 'rgba(0,0,0,0.9)',
+        backdropFilter: 'blur(12px)',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
         display: 'flex',
         alignItems: 'center',
         padding: '0 16px',
         gap: 12,
         zIndex: 99,
-        boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+        boxShadow: '0 -2px 12px rgba(0,0,0,0.4)',
       }}
     >
       <div style={{ flex: '0 0 auto', minWidth: 0, maxWidth: 200 }}>
@@ -72,7 +74,7 @@ export default function MiniPlayer() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Text style={{ fontSize: 10, color: '#8c8c8c', flexShrink: 0, width: 36, textAlign: 'right' }}>
+        <Text style={{ fontSize: 10, color: colors.textSecondary, flexShrink: 0, width: 36, textAlign: 'right' }}>
           {formatTime(currentTime)}
         </Text>
         <Slider
@@ -85,7 +87,7 @@ export default function MiniPlayer() {
 
 
         />
-        <Text style={{ fontSize: 10, color: '#8c8c8c', flexShrink: 0, width: 36 }}>
+        <Text style={{ fontSize: 10, color: colors.textSecondary, flexShrink: 0, width: 36 }}>
           {formatTime(duration)}
         </Text>
       </div>
@@ -105,7 +107,7 @@ export default function MiniPlayer() {
               bottom: 40,
               left: '50%',
               transform: 'translateX(-50%)',
-              background: '#fff',
+              background: 'rgba(30,30,30,0.95)',
               padding: '8px 4px',
               borderRadius: radius.md,
               boxShadow: shadow.modal,
@@ -128,6 +130,7 @@ export default function MiniPlayer() {
       </div>
 
       <Button type="text" size="small" icon={<CloseOutlined />} onClick={hideMini} />
+      <Button type="text" size="small" icon={<ExpandOutlined />} onClick={toggleFullScreen} style={{ color: colors.primary }} />
     </div>
   )
 }

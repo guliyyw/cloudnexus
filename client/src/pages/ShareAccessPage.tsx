@@ -49,7 +49,7 @@ export default function ShareAccessPage() {
 
   const renderPreview = () => {
     if (!share) return null
-    const url = fileApi.getSharePreviewUrl(share.share_code, password)
+    const url = fileApi.getSharePreviewUrl(share.share_code)
     const mime = share.mime_type || ''
 
     if (mime.startsWith('image/')) {
@@ -62,8 +62,17 @@ export default function ShareAccessPage() {
       return <audio controls src={url} style={{ width: '100%' }} />
     }
     if (mime === 'application/pdf') {
-      return <iframe src={url} style={{ width: '100%', height: 560, border: 'none' }} title={share.file_name} />
+      // SECURITY: PDF 使用 sandbox iframe 防止 XSS
+      return (
+        <iframe
+          src={url}
+          style={{ width: '100%', height: 560, border: 'none' }}
+          title={share.file_name}
+          sandbox="allow-scripts allow-same-origin"
+        />
+      )
     }
+    // SECURITY: 其他 MIME 类型不使用 iframe 预览，防止 XSS
     return <Text type="secondary">不支持预览此文件类型</Text>
   }
 
@@ -86,7 +95,7 @@ export default function ShareAccessPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <Card style={{ width: 520 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div style={{ textAlign: 'center' }}>
@@ -138,7 +147,7 @@ export default function ShareAccessPage() {
                 )}
                 <Button type="primary" icon={<DownloadOutlined />}>
                   <a
-                    href={fileApi.getShareDownloadUrl(share!.share_code, password)}
+                    href={fileApi.getShareDownloadUrl(share!.share_code)}
                     download={share?.file_name}
                     style={{ color: '#fff', textDecoration: 'none' }}
                   >
@@ -147,7 +156,7 @@ export default function ShareAccessPage() {
                 </Button>
               </Space>
               {showPreview && (
-                <Card size="small" style={{ background: '#fafaf8' }}>
+                <Card size="small" style={{ background: 'rgba(255,255,255,0.04)' }}>
                   {renderPreview()}
                 </Card>
               )}

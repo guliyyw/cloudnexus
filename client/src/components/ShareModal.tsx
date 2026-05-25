@@ -3,6 +3,7 @@ import { Modal, Input, Button, Space, message, Typography, List, Popconfirm, Tag
 import { LinkOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
 import * as fileApi from '../services/file'
 import type { ShareInfo } from '../services/file'
+import { colors } from '../theme/tokens'
 
 const { Text } = Typography
 
@@ -128,7 +129,7 @@ export default function ShareModal({ file, open, onClose }: Props) {
                   ]}
                 >
                   <List.Item.Meta
-                    avatar={<LinkOutlined style={{ fontSize: 18, color: '#e8964a' }} />}
+                    avatar={<LinkOutlined style={{ fontSize: 18, color: colors.primary }} />}
                     title={
                       <Space size={4}>
                         <Text copyable={{ text: fileApi.getShareUrl(s.share_code) }}

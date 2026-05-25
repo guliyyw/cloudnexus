@@ -25,7 +25,7 @@ import type { ColumnsType } from 'antd/es/table'
 
 function getFileIcon(mimeType: string, isDir: boolean, collabType?: string) {
   if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />
-  if (collabType === 'doc') return <FileTextOutlined style={{ color: '#e8964a' }} />
+  if (collabType === 'doc') return <FileTextOutlined style={{ color: '#81ecfe' }} />
   if (!mimeType) return <FileOutlined />
   if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: '#52c41a' }} />
   if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#5b8def' }} />
@@ -237,8 +237,8 @@ export default function FileListPage() {
               style={{
                 padding: '4px 8px',
                 borderRadius: 4,
-                background: dropDirId === record.id ? '#fef3e7' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #e8964a' : undefined,
+                background: dropDirId === record.id ? 'rgba(129,236,254,0.08)' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #81ecfe' : undefined,
               }}
             >
               {name}
@@ -339,7 +339,7 @@ export default function FileListPage() {
       </div>
 
       {selectedRowKeys.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, background: '#fef3e7', borderColor: '#f5d5b0' }}>
+        <Card size="small" style={{ marginBottom: 16, background: 'rgba(129,236,254,0.08)', borderColor: 'rgba(129,236,254,0.2)' }}>
           <Space>
             <Text strong>已选择 {selectedRowKeys.length} 项</Text>
             <Button type="primary" size="small" icon={<SwapOutlined />}
@@ -414,8 +414,8 @@ export default function FileListPage() {
               onDragLeave: handleDirDragLeave,
               onDrop: (e: React.DragEvent) => handleDirDrop(e, record.id, record.name),
               style: {
-                background: dropDirId === record.id ? '#fef3e7' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #e8964a' : undefined,
+                background: dropDirId === record.id ? 'rgba(129,236,254,0.08)' : undefined,
+                outline: dropDirId === record.id ? '2px dashed #81ecfe' : undefined,
                 cursor: 'grab',
               },
             }

@@ -5,6 +5,7 @@ import { useFileStore } from '../stores/fileStore'
 import useChunkUpload from '../hooks/useChunkUpload'
 import * as fileApi from '../services/file'
 import { formatFileSize } from '../utils/format'
+import { colors } from '../theme/tokens'
 
 const CHUNK_THRESHOLD = 100 * 1024 * 1024 // 100MB - use chunked upload above this
 
@@ -181,17 +182,17 @@ export default function UploadModal({ open, targetDirId, targetDirName, onClose 
             {isChunkActive ? (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: '#6b6b6b' }}>
+                  <span style={{ fontSize: 13, color: colors.textSecondary }}>
                     分块上传中：{chunkUpload.active?.fileName}
                   </span>
-                  <span style={{ fontSize: 13, color: '#6b6b6b' }}>
+                  <span style={{ fontSize: 13, color: colors.textSecondary }}>
                     {chunkUpload.progress.completed} / {chunkUpload.progress.total} 片
                   </span>
                 </div>
                 <Progress percent={chunkUpload.progress.percent} status="active"
-                  strokeColor={{ from: '#e8964a', to: '#f5d5b0' }} />
+                  strokeColor={{ from: colors.primary, to: 'rgba(129,236,254,0.2)' }} />
                 {chunkUpload.progress.currentChunk >= 0 && (
-                  <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
                     已完成分片 {chunkUpload.progress.currentChunk + 1}
                   </div>
                 )}
@@ -215,7 +216,7 @@ export default function UploadModal({ open, targetDirId, targetDirName, onClose 
         ]}
         width={500}
       >
-        <p style={{ color: '#6b6b6b', marginBottom: 12 }}>以下文件上传未完成，你可以继续上传（需重新选择文件）或取消它们：</p>
+        <p style={{ color: colors.textSecondary, marginBottom: 12 }}>以下文件上传未完成，你可以继续上传（需重新选择文件）或取消它们：</p>
         <List
           dataSource={resumeList}
           renderItem={(item) => (

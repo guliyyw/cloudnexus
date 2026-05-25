@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"time"
 
@@ -33,10 +34,13 @@ func (s *ResetService) RequestPasswordReset(emailAddr string) error {
 		return apperrors.NewAppError(500, "生成令牌失败", err)
 	}
 	token := hex.EncodeToString(tokenBytes)
+	// SECURITY: 存储令牌的 SHA256 哈希值，而非明文
+	tokenHash := sha256.Sum256([]byte(token))
+	tokenHashStr := hex.EncodeToString(tokenHash[:])
 
 	rt := &model.PasswordResetToken{
 		UserID:    user.ID,
-		Token:     token,
+		Token:     tokenHashStr,
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
 	if err := s.db.Create(rt).Error; err != nil {
@@ -53,12 +57,16 @@ func (s *ResetService) RequestPasswordReset(emailAddr string) error {
 }
 
 func (s *ResetService) ResetPassword(token, newPassword string) error {
-	if len(newPassword) < 8 {
-		return apperrors.NewAppError(400, "密码至少 8 位", apperrors.ErrBadRequest)
+	if err := ValidatePasswordStrength(newPassword); err != nil {
+		return apperrors.NewAppError(400, err.Error(), apperrors.ErrBadRequest)
 	}
 
+	// SECURITY: 验证令牌的 SHA256 哈希值
+	tokenHash := sha256.Sum256([]byte(token))
+	tokenHashStr := hex.EncodeToString(tokenHash[:])
+
 	var rt model.PasswordResetToken
-	if err := s.db.Where("token = ? AND used = false AND expires_at > ?", token, time.Now()).First(&rt).Error; err != nil {
+	if err := s.db.Where("token = ? AND used = false AND expires_at > ?", tokenHashStr, time.Now()).First(&rt).Error; err != nil {
 		return apperrors.NewAppError(400, "重置令牌无效或已过期", apperrors.ErrBadRequest)
 	}
 

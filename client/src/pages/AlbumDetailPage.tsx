@@ -6,9 +6,11 @@ import {
   AppstoreOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  FolderOutlined,
 } from '@ant-design/icons'
 import AlbumGrid from '../components/album/AlbumGrid'
 import AlbumTimeline from '../components/album/AlbumTimeline'
+import AlbumFolder from '../components/album/AlbumFolder'
 import Lightbox from '../components/album/Lightbox'
 import { useAlbumStore } from '../stores/albumStore'
 import type { FileItem } from '../services/file'
@@ -82,6 +84,7 @@ export default function AlbumDetailPage() {
             items={[
               { key: 'grid', label: <span><AppstoreOutlined style={{ marginRight: 4 }} />网格</span> },
               { key: 'timeline', label: <span><ClockCircleOutlined style={{ marginRight: 4 }} />时间线</span> },
+              { key: 'folder', label: <span><FolderOutlined style={{ marginRight: 4 }} />文件夹</span> },
             ]}
           />
         </Space>
@@ -105,8 +108,11 @@ export default function AlbumDetailPage() {
               onPreview={handlePreview}
             />
           )}
+          {viewMode === 'folder' && (
+            <AlbumFolder files={imageFiles} onPreview={handlePreview} />
+          )}
           {imageFiles.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 60, color: '#8c8c8c' }}>
+            <div style={{ textAlign: 'center', padding: 60, color: '#888' }}>
               相册中还没有内容
             </div>
           )}

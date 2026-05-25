@@ -23,9 +23,10 @@ paths:
   all:
     source: publisher
 
-# Allow anonymous access to API (camera-svc calls from Docker internal network)
+# SECURITY: 配置认证用户
 authInternalUsers:
-  - user: any
+  - user: cloudnexus
+    pass: cloudnexus123
     permissions:
       - action: api
       - action: publish

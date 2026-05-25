@@ -1,22 +1,18 @@
 import { useEffect, useState, useRef } from 'react'
 import {
-  List, Input, Button, Card, Typography, Avatar,
-  message, Modal, Popconfirm, Space, Checkbox, Divider, Badge, Tag,
+  Input, Button, Typography, Avatar,
+  message, Modal, Space, Checkbox, Divider,
+  List,
 } from 'antd'
 import {
-  SendOutlined, PlusOutlined, UserOutlined, DeleteOutlined,
-  TeamOutlined, UsergroupAddOutlined, CrownOutlined,
-  UserAddOutlined, UserDeleteOutlined, LogoutOutlined,
-  PaperClipOutlined, DownloadOutlined, EyeOutlined,
-  PictureOutlined, LinkOutlined, UploadOutlined,
-  CustomerServiceOutlined,
+  PlusOutlined, UserOutlined,
+  TeamOutlined, PictureOutlined,
 } from '@ant-design/icons'
 import { useChatStore } from '../stores/chatStore'
 import { useAuthStore } from '../stores/authStore'
 import { useFriendStore } from '../stores/friendStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useNavigate } from 'react-router-dom'
-import type { Message, GroupMember } from '../services/chat'
 import type { FriendRequest } from '../services/chat'
 import FilePickerModal from '../components/FilePickerModal'
 import { getDownloadUrl, getPreviewUrl, uploadFile, getFileList, createDirectory } from '../services/file'
@@ -24,10 +20,12 @@ import { fetchLinkPreview, exportConversation, importConversation } from '../ser
 import { getAlbums, addFilesToAlbum } from '../services/album'
 import { usePlayerStore } from '../stores/playerStore'
 import type { Track } from '../services/music'
-import { isPreviewable } from '../utils/preview'
-import { formatFileSize } from '../utils/format'
 import type { FileItem } from '../services/file'
 import type { Album } from '../services/album'
+import ConversationList from '../components/chat/ConversationList'
+import MessageArea from '../components/chat/MessageArea'
+import MemberPanel from '../components/chat/MemberPanel'
+import type { LinkPreview } from '../components/chat/MessageArea'
 
 const { Text } = Typography
 
@@ -53,15 +51,13 @@ export default function ChatPage() {
   const [selectedFriends, setSelectedFriends] = useState<string[]>([])
   const [memberModalVisible, setMemberModalVisible] = useState(false)
   const [filePickerVisible, setFilePickerVisible] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [importModalVisible, setImportModalVisible] = useState(false)
   const [importResult, setImportResult] = useState<{ inserted: number; skipped: number; total: number } | null>(null)
   const importFileRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [linkPreviews, setLinkPreviews] = useState<Record<string, { url: string; title: string; description: string; image: string; site_name: string }>>({})
+  const [linkPreviews, setLinkPreviews] = useState<Record<string, LinkPreview>>({})
   const fetchedMsgIds = useRef<Set<string>>(new Set())
   const [albumPickerOpen, setAlbumPickerOpen] = useState(false)
   const [albums, setAlbums] = useState<Album[]>([])
@@ -99,17 +95,6 @@ export default function ChatPage() {
       fetchFriends()
     }
   }, [user, fetchConversations, fetchFriends])
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-    // Delayed second scroll to account for image/video loading
-    const timer = setTimeout(scrollToBottom, 400)
-    return () => clearTimeout(timer)
-  }, [messages.length])
 
   const { sendMessage } = useWebSocket((wsMsg) => {
     if (wsMsg.type === 'message') {
@@ -245,17 +230,6 @@ export default function ChatPage() {
     }
   }
 
-  const parseFileContent = (content: string) => {
-    try {
-      return JSON.parse(content) as {
-        file_id: string; file_name: string; file_size: number; mime_type: string
-        url?: string; download_url?: string
-      }
-    } catch {
-      return null
-    }
-  }
-
   const ensureChatBackupDir = async (subDirName: string): Promise<string> => {
     const rootList = await getFileList('0', 1, 100)
     let chatDir = rootList.items.find((f) => f.is_dir && f.name === '聊天记录')
@@ -377,331 +351,51 @@ export default function ChatPage() {
   return (
     <div style={{ display: 'flex', height: '100%', gap: 16 }}>
       {/* Conversation List */}
-      <Card
-        title="会话"
-        style={{ width: 280, height: '100%', display: 'flex', flexDirection: 'column' }}
-        styles={{ body: { flex: 1, overflow: 'auto', padding: 0 } }}
-        extra={
-          <Space size={4}>
-            <Button type="text" icon={<UsergroupAddOutlined />} title="创建群聊"
-              onClick={() => setGroupModalVisible(true)} />
-            <Button type="text" icon={<TeamOutlined />} title="好友管理"
-              onClick={() => navigate('/friends')} />
-            <Button type="text" icon={<PlusOutlined />}
-              onClick={() => setFriendModalVisible(true)} />
-          </Space>
-        }
-      >
-        <List
-          dataSource={conversations}
-          loading={loading}
-          locale={{ emptyText: '暂无会话，请先添加好友再开始聊天' }}
-          renderItem={(conv) => (
-            <List.Item
-              style={{
-                cursor: 'pointer',
-                padding: '8px 12px',
-                borderRadius: 6,
-                background: currentConvId === conv.id ? '#fef3e7' : undefined,
-              }}
-              onClick={() => selectConv(conv.id)}
-            >
-              <List.Item.Meta
-                avatar={
-                  <Badge count={conv.unread} size="small" offset={[-4, 4]}>
-                    <Avatar icon={conv.type === 'group' ? <TeamOutlined /> : <UserOutlined />} />
-                  </Badge>
-                }
-                title={conv.name || `会话 ${conv.id}`}
-                description={<Text type="secondary" ellipsis>{conv.last_message || (conv.type === 'private' ? '私聊' : '群聊')}</Text>}
-              />
-              <Popconfirm
-                title="确定删除该会话？"
-                onConfirm={(e) => {
-                  e?.stopPropagation()
-                  deleteConversation(conv.id)
-                }}
-                onCancel={(e) => e?.stopPropagation()}
-              >
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Popconfirm>
-            </List.Item>
-          )}
-        />
-      </Card>
+      <ConversationList
+        conversations={conversations}
+        currentConvId={currentConvId}
+        loading={loading}
+        onSelectConv={selectConv}
+        onDeleteConv={deleteConversation}
+        onCreateGroup={() => setGroupModalVisible(true)}
+        onAddFriend={() => setFriendModalVisible(true)}
+        onNavigateFriends={() => navigate('/friends')}
+      />
 
       {/* Chat Area */}
-      <Card
-        title={currentConv ? (currentConv.name || `会话 ${currentConv.id}`) : '选择一个会话'}
-        style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}
-        styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' } }}
-        extra={
-          currentConvId ? (
-            <Space size={4}>
-              <Button type="text" size="small" icon={<DownloadOutlined />}
-                title="导出聊天记录" loading={exporting}
-                onClick={handleExport} />
-              <Button type="text" size="small" icon={<UploadOutlined />}
-                title="导入聊天记录" loading={importing}
-                onClick={() => importFileRef.current?.click()} />
-            </Space>
-          ) : undefined
-        }
-      >
-        {currentConvId ? (
-          <>
-            <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-              {messages.map((msg: Message) => {
-                const isMe = msg.sender_id === user?.id
-                const alignStyle = { alignItems: isMe ? 'flex-end' as const : 'flex-start' as const }
-                const senderLabel = isMe ? '我' : (currentConv?.name || `用户${msg.sender_id}`)
-                const timeStr = new Date(msg.created_at).toLocaleTimeString()
-                const urls = msg.msg_type === 'text' ? detectUrls(msg.content) : []
-                const linkPrev = linkPreviews[msg.id]
-
-                return (
-                <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', ...alignStyle }}>
-                  {msg.msg_type === 'system' ? (
-                    <div style={{ textAlign: 'center', width: '100%', marginBottom: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, background: '#f7f6f5', padding: '2px 12px', borderRadius: 8 }}>
-                        {msg.content}
-                      </Text>
-                    </div>
-                  ) : msg.msg_type === 'image' ? (
-                    (() => {
-                      const fc = parseFileContent(msg.content)
-                      const src = fc?.url || getPreviewUrl(fc?.file_id || '')
-                      return (
-                        <div style={{ maxWidth: '70%' }}>
-                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-                            {senderLabel} · {timeStr}
-                          </Text>
-                          <img
-                            src={src}
-                            alt={fc?.file_name || '图片'}
-                            style={{ maxWidth: 320, maxHeight: 320, borderRadius: 12, cursor: 'pointer', objectFit: 'cover' }}
-                            onClick={() => window.open(src, '_blank')}
-                          />
-                        </div>
-                      )
-                    })()
-                  ) : msg.msg_type === 'video' ? (
-                    (() => {
-                      const fc = parseFileContent(msg.content)
-                      const src = fc?.url || getPreviewUrl(fc?.file_id || '')
-                      return (
-                        <div style={{ maxWidth: '70%' }}>
-                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-                            {senderLabel} · {timeStr}
-                          </Text>
-                          <video
-                            src={src}
-                            controls
-                            preload="metadata"
-                            style={{ maxWidth: 320, maxHeight: 320, borderRadius: 12 }}
-                          />
-                        </div>
-                      )
-                    })()
-                  ) : msg.msg_type === 'file' ? (
-                    (() => {
-                      const fc = parseFileContent(msg.content)
-                      if (!fc) return (
-                        <div style={{
-                          maxWidth: '70%', padding: '8px 14px', borderRadius: 12,
-                          background: '#fef3e7', wordBreak: 'break-word',
-                        }}>
-                          {msg.content}
-                        </div>
-                      )
-                      return (
-                        <div style={{ maxWidth: '70%' }}>
-                          <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-                            {senderLabel} · {timeStr}
-                          </Text>
-                          <Card
-                            size="small"
-                            style={{ borderRadius: 12, background: '#fef3e7' }}
-                            styles={{ body: { padding: '10px 14px' } }}
-                          >
-                            <Space direction="vertical" size={4}>
-                              <Text strong style={{ fontSize: 13 }}>{fc.file_name}</Text>
-                              <Text type="secondary" style={{ fontSize: 11 }}>
-                                {fc.mime_type || '未知类型'} · {formatFileSize(fc.file_size)}
-                              </Text>
-                              <Space size={4}>
-                                {isPreviewable(fc.mime_type) && (
-                                  <Button type="link" size="small" icon={<EyeOutlined />}
-                                    href={getPreviewUrl(fc.file_id)} target="_blank">
-                                    预览
-                                  </Button>
-                                )}
-                                {fc.mime_type?.startsWith('image/') && (
-                                  <Button type="link" size="small" icon={<PictureOutlined />}
-                                    onClick={() => handleOpenAlbumPicker(fc.file_id)}>
-                                    相册
-                                  </Button>
-                                )}
-                                {fc.mime_type?.startsWith('audio/') && (
-                                  <Button type="link" size="small" icon={<CustomerServiceOutlined />}
-                                    onClick={() => handlePlayInMusic(fc)}>
-                                    播放
-                                  </Button>
-                                )}
-                                <Button type="link" size="small" icon={<DownloadOutlined />}
-                                  href={getDownloadUrl(fc.file_id)}>
-                                  下载
-                                </Button>
-                              </Space>
-                            </Space>
-                          </Card>
-                        </div>
-                      )
-                    })()
-                  ) : (
-                    <div style={{ maxWidth: '70%' }}>
-                      <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>
-                        {senderLabel} · {timeStr}
-                      </Text>
-                      <div style={{
-                        padding: '8px 14px', borderRadius: 12,
-                        background: '#fef3e7', wordBreak: 'break-word',
-                      }}>
-                        {msg.content}
-                      </div>
-                      {/* Link Card */}
-                      {linkPrev && (linkPrev.title || linkPrev.image) ? (
-                        <a
-                          href={linkPrev.url || urls[0]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ textDecoration: 'none' }}
-                        >
-                          <Card
-                            size="small"
-                            style={{ marginTop: 6, borderRadius: 10, background: '#fafaf8' }}
-                            styles={{ body: { padding: '10px 12px' } }}
-                          >
-                            <div style={{ display: 'flex', gap: 10 }}>
-                              {linkPrev.image && (
-                                <img
-                                  src={linkPrev.image}
-                                  alt=""
-                                  style={{ width: 60, height: 60, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
-                                />
-                              )}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <Text strong style={{ fontSize: 13, display: 'block' }} ellipsis>
-                                  <LinkOutlined style={{ marginRight: 4 }} />
-                                  {linkPrev.title || urls[0]}
-                                </Text>
-                                {linkPrev.description && (
-                                  <Text type="secondary" style={{ fontSize: 11, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>
-                                    {linkPrev.description}
-                                  </Text>
-                                )}
-                                {linkPrev.site_name && (
-                                  <Text type="secondary" style={{ fontSize: 10 }}>{linkPrev.site_name}</Text>
-                                )}
-                              </div>
-                            </div>
-                          </Card>
-                        </a>
-                      ) : null}
-                      {/* Simple link fallback when no preview or empty preview */}
-                      {(!linkPrev || !(linkPrev.title || linkPrev.image)) && urls.length > 0 && (
-                        <div style={{ marginTop: 4 }}>
-                          {urls.map((u, i) => (
-                            <a key={i} href={u} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, display: 'block' }}>
-                              <LinkOutlined /> {u.length > 50 ? u.slice(0, 50) + '...' : u}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )})}
-              <div ref={messagesEndRef} />
-            </div>
-            <div style={{ padding: '12px 16px', borderTop: '1px solid #f0eeeb', display: 'flex', gap: 8 }}>
-              <Input.TextArea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onPressEnter={(e) => { e.preventDefault(); handleSend() }}
-                onPaste={handlePaste}
-                placeholder="输入消息... (可直接粘贴图片)"
-                autoSize={{ minRows: 1, maxRows: 4 }}
-                style={{ flex: 1 }}
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleImgUpload(file)
-                  e.target.value = ''
-                }}
-              />
-              <Button type="text" icon={<PictureOutlined />} title="发送图片/视频"
-                loading={uploadingImg}
-                onClick={() => fileInputRef.current?.click()} />
-              <Button type="text" icon={<PaperClipOutlined />} title="发送文件"
-                onClick={() => setFilePickerVisible(true)} />
-              <Button type="primary" icon={<SendOutlined />} onClick={handleSend}>发送</Button>
-            </div>
-          </>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8c8c8c' }}>
-            选择或创建一个会话开始聊天
-          </div>
-        )}
-      </Card>
+      <MessageArea
+        currentConv={currentConv}
+        currentConvId={currentConvId}
+        messages={messages}
+        userId={user?.id}
+        inputText={inputText}
+        uploadingImg={uploadingImg}
+        exporting={exporting}
+        importing={importing}
+        linkPreviews={linkPreviews}
+        importFileRef={importFileRef}
+        onInputChange={setInputText}
+        onSend={handleSend}
+        onPaste={handlePaste}
+        onImageUpload={handleImgUpload}
+        onFilePickerOpen={() => setFilePickerVisible(true)}
+        onExport={handleExport}
+        onImportClick={() => importFileRef.current?.click()}
+        onImportFile={handleImport}
+        onOpenAlbumPicker={handleOpenAlbumPicker}
+        onPlayInMusic={handlePlayInMusic}
+      />
 
       {/* Member Panel for Group Chat */}
       {isGroup && (
-        <Card
-          title={<span><TeamOutlined /> 成员 ({members.length})</span>}
-          style={{ width: 220, display: 'flex', flexDirection: 'column' }}
-          styles={{ body: { flex: 1, overflow: 'auto', padding: 0 } }}
-          extra={
-            <Button type="text" size="small" icon={<UserAddOutlined />}
-              onClick={() => setMemberModalVisible(true)} />
-          }
-        >
-          <List
-            dataSource={members}
-            size="small"
-            renderItem={(m: GroupMember) => (
-              <List.Item
-                style={{ padding: '6px 12px' }}
-                actions={isOwner && m.user_id !== user?.id ? [
-                  <Button key="remove" type="text" size="small" danger icon={<UserDeleteOutlined />}
-                    onClick={() => handleRemoveMember(m.user_id)} />
-                ] : []}
-              >
-                <Space>
-                  <Avatar icon={<UserOutlined />} size="small" />
-                  <span>{m.user_id === user?.id ? '我' : `用户 ${m.user_id}`}</span>
-                  {m.role === 'owner' && <Tag color="gold" style={{ margin: 0, fontSize: 10 }}><CrownOutlined /></Tag>}
-                </Space>
-              </List.Item>
-            )}
-          />
-          <div style={{ padding: 8, borderTop: '1px solid #f0eeeb' }}>
-            <Button type="text" danger icon={<LogoutOutlined />} block onClick={handleLeaveGroup}>
-              退出群聊
-            </Button>
-          </div>
-        </Card>
+        <MemberPanel
+          members={members}
+          userId={user?.id}
+          isOwner={!!isOwner}
+          onRemoveMember={handleRemoveMember}
+          onAddMemberClick={() => setMemberModalVisible(true)}
+          onLeaveGroup={handleLeaveGroup}
+        />
       )}
 
       {/* Friend Selection Modal */}
@@ -791,19 +485,6 @@ export default function ChatPage() {
         onCancel={() => setFilePickerVisible(false)}
       />
 
-      {/* Hidden file input for import */}
-      <input
-        ref={importFileRef}
-        type="file"
-        accept=".json"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) handleImport(file)
-          e.target.value = ''
-        }}
-      />
-
       {/* Import Result Modal */}
       <Modal
         title="导入结果"
@@ -818,7 +499,7 @@ export default function ChatPage() {
               成功导入 {importResult.inserted} 条
             </p>
             {importResult.skipped > 0 && (
-              <p style={{ color: '#8c8c8c', fontSize: 14 }}>
+              <p style={{ color: '#888', fontSize: 14 }}>
                 跳过 {importResult.skipped} 条 (已存在)
               </p>
             )}

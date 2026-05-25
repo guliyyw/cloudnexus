@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Input, message, Spin, Radio } from 'antd'
 import { detectFaces, embeddingToArray } from '../utils/faceDetection'
+import { colors } from '../theme/tokens'
 
 interface DetectedPerson {
   index: number
@@ -127,7 +128,7 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
         {hasFaces ? (
           <>
-            <div style={{ marginBottom: 8, fontSize: 13, color: '#595959' }}>
+            <div style={{ marginBottom: 8, fontSize: 13, color: colors.textSecondary }}>
               检测到 {people.length} 人，请选择要注册的人脸
             </div>
             <Radio.Group
@@ -141,7 +142,7 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
                   value={p.index}
                   style={{
                     width: 100, height: 110, padding: 0, overflow: 'hidden',
-                    border: selectedIdx === p.index ? '2px solid #e8964a' : '2px solid #d9d9d9',
+                    border: selectedIdx === p.index ? `2px solid ${colors.primary}` : '2px solid rgba(255,255,255,0.1)',
                     borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
@@ -156,10 +157,10 @@ export default function FaceRegisterModal({ open, videoEl, onClose, onRegister }
             width: 200, height: 200, margin: '0 auto', background: '#1e1e1e',
             borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ color: '#8c8c8c' }}>{loading ? <Spin /> : '等待检测...'}</span>
+            <span style={{ color: colors.textSecondary }}>{loading ? <Spin /> : '等待检测...'}</span>
           </div>
         )}
-        <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: colors.textSecondary }}>
           {hasFaces ? '已检测到人脸，请输入姓名' : '请面对摄像头，确保人脸清晰可见'}
         </div>
       </div>

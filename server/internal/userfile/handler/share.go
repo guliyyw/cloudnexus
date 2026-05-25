@@ -91,7 +91,7 @@ func (h *ShareHandler) HandleDownloadShare(c *gin.Context) {
 		}
 	}
 
-	stream, file, err := h.fileSvc.Download(info.OwnerID, info.FileID)
+	stream, file, err := h.fileSvc.DownloadForShare(info.FileID)
 	if err != nil {
 		handleError(c, err)
 		return

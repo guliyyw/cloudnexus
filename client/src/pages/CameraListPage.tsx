@@ -253,7 +253,7 @@ export default function CameraListPage() {
             </Select>
           </Form.Item>
         </Form>
-        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
           提示：默认账号 admin，密码 888888。RTSP 格式示例：
           <br />
           rtsp://admin:888888@IP:554/udp/av0_0 (主码流)

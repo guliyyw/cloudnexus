@@ -143,8 +143,8 @@ export default function RecycleBinPage() {
               prefix={<DeleteOutlined />}
             />
             <div style={{ marginTop: 8 }}>
-              <div style={{ height: 6, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.min(trashPercent, 100)}%`, background: trashPercent > 80 ? '#ff4d4f' : '#e8964a', borderRadius: 3, transition: 'width 0.3s' }} />
+              <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(trashPercent, 100)}%`, background: trashPercent > 80 ? '#ff4d4f' : '#81ecfe', borderRadius: 3, transition: 'width 0.3s' }} />
               </div>
               <Text type="secondary" style={{ fontSize: 11 }}>{trashPercent}% 已用</Text>
             </div>

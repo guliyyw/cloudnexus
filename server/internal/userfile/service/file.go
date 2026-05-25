@@ -114,6 +114,23 @@ func (s *FileService) Download(userID, fileID uint64) (io.ReadCloser, *model.Fil
 	return obj, file, nil
 }
 
+// DownloadForShare 用于分享下载，跳过所有权检查（由调用方验证分享权限）
+func (s *FileService) DownloadForShare(fileID uint64) (io.ReadCloser, *model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, nil, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
+	}
+	if file.IsDir {
+		return nil, nil, apperrors.NewAppError(400, "不能下载目录", apperrors.ErrBadRequest)
+	}
+
+	obj, err := s.minio.GetObject(context.Background(), s.bucket, file.StorageKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, nil, apperrors.NewAppError(500, "获取文件失败", err)
+	}
+	return obj, file, nil
+}
+
 func (s *FileService) ListFiles(userID, parentID uint64, page, pageSize int) ([]model.File, int64, error) {
 	if page < 1 {
 		page = 1

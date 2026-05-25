@@ -40,7 +40,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh',  }}>
         <Card style={{ width: 400 }}>
           <div style={{ textAlign: 'center' }}>
             <Title level={3}>无效链接</Title>
@@ -55,7 +55,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#fafaf8' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh',  }}>
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Title level={3}>重置密码</Title>

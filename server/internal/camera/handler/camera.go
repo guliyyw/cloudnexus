@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/cloudnexus/server/internal/camera/service"
+	"github.com/cloudnexus/server/pkg/httputil"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 	"github.com/cloudnexus/server/pkg/snowflake"
@@ -22,12 +23,6 @@ func NewCameraHandler(svc *service.CameraService, rec *service.RecognitionServic
 	return &CameraHandler{svc: svc, rec: rec}
 }
 
-func getUserID(c *gin.Context) uint64 {
-	v, _ := c.Get("user_id")
-	id, _ := v.(uint64)
-	return id
-}
-
 // --- Camera CRUD ---
 
 func (h *CameraHandler) HandleListCameras(c *gin.Context) {
@@ -41,7 +36,7 @@ func (h *CameraHandler) HandleListCameras(c *gin.Context) {
 	}
 	offset := (page - 1) * pageSize
 
-	cameras, total, err := h.svc.ListCameras(getUserID(c), offset, pageSize)
+	cameras, total, err := h.svc.ListCameras(httputil.GetUserID(c), offset, pageSize)
 	if err != nil {
 		c.JSON(500, response.Error(500, "查询摄像头列表失败"))
 		return
@@ -71,14 +66,14 @@ func (h *CameraHandler) HandleCreateCamera(c *gin.Context) {
 		req.Protocol = "rtsp"
 	}
 	cam := &model.Camera{
-		OwnerID:   getUserID(c),
+		OwnerID:   httputil.GetUserID(c),
 		Name:      req.Name,
 		StreamURL: req.StreamURL,
 		Protocol:  req.Protocol,
 	}
 	cam.ID = snowflake.Uint64()
 	if err := h.svc.CreateCamera(cam); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(201, response.OKWithData(gin.H{"camera": cam}))
@@ -106,7 +101,7 @@ func (h *CameraHandler) HandleUpdateCamera(c *gin.Context) {
 		Protocol:  req.Protocol,
 	}
 	if err := h.svc.UpdateCamera(cam); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("更新成功"))
@@ -118,8 +113,8 @@ func (h *CameraHandler) HandleDeleteCamera(c *gin.Context) {
 		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
 		return
 	}
-	if err := h.svc.DeleteCamera(id, getUserID(c)); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+	if err := h.svc.DeleteCamera(id, httputil.GetUserID(c)); err != nil {
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("删除成功"))
@@ -133,9 +128,9 @@ func (h *CameraHandler) HandleStartStream(c *gin.Context) {
 		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
 		return
 	}
-	hlsURL, webrtcURL, err := h.svc.StartStream(id, getUserID(c))
+	hlsURL, webrtcURL, err := h.svc.StartStream(id, httputil.GetUserID(c))
 	if err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{
@@ -150,8 +145,8 @@ func (h *CameraHandler) HandleStopStream(c *gin.Context) {
 		c.JSON(400, response.Error(400, "无效的摄像头 ID"))
 		return
 	}
-	if err := h.svc.StopStream(id, getUserID(c)); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+	if err := h.svc.StopStream(id, httputil.GetUserID(c)); err != nil {
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("视频流已停止"))
@@ -166,7 +161,7 @@ func (h *CameraHandler) HandleStartRecognition(c *gin.Context) {
 		return
 	}
 	if err := h.rec.StartRecognition(id); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("AI识别已开启"))
@@ -179,7 +174,7 @@ func (h *CameraHandler) HandleStopRecognition(c *gin.Context) {
 		return
 	}
 	if err := h.rec.StopRecognition(id); err != nil {
-		c.JSON(400, response.Error(400, err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OK("AI识别已停止"))
@@ -226,11 +221,7 @@ func (h *CameraHandler) HandleDiscoverCameras(c *gin.Context) {
 	}
 	resp, err := h.svc.DiscoverCameras(req)
 	if err != nil {
-		if appErr, ok := err.(interface{ Code() int }); ok {
-			c.JSON(appErr.Code(), response.Error(appErr.Code(), err.Error()))
-			return
-		}
-		c.JSON(500, response.Error(500, "扫描失败: "+err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{
@@ -261,7 +252,7 @@ func (h *CameraHandler) HandleDetectImage(c *gin.Context) {
 	}
 	objects, err := h.rec.DetectImage(buf)
 	if err != nil {
-		c.JSON(500, response.Error(500, "AI识别失败: "+err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	if objects == nil {
@@ -299,7 +290,7 @@ func (h *CameraHandler) HandleDetectVideo(c *gin.Context) {
 
 	result, err := h.rec.DetectVideo(buf, file.Filename, interval)
 	if err != nil {
-		c.JSON(500, response.Error(500, "视频分析失败: "+err.Error()))
+		httputil.HandleError(c, err)
 		return
 	}
 	if result.Detections == nil {

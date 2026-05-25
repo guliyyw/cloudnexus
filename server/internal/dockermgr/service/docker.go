@@ -267,7 +267,11 @@ func (s *DockerService) PullImage(endpoint, image string) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/images/create?fromImage=%s", ec.baseURL, image)
+	// SECURITY: 校验镜像名称
+	if !isValidImageName(image) {
+		return fmt.Errorf("无效的镜像名称")
+	}
+	url := fmt.Sprintf("%s/images/create?fromImage=%s", ec.baseURL, url.QueryEscape(image))
 	req, _ := http.NewRequest("POST", url, nil)
 	req.Header.Set("X-Registry-Auth", "{}")
 	resp, err := ec.client.Do(req)
@@ -289,8 +293,12 @@ func (s *DockerService) RemoveImage(endpoint, image string, force bool) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/images/%s?force=%v", ec.baseURL, image, force)
-	req, _ := http.NewRequest("DELETE", url, nil)
+	// SECURITY: 校验镜像名称
+	if !isValidImageName(image) {
+		return fmt.Errorf("无效的镜像名称")
+	}
+	apiURL := fmt.Sprintf("%s/images/%s?force=%v", ec.baseURL, url.QueryEscape(image), force)
+	req, _ := http.NewRequest("DELETE", apiURL, nil)
 	resp, err := ec.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("删除镜像失败: %w", err)
@@ -381,10 +389,29 @@ func (s *DockerService) CreateContainer(endpoint, image, name string, userID uin
 	if err != nil {
 		return "", err
 	}
-	labels := fmt.Sprintf(`"cloudnexus.creator":"%d","cloudnexus.creator_name":"%s"`, userID, username)
-	body := fmt.Sprintf(`{"Image":"%s","Labels":{%s}}`, image, labels)
-	createURL := fmt.Sprintf("%s/containers/create?name=%s", ec.baseURL, name)
-	resp, err := ec.client.Post(createURL, "application/json", strings.NewReader(body))
+	// SECURITY: 校验镜像名称，防止命令注入
+	// 只允许合法的镜像名称格式：[registry/][namespace/]name[:tag]
+	if !isValidImageName(image) {
+		return "", fmt.Errorf("无效的镜像名称")
+	}
+	// SECURITY: 校验容器名称，防止命令注入
+	if !isValidContainerName(name) {
+		return "", fmt.Errorf("无效的容器名称")
+	}
+	// 使用 json.Marshal 构建请求体，防止 JSON 注入
+	bodyMap := map[string]interface{}{
+		"Image": image,
+		"Labels": map[string]string{
+			"cloudnexus.creator":      strconv.FormatUint(userID, 10),
+			"cloudnexus.creator_name": username,
+		},
+	}
+	bodyBytes, err := json.Marshal(bodyMap)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal container config: %w", err)
+	}
+	createURL := fmt.Sprintf("%s/containers/create?name=%s", ec.baseURL, url.QueryEscape(name))
+	resp, err := ec.client.Post(createURL, "application/json", strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return "", err
 	}
@@ -424,4 +451,51 @@ func (s *DockerService) ListEndpoints() []EndpointInfo {
 // PingEndpoint pings a specific endpoint.
 func (s *DockerService) PingEndpoint(name string) error {
 	return s.mgr.PingEndpoint(name)
+}
+
+// isValidImageName 校验 Docker 镜像名称，防止命令注入
+// 允许格式: [registry/][namespace/]name[:tag@digest]
+func isValidImageName(image string) bool {
+	if len(image) == 0 || len(image) > 256 {
+		return false
+	}
+	// 禁止特殊字符
+	for _, c := range image {
+		if c < 32 || c == ';' || c == '&' || c == '|' || c == '$' ||
+			c == '`' || c == '(' || c == ')' || c == '{' || c == '}' ||
+			c == '<' || c == '>' || c == '\n' || c == '\r' {
+			return false
+		}
+	}
+	// 基本格式校验：允许字母、数字、点、斜杠、冒号、@、下划线、短横线
+	validChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./:-_@"
+	for _, c := range image {
+		if !strings.ContainsRune(validChars, c) {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidContainerName 校验 Docker 容器名称，防止命令注入
+// Docker 容器名只允许：[a-zA-Z0-9][a-zA-Z0-9_.-]*
+func isValidContainerName(name string) bool {
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	// 必须以字母或数字开头
+	if !isAlphaNum(rune(name[0])) {
+		return false
+	}
+	// 只允许字母、数字、下划线、点、短横线
+	for _, c := range name {
+		if !isAlphaNum(c) && c != '_' && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlphaNum(c rune) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }

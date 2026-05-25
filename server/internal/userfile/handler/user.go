@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -106,24 +107,39 @@ func (h *UserHandler) HandleLogin(c *gin.Context) {
 		}
 	}
 
+	// SECURITY: 设置 httpOnly Cookie 存储 Token
+	jwtCfg := h.svc.GetJWTConfig()
+	auth.SetTokenCookies(c, pair, jwtCfg.AccessTTL, jwtCfg.RefreshTTL)
+
 	c.JSON(http.StatusOK, response.OKWithData(pair))
 }
 
 type refreshReq struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 func (h *UserHandler) HandleRefresh(c *gin.Context) {
-	var req refreshReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误: "+err.Error()))
+	// SECURITY: 优先从 Cookie 获取 refresh_token
+	refreshToken := auth.GetRefreshTokenFromCookie(c)
+	if refreshToken == "" {
+		// 兼容旧版：仍支持 JSON body 传递
+		var req refreshReq
+		if err := c.ShouldBindJSON(&req); err == nil {
+			refreshToken = req.RefreshToken
+		}
+	}
+	if refreshToken == "" {
+		c.JSON(http.StatusBadRequest, response.Error(400, "缺少刷新令牌"))
 		return
 	}
-	pair, err := h.svc.RefreshToken(req.RefreshToken)
+	pair, err := h.svc.RefreshToken(refreshToken)
 	if err != nil {
 		handleError(c, err)
 		return
 	}
+	// SECURITY: 设置 httpOnly Cookie 存储 Token
+	jwtCfg := h.svc.GetJWTConfig()
+	auth.SetTokenCookies(c, pair, jwtCfg.AccessTTL, jwtCfg.RefreshTTL)
 	c.JSON(http.StatusOK, response.OKWithData(pair))
 }
 
@@ -135,6 +151,24 @@ func (h *UserHandler) HandleGetProfile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.OKWithData(user))
+}
+
+// HandleGetPermissions 返回当前用户的权限信息
+// SECURITY: 前端通过此接口获取权限，而非客户端解析 JWT
+func (h *UserHandler) HandleGetPermissions(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	username := c.GetString("username")
+	isAdmin := c.GetBool("is_admin")
+	roles := c.GetStringSlice("roles")
+	permissions := c.GetStringSlice("permissions")
+
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"user_id":    userID,
+		"username":   username,
+		"is_admin":   isAdmin,
+		"roles":      roles,
+		"permissions": permissions,
+	}))
 }
 
 type updateProfileReq struct {
@@ -155,6 +189,13 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.OKWithData(user))
+}
+
+// HandleLogout 处理用户登出，清除 httpOnly Cookie
+func (h *UserHandler) HandleLogout(c *gin.Context) {
+	// SECURITY: 清除 httpOnly Cookie
+	auth.ClearTokenCookies(c)
+	c.JSON(http.StatusOK, response.OK("已登出"))
 }
 
 type changePasswordReq struct {
@@ -203,8 +244,38 @@ func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
 		}
 
 		quotaMap := map[uint64]*model.UserQuota{}
+		// SECURITY: 检查错误并记录日志
 		if h.quotaRepo != nil {
-			quotaMap, _ = h.quotaRepo.BatchFindUserQuotas(userIDs)
+			var err error
+			quotaMap, err = h.quotaRepo.BatchFindUserQuotas(userIDs)
+			if err != nil {
+				// 使用标准 log 记录错误（handler 层未引入 zap）
+				log.Printf("[WARN] 批量查询用户配额失败: %v", err)
+			}
+		}
+
+		// 收集所有唯一的 TierID，避免 N+1 查询
+		tierIDSet := make(map[uint64]struct{})
+		for _, q := range quotaMap {
+			if q.TierID != nil {
+				tierIDSet[*q.TierID] = struct{}{}
+			}
+		}
+		// 批量查询所有 Tier
+		tierMap := make(map[uint64]*model.QuotaTier)
+		if len(tierIDSet) > 0 && h.quotaRepo != nil {
+			tierIDs := make([]uint64, 0, len(tierIDSet))
+			for id := range tierIDSet {
+				tierIDs = append(tierIDs, id)
+			}
+			tiers, err := h.quotaRepo.BatchFindTiersByIDs(tierIDs)
+			if err != nil {
+				log.Printf("[WARN] 批量查询配额等级失败: %v", err)
+			} else {
+				for i := range tiers {
+					tierMap[tiers[i].ID] = &tiers[i]
+				}
+			}
 		}
 
 		for _, u := range users {
@@ -214,7 +285,8 @@ func (h *UserHandler) HandleAdminListUsers(c *gin.Context) {
 				item.StorageLimit = q.StorageLimit
 				item.TierID = q.TierID
 				if q.TierID != nil {
-					if t, err := h.quotaRepo.FindTierByID(*q.TierID); err == nil {
+					// 从内存 map 中获取，避免 N+1 查询
+					if t, ok := tierMap[*q.TierID]; ok {
 						item.TierName = t.Name
 					}
 				}
@@ -235,6 +307,12 @@ func (h *UserHandler) HandleAdminToggleAdmin(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "无效的用户 ID"))
+		return
+	}
+	// 防止管理员自我降权
+	currentUserID := c.GetUint64("user_id")
+	if userID == currentUserID {
+		c.JSON(http.StatusForbidden, response.Error(403, "不能修改自己的管理员权限"))
 		return
 	}
 	user, err := h.svc.ToggleAdmin(userID)

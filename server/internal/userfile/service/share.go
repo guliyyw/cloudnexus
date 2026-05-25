@@ -15,10 +15,11 @@ import (
 type ShareService struct {
 	shareRepo *repository.ShareRepository
 	fileRepo  *repository.FileRepository
+	albumRepo *repository.AlbumRepository
 }
 
-func NewShareService(shareRepo *repository.ShareRepository, fileRepo *repository.FileRepository) *ShareService {
-	return &ShareService{shareRepo: shareRepo, fileRepo: fileRepo}
+func NewShareService(shareRepo *repository.ShareRepository, fileRepo *repository.FileRepository, albumRepo *repository.AlbumRepository) *ShareService {
+	return &ShareService{shareRepo: shareRepo, fileRepo: fileRepo, albumRepo: albumRepo}
 }
 
 func generateShareCode() (string, error) {
@@ -206,4 +207,60 @@ func (s *ShareService) DeleteShare(userID uint64, shareID uint64) error {
 		return apperrors.NewAppError(403, "无权删除此分享", apperrors.ErrForbidden)
 	}
 	return s.shareRepo.Delete(shareID)
+}
+
+type CreateAlbumShareReq struct {
+	Password  string `json:"password"`
+	ExpiresIn int    `json:"expires_in"` // hours, 0 = never
+}
+
+type AlbumShareInfo struct {
+	model.FileShare
+	AlbumName   string `json:"album_name"`
+	HasPassword bool   `json:"has_password"`
+}
+
+func (s *ShareService) CreateAlbumShare(userID uint64, albumID uint64, req CreateAlbumShareReq) (*AlbumShareInfo, error) {
+	// 校验相册存在且属于当前用户
+	album, err := s.albumRepo.FindByID(albumID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "相册不存在", apperrors.ErrNotFound)
+	}
+	if album.OwnerID != userID {
+		return nil, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+	}
+
+	code, err := generateShareCode()
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "生成分享码失败", apperrors.ErrInternalServer)
+	}
+
+	share := &model.FileShare{
+		FileID:    albumID,
+		OwnerID:   userID,
+		ShareCode: code,
+	}
+
+	if req.Password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, apperrors.NewAppError(500, "密码加密失败", apperrors.ErrInternalServer)
+		}
+		share.Password = string(hash)
+	}
+
+	if req.ExpiresIn > 0 {
+		t := time.Now().Add(time.Duration(req.ExpiresIn) * time.Hour)
+		share.ExpiresAt = &t
+	}
+
+	if err := s.shareRepo.Create(share); err != nil {
+		return nil, apperrors.NewAppError(500, "创建分享失败", apperrors.ErrInternalServer)
+	}
+
+	return &AlbumShareInfo{
+		FileShare:   *share,
+		AlbumName:   album.Name,
+		HasPassword: share.Password != "",
+	}, nil
 }

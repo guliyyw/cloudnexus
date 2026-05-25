@@ -141,9 +141,13 @@ func main() {
 
 	quotaH := handler.NewQuotaHandler(quotaSvc, fileRepo)
 
+	shareRepo := repository.NewShareRepository(db)
 	albumRepo := repository.NewAlbumRepository(db)
+	shareSvc := service.NewShareService(shareRepo, fileRepo, albumRepo)
+	shareH := handler.NewShareHandler(shareSvc, fileSvc)
+
 	albumSvc := service.NewAlbumService(albumRepo, fileRepo)
-	albumH := handler.NewAlbumHandler(albumSvc)
+	albumH := handler.NewAlbumHandler(albumSvc, shareSvc)
 
 	musicRepo := repository.NewMusicRepository(db)
 	musicSvc := service.NewMusicService(musicRepo, fileRepo, minioClient, cfg.MinIO.Bucket)
@@ -188,10 +192,6 @@ func main() {
 	aggregator.Start()
 	defer aggregator.Stop()
 
-	shareRepo := repository.NewShareRepository(db)
-	shareSvc := service.NewShareService(shareRepo, fileRepo)
-	shareH := handler.NewShareHandler(shareSvc, fileSvc)
-
 	r := gin.Default()
 	r.Use(middleware.Logger())
 	r.Use(middleware.CORS())
@@ -221,8 +221,10 @@ func main() {
 			protected.Use(middleware.AuthRequired(jwtCfg.AccessSecret, sessionSvc))
 			{
 				protected.GET("/profile", userH.HandleGetProfile)
+				protected.GET("/permissions", userH.HandleGetPermissions)
 				protected.PUT("/profile", userH.HandleUpdateProfile)
 				protected.PUT("/password", userH.HandleChangePassword)
+				protected.POST("/logout", userH.HandleLogout)
 				protected.GET("/sessions", sessionH.HandleListSessions)
 				protected.DELETE("/sessions/:jti", sessionH.HandleRevokeSession)
 				protected.DELETE("/sessions", sessionH.HandleRevokeAllSessions)
@@ -316,6 +318,7 @@ func main() {
 			albums.GET("/:id/files", middleware.RequirePermission("file:read"), albumH.HandleGetFiles)
 			albums.POST("/:id/files", middleware.RequirePermission("file:write"), albumH.HandleAddFiles)
 			albums.DELETE("/:id/files/:fileId", middleware.RequirePermission("file:delete"), albumH.HandleRemoveFile)
+			albums.POST("/:id/share", middleware.RequirePermission("file:share"), albumH.HandleCreateAlbumShare)
 		}
 
 		music := api.Group("/music")
@@ -332,6 +335,9 @@ func main() {
 			music.DELETE("/playlists/:id", musicH.HandleDeletePlaylist)
 			music.POST("/playlists/:id/tracks", musicH.HandleAddTrackToPlaylist)
 			music.DELETE("/playlists/:id/tracks/:trackId", musicH.HandleRemoveTrackFromPlaylist)
+			music.GET("/tracks/:id/lyrics", musicH.HandleGetLyrics)
+			music.GET("/playlists/:id/export", musicH.HandleExportPlaylist)
+			music.POST("/playlists/:id/import", musicH.HandleImportPlaylist)
 		}
 
 		dashSvc := service.NewDashboardService(db)

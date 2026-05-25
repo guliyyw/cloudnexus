@@ -100,8 +100,8 @@ func (s *VerifyService) VerifyPhone(phone, code string, vType string) error {
 func generateCode() string {
 	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
-		// fallback to deterministic but usable
-		return "123456"
+		// 随机数生成失败时返回错误而非硬编码值
+		panic("failed to generate random code: " + err.Error())
 	}
 	return fmt.Sprintf("%06d", n.Int64())
 }

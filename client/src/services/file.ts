@@ -115,15 +115,12 @@ function getToken(): string {
 }
 
 export function getDownloadUrl(id: string): string {
-  const token = getToken()
-  const sep = token ? `?token=${token}` : ''
-  return `/api/v1/file/download/${id}${sep}`
+  // JWT 不再通过 URL 参数传递，使用 Cookie 或 Header
+  return `/api/v1/file/download/${id}`
 }
 
 export function getPreviewUrl(id: string): string {
-  const token = getToken()
-  const sep = token ? `?inline=true&token=${token}` : '?inline=true'
-  return `/api/v1/file/download/${id}${sep}`
+  return `/api/v1/file/download/${id}?inline=true`
 }
 
 export interface ShareInfo {
@@ -173,18 +170,13 @@ export function getShareUrl(code: string): string {
   return `${window.location.origin}/s/${code}`
 }
 
-export function getShareDownloadUrl(code: string, password?: string): string {
-  const params = new URLSearchParams()
-  if (password) params.set('password', password)
-  const qs = params.toString()
-  return `/api/v1/share/${code}/download${qs ? '?' + qs : ''}`
+export function getShareDownloadUrl(code: string): string {
+  // 密码不再通过 URL 参数传递，使用 POST body 或 Header
+  return `/api/v1/share/${code}/download`
 }
 
-export function getSharePreviewUrl(code: string, password?: string): string {
-  const params = new URLSearchParams()
-  params.set('inline', 'true')
-  if (password) params.set('password', password)
-  return `/api/v1/share/${code}/download?${params.toString()}`
+export function getSharePreviewUrl(code: string): string {
+  return `/api/v1/share/${code}/download?inline=true`
 }
 
 // ── 协作文档 ──

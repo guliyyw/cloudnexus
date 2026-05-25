@@ -95,7 +95,7 @@ export default function AlbumPage() {
                     width: '100%',
                     height: 140,
                     borderRadius: radius.md,
-                    background: '#f5f5f5',
+                    background: 'rgba(255,255,255,0.04)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -112,7 +112,7 @@ export default function AlbumPage() {
                     <div>
                       <Text type="secondary" style={{ fontSize: 12 }}>{album.file_count} 张照片</Text>
                       {album.description && (
-                        <Paragraph ellipsis={{ rows: 1 }} style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+                        <Paragraph ellipsis={{ rows: 1 }} style={{ margin: 0, fontSize: 12, color: colors.textSecondary }}>
                           {album.description}
                         </Paragraph>
                       )}

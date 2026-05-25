@@ -152,6 +152,18 @@ func (r *QuotaRepository) BatchFindUserQuotas(userIDs []uint64) (map[uint64]*mod
 	return result, nil
 }
 
+// BatchFindTiersByIDs 批量查询配额等级，避免 N+1 查询
+func (r *QuotaRepository) BatchFindTiersByIDs(ids []uint64) ([]model.QuotaTier, error) {
+	if len(ids) == 0 {
+		return []model.QuotaTier{}, nil
+	}
+	var tiers []model.QuotaTier
+	if err := r.db.Where("id IN ?", ids).Find(&tiers).Error; err != nil {
+		return nil, err
+	}
+	return tiers, nil
+}
+
 func uint64Ptr(v uint64) *uint64 {
 	return &v
 }

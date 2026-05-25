@@ -37,6 +37,12 @@ func appliedNames(db *gorm.DB) (map[string]bool, error) {
 
 // Up applies all pending *.up.sql files in sorted order.
 func Up(db *gorm.DB) error {
+	// PostgreSQL advisory lock to prevent concurrent migration runs across services
+	if err := db.Exec("SELECT pg_advisory_lock(9001)").Error; err != nil {
+		return fmt.Errorf("migration: acquire lock: %w", err)
+	}
+	defer db.Exec("SELECT pg_advisory_unlock(9001)")
+
 	if err := ensureTrackingTable(db); err != nil {
 		return fmt.Errorf("migration: tracking table: %w", err)
 	}

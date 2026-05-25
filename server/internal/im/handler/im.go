@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +21,44 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
+
+// isPrivateIP 检查主机名是否为内网地址
+func isPrivateIP(host string) bool {
+	// 检查 localhost 和常见内网主机名
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	// 解析 IP 地址
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// 可能是域名，尝试解析
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return false
+		}
+		ip = ips[0]
+	}
+	// 检查是否为内网地址
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",
+		"169.254.0.0/16",
+		"::1/128",
+		"fc00::/7",
+	}
+	for _, cidr := range privateRanges {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -368,6 +408,24 @@ func (h *IMHandler) HandleLinkPreview(c *gin.Context) {
 	var req linkPreviewReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+		return
+	}
+
+	// SSRF 防护：校验 URL 协议和主机
+	parsedURL, err := url.Parse(req.URL)
+	if err != nil {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
+		return
+	}
+	// 只允许 http/https 协议
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
+		return
+	}
+	// 禁止访问内网地址
+	host := parsedURL.Hostname()
+	if isPrivateIP(host) {
+		c.JSON(http.StatusOK, response.OKWithData(linkPreviewResp{URL: req.URL}))
 		return
 	}
 

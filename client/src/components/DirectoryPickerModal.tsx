@@ -3,6 +3,7 @@ import { Modal, Breadcrumb, List, Button, Spin, Empty, message } from 'antd'
 import { HomeOutlined, FolderOutlined } from '@ant-design/icons'
 import * as fileApi from '../services/file'
 import type { FileItem } from '../services/file'
+import { colors } from '../theme/tokens'
 
 interface Props {
   open: boolean
@@ -82,7 +83,7 @@ function DirectoryPickerModal({ open, title, confirmText, onOk, onCancel }: Prop
             ),
           }))}
         />
-        <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
+        <div style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8 }}>
           当前目录: {currentPath}
         </div>
       </div>
@@ -98,7 +99,7 @@ function DirectoryPickerModal({ open, title, confirmText, onOk, onCancel }: Prop
                 style={{ cursor: 'pointer', padding: '8px 12px' }}
                 onClick={() => navigateTo(item.id, item.name)}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = '#fef3e7'
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(129,236,254,0.08)'
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = ''
