@@ -1,10 +1,10 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Layout as AntLayout, Grid } from 'antd'
 import TopNav from './layout/TopNav'
 import GlobalPlayer from './player/GlobalPlayer'
 import { useQuotaStore } from '../stores/quotaStore'
-import { useEffect } from 'react'
-import { colors } from '../theme/tokens'
+import { colors, radius, shadow } from '../theme/tokens'
 
 const { Content } = AntLayout
 const { useBreakpoint } = Grid
@@ -16,23 +16,51 @@ export default function AppLayout() {
 
   useEffect(() => {
     fetchQuota()
-  }, [])
+  }, [fetchQuota])
+
+  const navHeight = isMobile ? 64 : 72
+  const shellPadding = isMobile ? 14 : 24
 
   return (
-    <AntLayout style={{ height: '100vh', overflow: 'hidden', background: colors.bg }}>
-      <TopNav />
-      <Content style={{
-        marginTop: 56,
-        margin: isMobile ? '68px 8px 8px' : '68px 16px 16px',
-        padding: isMobile ? 16 : 24,
-        background: 'transparent',
-        flex: 1,
-        overflow: 'auto',
-        minHeight: 0,
+    <AntLayout
+      style={{
+        minHeight: '100vh',
+        overflow: 'hidden',
+        background: colors.bg,
         position: 'relative',
-        zIndex: 1,
-      }}>
-        <Outlet />
+      }}
+    >
+      <div id="bg-vignette" />
+      <div id="bg-blob" />
+      <TopNav />
+      <Content
+        style={{
+          marginTop: navHeight,
+          padding: isMobile ? '12px 12px 96px' : '18px 20px 108px',
+          background: 'transparent',
+          flex: 1,
+          overflow: 'auto',
+          minHeight: 0,
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        {/* 统一页面壳负责留白、最大宽度和玻璃面板层级，各业务页只专注内容结构。 */}
+        <div
+          style={{
+            maxWidth: 1480,
+            minHeight: '100%',
+            margin: '0 auto',
+            padding: shellPadding,
+            borderRadius: isMobile ? radius.lg : 28,
+            border: `1px solid ${colors.borderSubtle}`,
+            background: colors.surface,
+            backdropFilter: 'blur(18px)',
+            boxShadow: shadow.shell,
+          }}
+        >
+          <Outlet />
+        </div>
       </Content>
       <GlobalPlayer />
     </AntLayout>

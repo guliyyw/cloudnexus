@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Table, Button, Modal, Input, Breadcrumb, Popconfirm,
-  Space, message, Tag, Typography, Tooltip, Card,
+  Space, message, Tag, Typography, Tooltip, Card, Empty,
 } from 'antd'
 import {
   FolderAddOutlined, SearchOutlined,
@@ -19,18 +19,19 @@ import ShareModal from '../components/ShareModal'
 import DirectoryPickerModal from '../components/DirectoryPickerModal'
 import FileVersionPanel from '../components/FileVersionPanel'
 import { isPreviewable } from '../utils/preview'
+import { colors, radius, shadow, spacing } from '../theme/tokens'
 import { getDownloadUrl, createCollabDoc } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
 
 function getFileIcon(mimeType: string, isDir: boolean, collabType?: string) {
-  if (isDir) return <FolderOutlined style={{ color: '#faad14' }} />
-  if (collabType === 'doc') return <FileTextOutlined style={{ color: '#81ecfe' }} />
+  if (isDir) return <FolderOutlined style={{ color: colors.warning }} />
+  if (collabType === 'doc') return <FileTextOutlined style={{ color: colors.primary }} />
   if (!mimeType) return <FileOutlined />
-  if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: '#52c41a' }} />
+  if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: colors.success }} />
   if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#5b8def' }} />
   if (mimeType.startsWith('audio/')) return <SoundOutlined style={{ color: '#722ed1' }} />
-  if (mimeType === 'application/pdf') return <FilePdfOutlined style={{ color: '#ff4d4f' }} />
+  if (mimeType === 'application/pdf') return <FilePdfOutlined style={{ color: colors.error }} />
   if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return <FileZipOutlined />
   return <FileOutlined />
 }
@@ -70,6 +71,15 @@ export default function FileListPage() {
   const [pendingMoveCopyIds, setPendingMoveCopyIds] = useState<string[]>([])
 
   useEffect(() => { fetchFiles() }, [fetchFiles])
+
+  const currentFolderName = breadcrumb[breadcrumb.length - 1]?.name || '根目录'
+
+  const selectedFiles = useMemo(() => (
+    files.filter((item) => selectedRowKeys.includes(item.id))
+  ), [files, selectedRowKeys])
+
+  const selectedFileCount = selectedFiles.filter((item) => !item.is_dir).length
+  const selectedDirCount = selectedFiles.filter((item) => item.is_dir).length
 
   // Open upload modal, optionally targeting a specific directory
   const openUploadModal = (dirId = currentParentId, dirName?: string) => {
@@ -237,8 +247,8 @@ export default function FileListPage() {
               style={{
                 padding: '4px 8px',
                 borderRadius: 4,
-                background: dropDirId === record.id ? 'rgba(129,236,254,0.08)' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #81ecfe' : undefined,
+                background: dropDirId === record.id ? colors.primaryLight : undefined,
+                outline: dropDirId === record.id ? `2px dashed ${colors.primary}` : undefined,
               }}
             >
               {name}
@@ -310,119 +320,205 @@ export default function FileListPage() {
   ]
 
   return (
-    <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <Space>
-          <Button type="primary" icon={<UploadOutlined />}
-            onClick={() => openUploadModal()}>
-            上传文件
-          </Button>
-          <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
-          <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建协作文档</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
-        </Space>
-        <Space>
-          <Button icon={<ShareAltOutlined />} onClick={() => navigate('/shares')}>我的分享</Button>
-          <Button icon={<DeleteOutlined />} onClick={() => navigate('/trash')}>回收站</Button>
-        </Space>
-        <Space>
-          <Input.Search
-            placeholder="搜索文件..."
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            onSearch={(v) => search(v)}
-            enterButton={<SearchOutlined />}
-            allowClear
-            style={{ width: 250 }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <section
+        style={{
+          borderRadius: radius.lg,
+          padding: '28px 28px 24px',
+          background: colors.surfaceRaised,
+          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: shadow.card,
+        }}
+      >
+        <Text style={{ color: colors.primary, fontWeight: 700, letterSpacing: 0.5 }}>FILES</Text>
+        <Typography.Title level={3} style={{ margin: '10px 0 8px', color: colors.text }}>文件工作台</Typography.Title>
+        <Typography.Paragraph style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, lineHeight: 1.8 }}>
+          文件页承担目录浏览、上传、分享、版本、协作文档和批量处理入口。页面改版重点是把目录上下文、主操作和内容列表拆清，避免所有能力挤在一排按钮里。
+        </Typography.Paragraph>
+      </section>
+
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 1fr)',
+          gap: spacing.lg,
+        }}
+      >
+        <div
+          style={{
+            borderRadius: radius.lg,
+            padding: 24,
+            background: colors.surface,
+            border: `1px solid ${colors.borderSubtle}`,
+            boxShadow: shadow.card,
+          }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>当前位置</Text>
+          <Typography.Title level={4} style={{ margin: '6px 0 14px', color: colors.text }}>{currentFolderName}</Typography.Title>
+          <Breadcrumb
+            style={{ marginBottom: 16 }}
+            items={breadcrumb.map((b, i) => ({
+              title: i === 0 ? <><HomeOutlined /> {b.name}</> : b.name,
+              ...(i < breadcrumb.length - 1 ? { onClick: () => navigateTo(b.id, b.name) } : {}),
+            }))}
           />
-        </Space>
-      </div>
+          <Space wrap size={[10, 10]}>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => openUploadModal()}>上传文件</Button>
+            <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
+            <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建协作文档</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
+          </Space>
+        </div>
+
+        <div
+          style={{
+            borderRadius: radius.lg,
+            padding: 24,
+            background: colors.surface,
+            border: `1px solid ${colors.borderSubtle}`,
+            boxShadow: shadow.card,
+          }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>辅助入口</Text>
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Input.Search
+              placeholder="搜索文件..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onSearch={(v) => search(v)}
+              enterButton={<SearchOutlined />}
+              allowClear
+            />
+            <Button icon={<ShareAltOutlined />} onClick={() => navigate('/shares')} style={{ justifyContent: 'flex-start' }}>我的分享</Button>
+            <Button icon={<DeleteOutlined />} onClick={() => navigate('/trash')} style={{ justifyContent: 'flex-start' }}>回收站</Button>
+            <Card
+              size="small"
+              style={{ background: colors.surfaceMuted, borderColor: colors.borderSubtle }}
+            >
+              <Space direction="vertical" size={4}>
+                <Text strong style={{ color: colors.text }}>目录统计</Text>
+                <Text style={{ color: colors.textSecondary }}>当前页 {files.length} 项，累计 {total} 项</Text>
+                <Text style={{ color: colors.textSecondary }}>已选文件 {selectedFileCount} 项，目录 {selectedDirCount} 项</Text>
+              </Space>
+            </Card>
+          </div>
+        </div>
+      </section>
 
       {selectedRowKeys.length > 0 && (
-        <Card size="small" style={{ marginBottom: 16, background: 'rgba(129,236,254,0.08)', borderColor: 'rgba(129,236,254,0.2)' }}>
-          <Space>
-            <Text strong>已选择 {selectedRowKeys.length} 项</Text>
-            <Button type="primary" size="small" icon={<SwapOutlined />}
+        <Card
+          size="small"
+          style={{
+            background: colors.primaryLight,
+            borderColor: colors.borderStrong,
+            boxShadow: shadow.card,
+          }}
+        >
+          {/* 批量操作条只在选择态出现，避免常态页面被低频批量动作长期占位。 */}
+          <Space wrap size={[10, 10]}>
+            <Text strong style={{ color: colors.text }}>已选择 {selectedRowKeys.length} 项</Text>
+            <Button
+              type="primary"
+              size="small"
+              icon={<SwapOutlined />}
               onClick={() => {
                 setPendingMoveCopyIds([...selectedRowKeys])
                 setPickerOpen('move')
-              }}>
+              }}
+            >
               移动到...
             </Button>
-            <Button size="small" icon={<CopyOutlined />}
+            <Button
+              size="small"
+              icon={<CopyOutlined />}
               onClick={() => {
                 setPendingMoveCopyIds([...selectedRowKeys])
                 setPickerOpen('copy')
-              }}>
+              }}
+            >
               复制到...
             </Button>
-            <Button type="primary" danger size="small" icon={<DeleteOutlined />}
-              onClick={handleBatchDelete}>
-              批量删除
-            </Button>
-            <Button type="primary" size="small" icon={<DownloadOutlined />}
-              onClick={handleBatchDownload}>
-              批量下载
-            </Button>
+            <Button type="primary" danger size="small" icon={<DeleteOutlined />} onClick={handleBatchDelete}>批量删除</Button>
+            <Button type="primary" size="small" icon={<DownloadOutlined />} onClick={handleBatchDownload}>批量下载</Button>
             <Button size="small" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
           </Space>
         </Card>
       )}
 
-      <Breadcrumb
-        style={{ marginBottom: 16 }}
-        items={breadcrumb.map((b, i) => ({
-          title: i === 0 ? <><HomeOutlined /> {b.name}</> : b.name,
-          ...(i < breadcrumb.length - 1 ? { onClick: () => navigateTo(b.id, b.name) } : {}),
-        }))}
-      />
-
       {searchMode && (
-        <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-          搜索 "{searchKeyword}" 的结果，共 {total} 项
+        <Card size="small" style={{ background: colors.surfaceMuted, borderColor: colors.borderSubtle }}>
+          <Text style={{ color: colors.textSecondary }}>
+            搜索 "{searchKeyword}" 的结果，共 {total} 项
+          </Text>
           <Button type="link" size="small" onClick={() => fetchFiles()}>返回全部</Button>
-        </Text>
+        </Card>
       )}
 
-      <Table
-        rowSelection={rowSelection}
-        columns={columns}
-        dataSource={files}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          onChange: (p) => setPage(p),
-          showTotal: (t) => `共 ${t} 项`,
-          showSizeChanger: false,
+      <section
+        style={{
+          borderRadius: radius.lg,
+          padding: 24,
+          background: colors.surface,
+          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: shadow.card,
         }}
-        size="middle"
-        onRow={(record) => {
-          const base: any = {
-            draggable: true,
-            onDragStart: (e: React.DragEvent) => {
-              e.dataTransfer.setData('application/cloudnexus-move', record.id)
-              e.dataTransfer.effectAllowed = 'move'
-            },
-          }
-          if (record.is_dir) {
-            return {
-              ...base,
-              onDragOver: (e: React.DragEvent) => handleDirDragOver(e, record.id),
-              onDragLeave: handleDirDragLeave,
-              onDrop: (e: React.DragEvent) => handleDirDrop(e, record.id, record.name),
-              style: {
-                background: dropDirId === record.id ? 'rgba(129,236,254,0.08)' : undefined,
-                outline: dropDirId === record.id ? '2px dashed #81ecfe' : undefined,
-                cursor: 'grab',
+      >
+        <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: spacing.md, flexWrap: 'wrap', marginBottom: 18 }}>
+          <div>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>内容列表</Text>
+            <Typography.Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>当前目录内容</Typography.Title>
+          </div>
+          <Text style={{ color: colors.textSecondary }}>拖拽目录可执行移动，拖拽文件到目录可直接触发上传或移动。</Text>
+        </div>
+
+        <Table
+          rowSelection={rowSelection}
+          columns={columns}
+          dataSource={files}
+          rowKey="id"
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            onChange: (p) => setPage(p),
+            showTotal: (t) => `共 ${t} 项`,
+            showSizeChanger: false,
+          }}
+          size="middle"
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<span style={{ color: colors.textSecondary }}>当前目录还没有内容，先上传文件或创建协作文档。</span>}
+              />
+            ),
+          }}
+          onRow={(record) => {
+            const base: any = {
+              draggable: true,
+              onDragStart: (e: React.DragEvent) => {
+                e.dataTransfer.setData('application/cloudnexus-move', record.id)
+                e.dataTransfer.effectAllowed = 'move'
               },
             }
-          }
-          return { ...base, style: { cursor: 'grab' } }
-        }}
-      />
+            if (record.is_dir) {
+              return {
+                ...base,
+                onDragOver: (e: React.DragEvent) => handleDirDragOver(e, record.id),
+                onDragLeave: handleDirDragLeave,
+                onDrop: (e: React.DragEvent) => handleDirDrop(e, record.id, record.name),
+                style: {
+                  background: dropDirId === record.id ? colors.primaryLight : undefined,
+                  outline: dropDirId === record.id ? `2px dashed ${colors.primary}` : undefined,
+                  cursor: 'grab',
+                },
+              }
+            }
+            return { ...base, style: { cursor: 'grab' } }
+          }}
+        />
+      </section>
 
       <Modal
         title="新建目录"

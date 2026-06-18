@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 interface WSMessage {
   type: string
@@ -22,22 +22,20 @@ export function useWebSocket(handler: MessageHandler) {
   const handlerRef = useRef<MessageHandler>(handler)
   const tokenRef = useRef<string | null>(null)
 
-  // 更新 handler ref，避免 stale closure
+  // WebSocket 事件监听只会注册一次，所以通过 ref 始终拿到最新回调，避免消息处理闭包过期。
   handlerRef.current = handler
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
-    
-    // 如果 token 未变化且 WebSocket 已连接，不重连
+
+    // token 不变且连接可用时，保留现有连接，避免切页面时重复握手。
     if (token === tokenRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
       return
     }
-    
-    // token 变化或首次连接，更新 ref
+
     tokenRef.current = token
-    
+
     if (!token) {
-      // 无 token 时关闭连接
       if (wsRef.current) {
         clearInterval(pingRef.current)
         wsRef.current.close()
@@ -50,7 +48,6 @@ export function useWebSocket(handler: MessageHandler) {
     const host = window.location.host
     const url = `${protocol}//${host}/ws?token=${token}`
 
-    // 关闭旧连接
     if (wsRef.current) {
       clearInterval(pingRef.current)
       wsRef.current.close()
@@ -68,9 +65,10 @@ export function useWebSocket(handler: MessageHandler) {
       try {
         const msg: WSMessage = JSON.parse(event.data)
         if (msg.type === 'pong') return
-        // 使用 ref 调用最新的 handler，避免 stale closure
         handlerRef.current(msg)
-      } catch {}
+      } catch {
+        // 后端偶发返回非 JSON 帧时忽略，避免让聊天页因单条异常消息崩掉。
+      }
     }
 
     wsRef.current.onclose = () => {
@@ -82,7 +80,7 @@ export function useWebSocket(handler: MessageHandler) {
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, []) // 空依赖数组，通过 tokenRef 手动检测变化
+  }, [])
 
   const sendMessage = useCallback((msg: WSMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

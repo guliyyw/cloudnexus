@@ -1,15 +1,36 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table, Button, Modal, Input, message, Popconfirm, Space } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
-import { listDocuments, createDocument, deleteDocument, CollabDocument } from '../services/collab'
+import {
+  Button,
+  Empty,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Typography,
+  message,
+} from 'antd'
+import {
+  ArrowRightOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { createDocument, deleteDocument, listDocuments, type CollabDocument } from '../services/collab'
+import { colors, radius, shadow, spacing } from '../theme/tokens'
+
+const { Paragraph, Text, Title } = Typography
 
 export default function DocumentListPage() {
   const [docs, setDocs] = useState<CollabDocument[]>([])
   const [loading, setLoading] = useState(false)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [searchValue, setSearchValue] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
@@ -29,7 +50,17 @@ export default function DocumentListPage() {
     }
   }, [page])
 
-  useEffect(() => { fetchDocs() }, [fetchDocs])
+  useEffect(() => {
+    fetchDocs()
+  }, [fetchDocs])
+
+  const filteredDocs = useMemo(() => {
+    if (!searchValue.trim()) return docs
+    const keyword = searchValue.trim().toLowerCase()
+    return docs.filter((doc) => doc.title.toLowerCase().includes(keyword))
+  }, [docs, searchValue])
+
+  const recentDocs = filteredDocs.slice(0, 3)
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return
@@ -62,38 +93,65 @@ export default function DocumentListPage() {
       title: '标题',
       dataIndex: 'title',
       key: 'title',
-      render: (t: string, r: CollabDocument) => (
-        <a onClick={() => navigate(`/documents/${r.id}`)} style={{ fontWeight: 500 }}>
-          <FileTextOutlined style={{ marginRight: 8, color: '#81ecfe' }} />
-          {t}
-        </a>
+      render: (title: string, record: CollabDocument) => (
+        <button
+          type="button"
+          onClick={() => navigate(`/documents/${record.id}`)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            color: colors.text,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          <span
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: radius.md,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: colors.primaryLight,
+              color: colors.primary,
+              flexShrink: 0,
+            }}
+          >
+            <FileTextOutlined />
+          </span>
+          <span>{title}</span>
+        </button>
       ),
     },
     {
       title: '版本',
       dataIndex: 'version',
       key: 'version',
-      width: 80,
-      render: (v: number) => `v${v}`,
+      width: 110,
+      render: (version: number) => <Text style={{ color: colors.textSecondary }}>v{version}</Text>,
     },
     {
       title: '更新时间',
       dataIndex: 'updated_at',
       key: 'updated_at',
       width: 180,
-      render: (t: string) => dayjs(t).format('YYYY-MM-DD HH:mm'),
+      render: (updatedAt: string) => <Text style={{ color: colors.textSecondary }}>{dayjs(updatedAt).format('YYYY-MM-DD HH:mm')}</Text>,
     },
     {
       title: '操作',
       key: 'actions',
-      width: 120,
-      render: (_: unknown, r: CollabDocument) => (
+      width: 160,
+      render: (_: unknown, record: CollabDocument) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />}
-            onClick={() => navigate(`/documents/${r.id}`)}>
-            编辑
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate(`/documents/${record.id}`)}>
+            继续编辑
           </Button>
-          <Popconfirm title="确认删除此文档？" onConfirm={() => handleDelete(r.id)}>
+          <Popconfirm title="确认删除此文档？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -102,34 +160,159 @@ export default function DocumentListPage() {
   ]
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>在线文档</h2>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建文档
-        </Button>
-      </div>
-
-      <Table
-        dataSource={docs}
-        columns={columns}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          onChange: setPage,
-          showTotal: (t) => `共 ${t} 篇`,
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      <section
+        style={{
+          borderRadius: radius.lg,
+          padding: '28px 28px 24px',
+          background: colors.surfaceRaised,
+          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: shadow.card,
         }}
-        locale={{ emptyText: '暂无文档，点击"新建文档"开始' }}
-      />
+      >
+        <Text style={{ color: colors.primary, fontWeight: 700, letterSpacing: 0.5 }}>DOCUMENTS</Text>
+        <Title level={3} style={{ margin: '10px 0 12px', color: colors.text }}>文档中心</Title>
+        <Paragraph style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, lineHeight: 1.8 }}>
+          这里集中承接协作文档的浏览、创建和继续编辑入口。列表区负责处理中长期内容，
+          顶部摘要区先把最近活动和主操作露出来，避免文档页一上来就只剩一张大表格。
+        </Paragraph>
+      </section>
+
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1.7fr) minmax(280px, 0.9fr)',
+          gap: spacing.lg,
+        }}
+      >
+        <div
+          style={{
+            borderRadius: radius.lg,
+            padding: 24,
+            background: colors.surface,
+            border: `1px solid ${colors.borderSubtle}`,
+            boxShadow: shadow.card,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, flexWrap: 'wrap' }}>
+            <div>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>主操作</Text>
+              <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>快速开始新文档</Title>
+            </div>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+              新建文档
+            </Button>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <Input
+              placeholder="筛选当前页文档标题"
+              prefix={<SearchOutlined style={{ color: colors.textSecondary }} />}
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              allowClear
+            />
+          </div>
+        </div>
+
+        <div
+          style={{
+            borderRadius: radius.lg,
+            padding: 24,
+            background: colors.surface,
+            border: `1px solid ${colors.borderSubtle}`,
+            boxShadow: shadow.card,
+          }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>最近编辑</Text>
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {recentDocs.length > 0 ? recentDocs.map((doc) => (
+              <button
+                key={doc.id}
+                type="button"
+                onClick={() => navigate(`/documents/${doc.id}`)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: spacing.sm,
+                  padding: '14px 16px',
+                  borderRadius: radius.md,
+                  border: `1px solid ${colors.borderSubtle}`,
+                  background: colors.surfaceMuted,
+                  cursor: 'pointer',
+                  color: colors.text,
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{doc.title}</div>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    更新于 {dayjs(doc.updated_at).format('MM-DD HH:mm')}
+                  </Text>
+                </div>
+                <ArrowRightOutlined style={{ color: colors.primary, flexShrink: 0 }} />
+              </button>
+            )) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<span style={{ color: colors.textSecondary }}>还没有最近文档</span>}
+              />
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section
+        style={{
+          borderRadius: radius.lg,
+          padding: 24,
+          background: colors.surface,
+          border: `1px solid ${colors.borderSubtle}`,
+          boxShadow: shadow.card,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: spacing.md, flexWrap: 'wrap', marginBottom: 18 }}>
+          <div>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>文档列表</Text>
+            <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>全部文档</Title>
+          </div>
+          <Text style={{ color: colors.textSecondary }}>
+            当前页 {filteredDocs.length} 篇，累计 {total} 篇
+          </Text>
+        </div>
+
+        <Table
+          dataSource={filteredDocs}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            onChange: setPage,
+            showTotal: (value) => `共 ${value} 篇`,
+          }}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<span style={{ color: colors.textSecondary }}>暂无文档，点击“新建文档”开始</span>}
+              />
+            ),
+          }}
+        />
+      </section>
 
       <Modal
         title="新建文档"
         open={createOpen}
         onOk={handleCreate}
-        onCancel={() => { setCreateOpen(false); setNewTitle('') }}
+        onCancel={() => {
+          setCreateOpen(false)
+          setNewTitle('')
+        }}
         confirmLoading={creating}
         okText="创建"
         cancelText="取消"
