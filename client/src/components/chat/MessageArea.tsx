@@ -29,6 +29,7 @@ interface MessageAreaProps {
   uploadingImg: boolean
   exporting: boolean
   importing: boolean
+  activeMessageId: string | null
   linkPreviews: Record<string, LinkPreview>
   importFileRef: React.RefObject<HTMLInputElement>
   onInputChange: (val: string) => void
@@ -41,6 +42,7 @@ interface MessageAreaProps {
   onImportFile: (file: File) => void
   onOpenAlbumPicker: (fileId: string) => void
   onPlayInMusic: (fc: { file_id: string; file_name: string; mime_type: string; file_size: number }) => void
+  onActiveMessageShown: () => void
 }
 
 function parseFileContent(content: string) {
@@ -70,6 +72,7 @@ export default function MessageArea({
   uploadingImg,
   exporting,
   importing,
+  activeMessageId,
   linkPreviews,
   importFileRef,
   onInputChange,
@@ -82,18 +85,27 @@ export default function MessageArea({
   onImportFile,
   onOpenAlbumPicker,
   onPlayInMusic,
+  onActiveMessageShown,
 }: MessageAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const activeMessageRef = useRef<HTMLDivElement | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
   useEffect(() => {
+    if (activeMessageId) {
+      const timer = setTimeout(() => {
+        activeMessageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        onActiveMessageShown()
+      }, 200)
+      return () => clearTimeout(timer)
+    }
     scrollToBottom()
     const timer = setTimeout(scrollToBottom, 400)
     return () => clearTimeout(timer)
-  }, [messages.length])
+  }, [messages.length, activeMessageId, onActiveMessageShown])
 
   return (
     <Card
@@ -124,8 +136,23 @@ export default function MessageArea({
               const urls = msg.msg_type === 'text' ? detectUrls(msg.content) : []
               const linkPrev = linkPreviews[msg.id]
 
+              const isActive = activeMessageId === msg.id
+
               return (
-              <div key={msg.id} style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', ...alignStyle }}>
+              <div
+                key={msg.id}
+                ref={isActive ? activeMessageRef : null}
+                style={{
+                  marginBottom: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  ...alignStyle,
+                  padding: isActive ? '8px' : 0,
+                  borderRadius: 12,
+                  background: isActive ? 'rgba(129,236,254,0.12)' : undefined,
+                  boxShadow: isActive ? '0 0 0 1px rgba(129,236,254,0.25)' : undefined,
+                }}
+              >
                 {msg.msg_type === 'system' ? (
                   <div style={{ textAlign: 'center', width: '100%', marginBottom: 8 }}>
                     <Text type="secondary" style={{ fontSize: 12, background: 'rgba(255,255,255,0.05)', padding: '2px 12px', borderRadius: 8 }}>

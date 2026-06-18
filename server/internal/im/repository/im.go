@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/pkg/model"
@@ -76,6 +78,92 @@ func (r *IMRepository) FindMessages(conversationID uint64, before uint64, limit 
 		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}
 	return msgs, err
+}
+
+func (r *IMRepository) FindMessageByID(id uint64) (*model.Message, error) {
+	var msg model.Message
+	err := r.db.Where("id = ?", id).First(&msg).Error
+	if err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
+func (r *IMRepository) IsConversationMember(conversationID, userID uint64) (bool, error) {
+	var count int64
+	err := r.db.Model(&model.ConversationMember{}).
+		Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", conversationID, userID).
+		Count(&count).Error
+	return count > 0, err
+}
+
+func (r *IMRepository) FindMessageContext(conversationID uint64, seq int64, before, after int) ([]model.Message, error) {
+	var msgs []model.Message
+	startSeq := seq - int64(before)
+	if startSeq < 1 {
+		startSeq = 1
+	}
+	endSeq := seq + int64(after)
+	err := r.db.Where("conversation_id = ? AND seq BETWEEN ? AND ?", conversationID, startSeq, endSeq).
+		Order("seq ASC").
+		Find(&msgs).Error
+	return msgs, err
+}
+
+func (r *IMRepository) SearchMessages(userID uint64, keyword string, conversationID uint64, page, pageSize int) ([]model.MessageSearchResult, int64, error) {
+	var results []model.MessageSearchResult
+	var total int64
+
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return results, 0, nil
+	}
+
+	base := r.db.Table("messages m").
+		Joins("JOIN conversation_members cm ON cm.conversation_id = m.conversation_id AND cm.user_id = ? AND cm.deleted_at IS NULL", userID).
+		Joins("JOIN conversations c ON c.id = m.conversation_id").
+		Joins("LEFT JOIN users u ON u.id = m.sender_id").
+		Where("m.msg_type = ?", "text").
+		Where("m.content ILIKE ?", "%"+keyword+"%")
+
+	if conversationID > 0 {
+		base = base.Where("m.conversation_id = ?", conversationID)
+	}
+
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	query := base.Select(strings.Join([]string{
+		"m.id",
+		"m.conversation_id",
+		"COALESCE(NULLIF(c.name, ''), CASE WHEN c.type = 'private' THEN (",
+		"  SELECT u2.username",
+		"  FROM conversation_members cm2",
+		"  JOIN users u2 ON u2.id = cm2.user_id",
+		"  WHERE cm2.conversation_id = m.conversation_id AND cm2.user_id <> ?",
+		"  ORDER BY cm2.joined_at ASC",
+		"  LIMIT 1",
+		") ELSE '' END) AS conversation_name",
+		"c.type AS conversation_type",
+		"m.sender_id",
+		"COALESCE(u.username, '') AS sender_name",
+		"m.content",
+		"m.msg_type",
+		"m.seq",
+		"m.created_at",
+	}, " "), userID).
+		Order("m.created_at DESC").
+		Offset(offset).
+		Limit(pageSize)
+
+	err := query.Scan(&results).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("search messages failed: %w", err)
+	}
+
+	return results, total, nil
 }
 
 func (r *IMRepository) UpdateLastReadSeq(conversationID, userID, seq uint64) error {

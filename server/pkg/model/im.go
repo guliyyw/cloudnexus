@@ -57,3 +57,16 @@ type Message struct {
 	Seq            int64     `json:"seq" gorm:"not null;index:idx_messages_conv_seq"`
 	CreatedAt      time.Time `json:"created_at" gorm:"index"`
 }
+
+type MessageSearchResult struct {
+	ID               uint64    `json:"id,string"`
+	ConversationID   uint64    `json:"conversation_id,string"`
+	ConversationName string    `json:"conversation_name"`
+	ConversationType string    `json:"conversation_type"`
+	SenderID         uint64    `json:"sender_id,string"`
+	SenderName       string    `json:"sender_name"`
+	Content          string    `json:"content"`
+	MsgType          string    `json:"msg_type"`
+	Seq              int64     `json:"seq"`
+	CreatedAt        time.Time `json:"created_at"`
+}

@@ -357,6 +357,51 @@ func (h *IMHandler) HandleGetMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, response.OKWithData(msgs))
 }
 
+func (h *IMHandler) HandleSearchMessages(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	keyword := c.Query("q")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	conversationID, _ := strconv.ParseUint(c.DefaultQuery("conversation_id", "0"), 10, 64)
+
+	items, total, err := h.svc.SearchMessages(userID, keyword, conversationID, page, pageSize)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(gin.H{
+		"items":           items,
+		"total":           total,
+		"page":            page,
+		"page_size":       pageSize,
+		"conversation_id": conversationID,
+		"q":               keyword,
+	}))
+}
+
+func (h *IMHandler) HandleGetMessageContext(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	convID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的会话ID"))
+		return
+	}
+	messageID, err := strconv.ParseUint(c.Param("messageId"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "无效的消息ID"))
+		return
+	}
+	before, _ := strconv.Atoi(c.DefaultQuery("before", "20"))
+	after, _ := strconv.Atoi(c.DefaultQuery("after", "20"))
+
+	msgs, err := h.svc.GetMessageContext(convID, messageID, userID, before, after)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(msgs))
+}
+
 type linkPreviewReq struct {
 	URL string `json:"url" binding:"required"`
 }

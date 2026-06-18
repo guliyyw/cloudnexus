@@ -38,8 +38,10 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const {
     conversations, currentConvId, messages, members, loading,
+    searchKeyword, searchResults, searchLoading, activeMessageId,
     fetchConversations, createConv, createGroup, selectConv, addMessage, deleteConversation,
     addMember, removeMember, leaveGroup, incrementUnread, updateLastMessage,
+    searchMessages, jumpToMessage, clearActiveMessage,
   } = useChatStore()
   const { user } = useAuthStore()
   const { friends, fetchFriends } = useFriendStore()
@@ -337,6 +339,7 @@ export default function ChatPage() {
   }
 
   const currentConv = conversations.find((c) => c.id === currentConvId)
+  const activeConversationId = currentConvId || undefined
   const isGroup = currentConv?.type === 'group'
   const myMember = members.find((m) => m.user_id === user?.id)
   const isOwner = myMember?.role === 'owner'
@@ -355,6 +358,11 @@ export default function ChatPage() {
         conversations={conversations}
         currentConvId={currentConvId}
         loading={loading}
+        searchKeyword={searchKeyword}
+        searchLoading={searchLoading}
+        searchResults={searchResults}
+        onSearchChange={(keyword) => searchMessages(keyword, activeConversationId)}
+        onJumpToMessage={jumpToMessage}
         onSelectConv={selectConv}
         onDeleteConv={deleteConversation}
         onCreateGroup={() => setGroupModalVisible(true)}
@@ -372,6 +380,7 @@ export default function ChatPage() {
         uploadingImg={uploadingImg}
         exporting={exporting}
         importing={importing}
+        activeMessageId={activeMessageId}
         linkPreviews={linkPreviews}
         importFileRef={importFileRef}
         onInputChange={setInputText}
@@ -384,6 +393,7 @@ export default function ChatPage() {
         onImportFile={handleImport}
         onOpenAlbumPicker={handleOpenAlbumPicker}
         onPlayInMusic={handlePlayInMusic}
+        onActiveMessageShown={clearActiveMessage}
       />
 
       {/* Member Panel for Group Chat */}

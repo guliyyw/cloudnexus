@@ -23,6 +23,19 @@ export interface Message {
   created_at: string
 }
 
+export interface MessageSearchResult {
+  id: string
+  conversation_id: string
+  conversation_name: string
+  conversation_type: string
+  sender_id: string
+  sender_name: string
+  content: string
+  msg_type: string
+  seq: number
+  created_at: string
+}
+
 export async function getConversations(): Promise<Conversation[]> {
   const res = await api.get('/im/conversations')
   return res.data.data
@@ -66,6 +79,30 @@ export async function deleteConversation(id: string): Promise<void> {
 export async function getMessages(convId: string, before?: string, limit = 50): Promise<Message[]> {
   const res = await api.get(`/im/conversations/${convId}/messages`, {
     params: { before: before || undefined, limit },
+  })
+  return res.data.data
+}
+
+export async function getMessageContext(convId: string, messageId: string, before = 20, after = 20): Promise<Message[]> {
+  const res = await api.get(`/im/conversations/${convId}/messages/${messageId}/context`, {
+    params: { before, after },
+  })
+  return res.data.data
+}
+
+export async function searchMessages(keyword: string, conversationId?: string, page = 1, pageSize = 20): Promise<{
+  items: MessageSearchResult[]
+  total: number
+  page: number
+  page_size: number
+}> {
+  const res = await api.get('/im/messages/search', {
+    params: {
+      q: keyword,
+      conversation_id: conversationId || undefined,
+      page,
+      page_size: pageSize,
+    },
   })
   return res.data.data
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as chatApi from '../services/chat'
-import type { Conversation, Message, GroupMember } from '../services/chat'
+import type { Conversation, Message, GroupMember, MessageSearchResult } from '../services/chat'
 
 interface ChatState {
   conversations: Conversation[]
@@ -8,6 +8,10 @@ interface ChatState {
   messages: Message[]
   members: GroupMember[]
   loading: boolean
+  searchKeyword: string
+  searchResults: MessageSearchResult[]
+  searchLoading: boolean
+  activeMessageId: string | null
 
   fetchConversations: () => Promise<void>
   createConv: (targetUserId: string) => Promise<void>
@@ -22,6 +26,10 @@ interface ChatState {
   leaveGroup: (convId: string) => Promise<void>
   incrementUnread: (convId: string) => void
   updateLastMessage: (convId: string, content: string, msgType: string) => void
+  searchMessages: (keyword: string, conversationId?: string) => Promise<void>
+  clearSearch: () => void
+  jumpToMessage: (conversationId: string, messageId: string) => Promise<void>
+  clearActiveMessage: () => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -30,6 +38,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   members: [],
   loading: false,
+  searchKeyword: '',
+  searchResults: [],
+  searchLoading: false,
+  activeMessageId: null,
 
   fetchConversations: async () => {
     set({ loading: true })
@@ -61,6 +73,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentConvId: id,
       messages: [],
       members: [],
+      activeMessageId: null,
       conversations: state.conversations.map((c) =>
         c.id === id ? { ...c, unread: 0 } : c
       ),
@@ -92,7 +105,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await chatApi.deleteConversation(id)
     const state = get()
     if (state.currentConvId === id) {
-      set({ currentConvId: null, messages: [], members: [] })
+      set({ currentConvId: null, messages: [], members: [], activeMessageId: null })
     }
     await get().fetchConversations()
   },
@@ -114,7 +127,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   leaveGroup: async (convId: string) => {
     await chatApi.leaveGroup(convId)
-    set({ currentConvId: null, messages: [], members: [] })
+    set({ currentConvId: null, messages: [], members: [], activeMessageId: null })
     await get().fetchConversations()
   },
 
@@ -139,4 +152,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ),
     }))
   },
+
+  searchMessages: async (keyword: string, conversationId?: string) => {
+    const trimmed = keyword.trim()
+    set({ searchKeyword: keyword })
+    if (!trimmed) {
+      set({ searchResults: [], searchLoading: false, activeMessageId: null })
+      return
+    }
+    set({ searchLoading: true })
+    try {
+      const res = await chatApi.searchMessages(trimmed, conversationId)
+      set({ searchResults: res.items })
+    } finally {
+      set({ searchLoading: false })
+    }
+  },
+
+  clearSearch: () => set({ searchKeyword: '', searchResults: [], searchLoading: false, activeMessageId: null }),
+
+  jumpToMessage: async (conversationId: string, messageId: string) => {
+    const context = await chatApi.getMessageContext(conversationId, messageId)
+    const conv = get().conversations.find((c) => c.id === conversationId)
+    set((state) => ({
+      currentConvId: conversationId,
+      messages: context,
+      members: [],
+      activeMessageId: messageId,
+      conversations: state.conversations.map((c) =>
+        c.id === conversationId ? { ...c, unread: 0 } : c
+      ),
+    }))
+    if (conv?.type === 'group') {
+      await get().fetchMembers(conversationId)
+    }
+  },
+
+  clearActiveMessage: () => set({ activeMessageId: null }),
 }))
