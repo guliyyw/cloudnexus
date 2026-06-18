@@ -26,3 +26,6 @@ jwt:
   refresh_secret: "cloudnexus-dev-jwt-refresh-secret-key"
   access_ttl_sec: 28800
   refresh_ttl_sec: 604800
+
+oauth:
+  encryption_key: "Y2xvdWRuZXh1cy1kZXYtb2F1dGgta2V5LTMyYnl0ZXM="

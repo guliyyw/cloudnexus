@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudnexus/server/internal/userfile/repository"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
@@ -31,15 +35,29 @@ func NewMusicService(musicRepo *repository.MusicRepository, fileRepo *repository
 	return &MusicService{musicRepo: musicRepo, fileRepo: fileRepo, minio: minioClient, bucket: bucket}
 }
 
+type TrackVariant struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album"`
+	Duration   int    `json:"duration"`
+	MimeType   string `json:"mime_type"`
+	FileSize   int64  `json:"file_size"`
+	Source     string `json:"source"`
+	IsUploaded bool   `json:"is_uploaded,omitempty"`
+}
+
 type TrackInfo struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Duration int    `json:"duration"`
-	MimeType string `json:"mime_type"`
-	FileSize int64  `json:"file_size"`
-	Source   string `json:"source"`
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Artist       string         `json:"artist"`
+	Album        string         `json:"album"`
+	Duration     int            `json:"duration"`
+	MimeType     string         `json:"mime_type"`
+	FileSize     int64          `json:"file_size"`
+	Source       string         `json:"source"`
+	IsUploaded   bool           `json:"is_uploaded,omitempty"`
+	Alternatives []TrackVariant `json:"alternatives,omitempty"`
 }
 
 type LibraryResponse struct {
@@ -47,18 +65,179 @@ type LibraryResponse struct {
 	Total  int64       `json:"total"`
 }
 
-func (s *MusicService) GetLibrary(userID uint64, source string, page, pageSize int) (*LibraryResponse, error) {
-	tracks := make([]TrackInfo, 0)
-	var total int64
+type PublicTrackUploadResult struct {
+	Track      *model.PublicTrack `json:"track"`
+	Duplicated bool               `json:"duplicated"`
+}
 
-	if source == "" || source == "public" || source == "all" {
-		pubTracks, pubTotal, err := s.musicRepo.FindAllTracks(page, pageSize)
+type extractedTrackMetadata struct {
+	Title    string
+	Artist   string
+	Album    string
+	Duration int
+}
+
+func normalizeMusicField(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func buildTrackIdentity(title, artist, album string) string {
+	return strings.Join([]string{
+		normalizeMusicField(title),
+		normalizeMusicField(artist),
+		normalizeMusicField(album),
+	}, "|")
+}
+
+func sortTracks(tracks []TrackInfo) {
+	sort.SliceStable(tracks, func(i, j int) bool {
+		if tracks[i].IsUploaded != tracks[j].IsUploaded {
+			return tracks[i].IsUploaded
+		}
+		return strings.ToLower(tracks[i].Title) < strings.ToLower(tracks[j].Title)
+	})
+}
+
+func mergeMetadata(base TrackInfo, metadata extractedTrackMetadata) TrackInfo {
+	if metadata.Title != "" {
+		base.Title = metadata.Title
+	}
+	if metadata.Artist != "" {
+		base.Artist = metadata.Artist
+	}
+	if metadata.Album != "" {
+		base.Album = metadata.Album
+	}
+	if metadata.Duration > 0 {
+		base.Duration = metadata.Duration
+	}
+	return base
+}
+
+func extractTrackMetadata(filePath string) extractedTrackMetadata {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return extractedTrackMetadata{}
+	}
+	defer f.Close()
+
+	metadata, err := tag.ReadFrom(f)
+	if err != nil {
+		return extractedTrackMetadata{}
+	}
+
+	result := extractedTrackMetadata{
+		Title:  strings.TrimSpace(metadata.Title()),
+		Artist: strings.TrimSpace(metadata.Artist()),
+		Album:  strings.TrimSpace(metadata.Album()),
+	}
+	return result
+}
+
+func (s *MusicService) loadCloudTrackMetadata(storageKey string) extractedTrackMetadata {
+	obj, err := s.minio.GetObject(context.Background(), s.bucket, storageKey, minio.GetObjectOptions{})
+	if err != nil {
+		return extractedTrackMetadata{}
+	}
+	defer obj.Close()
+
+	tmpFile, err := os.CreateTemp("", "music-cloud-meta-*")
+	if err != nil {
+		return extractedTrackMetadata{}
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, obj); err != nil {
+		tmpFile.Close()
+		return extractedTrackMetadata{}
+	}
+	if err := tmpFile.Close(); err != nil {
+		return extractedTrackMetadata{}
+	}
+
+	return extractTrackMetadata(tmpPath)
+}
+
+func (s *MusicService) GetLibrary(userID uint64, source string, page, pageSize int) (*LibraryResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 50
+	}
+
+	tracks := make([]TrackInfo, 0)
+	seen := make(map[string]int)
+
+	appendTrack := func(track TrackInfo) {
+		identity := buildTrackIdentity(track.Title, track.Artist, track.Album)
+		if identity == "||" {
+			identity = fmt.Sprintf("%s:%s", track.Source, track.ID)
+		}
+		if idx, ok := seen[identity]; ok {
+			existing := tracks[idx]
+			if track.Source == "cloud" && existing.Source != "cloud" {
+				track.Alternatives = append(track.Alternatives, TrackVariant{
+					ID:         existing.ID,
+					Title:      existing.Title,
+					Artist:     existing.Artist,
+					Album:      existing.Album,
+					Duration:   existing.Duration,
+					MimeType:   existing.MimeType,
+					FileSize:   existing.FileSize,
+					Source:     existing.Source,
+					IsUploaded: existing.IsUploaded,
+				})
+				tracks[idx] = track
+				return
+			}
+			tracks[idx].Alternatives = append(tracks[idx].Alternatives, TrackVariant{
+				ID:         track.ID,
+				Title:      track.Title,
+				Artist:     track.Artist,
+				Album:      track.Album,
+				Duration:   track.Duration,
+				MimeType:   track.MimeType,
+				FileSize:   track.FileSize,
+				Source:     track.Source,
+				IsUploaded: track.IsUploaded,
+			})
+			return
+		}
+		seen[identity] = len(tracks)
+		tracks = append(tracks, track)
+	}
+
+	if source == "" || source == "cloud" || source == "private" || source == "all" {
+		cloudFiles, _, err := s.musicRepo.FindAudioFilesByUser(userID, 1, pageSize*5)
 		if err != nil {
 			return nil, err
 		}
-		total += pubTotal
+		for _, f := range cloudFiles {
+			metadata := s.loadCloudTrackMetadata(f.StorageKey)
+			track := TrackInfo{
+				ID:         strconv.FormatUint(f.ID, 10),
+				Title:      strings.TrimSuffix(f.Name, filepath.Ext(f.Name)),
+				Artist:     "",
+				Album:      "",
+				Duration:   0,
+				MimeType:   f.MimeType,
+				FileSize:   f.Size,
+				Source:     "cloud",
+				IsUploaded: true,
+			}
+			appendTrack(mergeMetadata(track, metadata))
+		}
+	}
+
+	if source == "" || source == "public" || source == "all" {
+		pubTracks, _, err := s.musicRepo.FindAllTracks(1, pageSize*5)
+		if err != nil {
+			return nil, err
+		}
 		for _, t := range pubTracks {
-			tracks = append(tracks, TrackInfo{
+			appendTrack(TrackInfo{
 				ID:       strconv.FormatUint(t.ID, 10),
 				Title:    t.Title,
 				Artist:   t.Artist,
@@ -71,44 +250,108 @@ func (s *MusicService) GetLibrary(userID uint64, source string, page, pageSize i
 		}
 	}
 
-	if source == "" || source == "cloud" || source == "private" || source == "all" {
-		cloudFiles, cloudTotal, err := s.musicRepo.FindAudioFilesByUser(userID, page, pageSize)
-		if err != nil {
-			return nil, err
-		}
-		total += cloudTotal
-		for _, f := range cloudFiles {
-			tracks = append(tracks, TrackInfo{
-				ID:       strconv.FormatUint(f.ID, 10),
-				Title:    f.Name,
-				Artist:   "",
-				Album:    "",
-				Duration: 0,
-				MimeType: f.MimeType,
-				FileSize: f.Size,
-				Source:   "cloud",
-			})
-		}
+	sortTracks(tracks)
+	offset := (page - 1) * pageSize
+	if offset >= len(tracks) {
+		return &LibraryResponse{Tracks: []TrackInfo{}, Total: int64(len(tracks))}, nil
 	}
-
-	return &LibraryResponse{Tracks: tracks, Total: total}, nil
+	end := offset + pageSize
+	if end > len(tracks) {
+		end = len(tracks)
+	}
+	return &LibraryResponse{Tracks: tracks[offset:end], Total: int64(len(tracks))}, nil
 }
 
-func (s *MusicService) UploadPublicTrack(uploadedBy uint64, title, artist, album string, duration int, storageKey, mimeType string, fileSize int64) (*model.PublicTrack, error) {
+func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHeader, title, artist, album string) (*PublicTrackUploadResult, error) {
+	if header == nil {
+		return nil, apperrors.NewAppError(400, "请上传音频文件", apperrors.ErrBadRequest)
+	}
+	contentType := header.Header.Get("Content-Type")
+	if !strings.HasPrefix(strings.ToLower(contentType), "audio/") {
+		return nil, apperrors.NewAppError(400, "仅支持音频文件", apperrors.ErrBadRequest)
+	}
+
+	src, err := header.Open()
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "打开音频文件失败", err)
+	}
+	defer src.Close()
+
+	tmpFile, err := os.CreateTemp("", "music-upload-*")
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "创建临时文件失败", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, src); err != nil {
+		tmpFile.Close()
+		return nil, apperrors.NewAppError(500, "保存临时音频失败", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return nil, apperrors.NewAppError(500, "关闭临时音频失败", err)
+	}
+
+	resolvedTitle := strings.TrimSpace(title)
+	resolvedArtist := strings.TrimSpace(artist)
+	resolvedAlbum := strings.TrimSpace(album)
+	duration := 0
+
+	metadata := extractTrackMetadata(tmpPath)
+	if resolvedTitle == "" {
+		resolvedTitle = metadata.Title
+	}
+	if resolvedArtist == "" {
+		resolvedArtist = metadata.Artist
+	}
+	if resolvedAlbum == "" {
+		resolvedAlbum = metadata.Album
+	}
+	if metadata.Duration > 0 {
+		duration = metadata.Duration
+	}
+	if resolvedTitle == "" {
+		resolvedTitle = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	}
+
+	existing, err := s.musicRepo.FindPublicTrackByMetadata(resolvedTitle, resolvedArtist, resolvedAlbum)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "检查公共曲库重复失败", err)
+	}
+	if existing != nil {
+		return &PublicTrackUploadResult{Track: existing, Duplicated: true}, nil
+	}
+
+	storageKey := fmt.Sprintf("public-music/%d/%d%s", userID, time.Now().UnixNano(), filepath.Ext(header.Filename))
+
+	fileReader, err := os.Open(tmpPath)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "读取临时音频失败", err)
+	}
+	defer fileReader.Close()
+
+	_, err = s.minio.PutObject(context.Background(), s.bucket, storageKey, fileReader, header.Size, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "上传公共歌曲失败", err)
+	}
+
 	track := &model.PublicTrack{
-		Title:      title,
-		Artist:     artist,
-		Album:      album,
+		Title:      resolvedTitle,
+		Artist:     resolvedArtist,
+		Album:      resolvedAlbum,
 		Duration:   duration,
 		StorageKey: storageKey,
-		MimeType:   mimeType,
-		FileSize:   fileSize,
-		UploadedBy: uploadedBy,
+		MimeType:   contentType,
+		FileSize:   header.Size,
+		UploadedBy: userID,
 	}
 	if err := s.musicRepo.CreateTrack(track); err != nil {
-		return nil, apperrors.NewAppError(500, "上传音乐失败", apperrors.ErrInternalServer)
+		s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+		return nil, apperrors.NewAppError(500, "保存公共歌曲失败", err)
 	}
-	return track, nil
+	return &PublicTrackUploadResult{Track: track, Duplicated: false}, nil
 }
 
 func (s *MusicService) DeletePublicTrack(id, userID uint64) error {
@@ -361,14 +604,13 @@ func (s *MusicService) ExportPlaylist(id, userID uint64, format string) (string,
 		return sb.String(), nil
 	}
 
-	// JSON format
 	type exportTrack struct {
-		Title   string `json:"title"`
-		Artist  string `json:"artist"`
-		Album   string `json:"album"`
-		Duration int   `json:"duration"`
-		Source  string `json:"source"`
-		TrackID uint64 `json:"track_id,string"`
+		Title    string `json:"title"`
+		Artist   string `json:"artist"`
+		Album    string `json:"album"`
+		Duration int    `json:"duration"`
+		Source   string `json:"source"`
+		TrackID  uint64 `json:"track_id,string"`
 	}
 	type exportPlaylist struct {
 		Name   string        `json:"name"`
@@ -428,7 +670,6 @@ func (s *MusicService) ImportPlaylist(id, userID uint64, data []byte, format str
 		return s.importM3U(id, string(data))
 	}
 
-	// JSON format
 	type importTrack struct {
 		Title  string `json:"title"`
 		Artist string `json:"artist"`
@@ -508,7 +749,6 @@ func (s *MusicService) importM3U(playlistID uint64, content string) error {
 }
 
 func (s *MusicService) findTrackByTitleArtist(title, artist, preferredSource string) (uint64, bool, string) {
-	// 当前仅支持公共曲库匹配，cloud source 暂不匹配
 	tracks, _, err := s.musicRepo.FindAllTracks(1, 10000)
 	if err != nil {
 		return 0, false, "public"

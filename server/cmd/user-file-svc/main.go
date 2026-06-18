@@ -13,6 +13,7 @@ import (
 	"github.com/cloudnexus/server/pkg/cache"
 	"github.com/cloudnexus/server/pkg/captcha"
 	"github.com/cloudnexus/server/pkg/config"
+	"github.com/cloudnexus/server/pkg/crypto"
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/email"
 	"github.com/cloudnexus/server/pkg/logger"
@@ -36,6 +37,9 @@ func main() {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
+	}
+	if err := cfg.ValidateOAuthEncryptionKey(); err != nil {
+		log.Fatalf("OAuth 加密配置无效: %v", err)
 	}
 
 	if err := logger.Init(logger.Config{
@@ -120,7 +124,11 @@ func main() {
 	roleH := handler.NewRoleHandler(roleSvc)
 	deleteSvc := service.NewDeleteService(db)
 	deleteH := handler.NewDeleteHandler(deleteSvc)
-	oauthSvc := service.NewOAuthService(db)
+	oauthCipher, err := crypto.NewOAuthCipher(cfg.OAuth.EncryptionKey)
+	if err != nil {
+		logger.Log.Fatal("初始化 OAuth 加密器失败", zap.Error(err))
+	}
+	oauthSvc := service.NewOAuthService(db, oauthCipher)
 	oauthH := handler.NewOAuthHandler(oauthSvc)
 	searchH := handler.NewSearchHandler(userRepo)
 

@@ -30,3 +30,7 @@ jwt:
   refresh_secret: "${JWT_REFRESH_SECRET}"
   access_ttl_sec: 28800
   refresh_ttl_sec: 604800
+
+oauth:
+  # 请通过环境变量设置 base64 编码的 32 字节密钥
+  encryption_key: "${OAUTH_ENCRYPTION_KEY}"

@@ -42,25 +42,27 @@ func (h *MusicHandler) HandleGetLibrary(c *gin.Context) {
 
 func (h *MusicHandler) HandleUploadTrack(c *gin.Context) {
 	userID := c.GetUint64("user_id")
-	var req struct {
-		Title      string `json:"title"`
-		Artist     string `json:"artist"`
-		Album      string `json:"album"`
-		Duration   int    `json:"duration"`
-		StorageKey string `json:"storage_key"`
-		MimeType   string `json:"mime_type"`
-		FileSize   int64  `json:"file_size"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请上传音频文件"))
 		return
 	}
-	track, err := h.svc.UploadPublicTrack(userID, req.Title, req.Artist, req.Album, req.Duration, req.StorageKey, req.MimeType, req.FileSize)
+	result, err := h.svc.UploadPublicTrack(
+		userID,
+		fileHeader,
+		c.PostForm("title"),
+		c.PostForm("artist"),
+		c.PostForm("album"),
+	)
 	if err != nil {
 		handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, response.OKWithData(track))
+	if result.Duplicated {
+		c.JSON(http.StatusConflict, response.Error(409, "公共库已存在同名歌曲"))
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(result.Track))
 }
 
 func (h *MusicHandler) HandleDeleteTrack(c *gin.Context) {

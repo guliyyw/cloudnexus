@@ -63,23 +63,25 @@ curl http://localhost/healthz
 
 ### 2.4 端口规划
 
-仅 nginx 对外暴露 80 端口，其他端口均为 Docker 内部通信或开发调试用：
+推荐单机公网阶段仅由 nginx 统一对外暴露 80 端口，其他业务端口全部收敛到 Docker 内部网络，通过 nginx 反向代理访问：
 
 | 服务 | 端口 | 对外 | 说明 |
 |------|------|------|------|
-| **nginx** | **80** | **是** | 唯一对外端口，统一入口 |
-| **mediamtx HLS** | **8888** | **是** | 摄像头 HLS 视频流直连（绕过 nginx cookie 检查） |
-| user-file-svc | 8081 | 否 | 用户 & 文件 & RBAC |
-| im-svc | 8082 | 否 | 即时通讯 & WebSocket |
-| docker-svc | 8083 | 否 | Docker 管理 |
-| camera-svc | 8085 | 否 | 摄像头管理 & AI 识别 |
-| collab-svc | 8086 | 否 | 在线文档协作 |
+| **nginx** | **80** | **是** | 当前公网 IP + HTTP 阶段唯一正式入口 |
+| **nginx** | **443** | 可预留 | 后续升级 HTTPS 时启用 |
+| user-file-svc | 8081 | 否 | 用户 & 文件 & RBAC，经 nginx 代理 |
+| im-svc | 8082 | 否 | 即时通讯 & WebSocket，经 nginx 代理 |
+| docker-svc | 8083 | 否 | Docker 管理，经 nginx 代理 |
+| camera-svc | 8085 | 否 | 摄像头管理 & AI 识别，经 nginx 代理 |
+| collab-svc | 8086 | 否 | 在线文档协作，经 nginx 代理 |
 | PostgreSQL | 5432 | 否 | 数据库 |
 | Redis | 6379 | 否 | 缓存 / 消息总线 |
 | MinIO API | 9000 | 否 | 对象存储 S3 API |
 | MinIO Console | 9001 | 否 | MinIO Web 管理 |
 | MediaMTX API | 8889 | 否 | 流媒体管理 API |
 | AI Inference | 8000 | 否 | YOLOv8 推理服务 |
+
+> **公网阶段说明**：即便用户要求“全部功能可从公网访问”，也建议继续通过 nginx 的统一入口暴露 `/api`、`/ws`、`/ws/collab`、`/cam_*`、`/healthz`、`/metrics`，而不是把 8081/8082/8083/8085/8086 等后端端口直接开放到互联网。
 
 ### 2.5 Nginx 路由规则
 
@@ -95,12 +97,12 @@ curl http://localhost/healthz
 | `/api/*` | user-file-svc:8081 | 用户/文件 API (兜底) |
 | `/ws/collab/*` | collab-svc:8086 | 文档协作 WebSocket |
 | `/ws` | im-svc:8082 | IM WebSocket (需 Upgrade 头) |
-| `/cam_*/` | mediamtx:8888 | HLS 视频流 (nginx 反向代理) |
+| `/cam_*/` | mediamtx:8888 | HLS 视频流（经 nginx 同源代理） |
 | `/healthz/*` | 各服务 | 健康检查 |
+| `/metrics` | user-file-svc | 聚合指标 |
 | `/` | 静态文件 | SPA (try_files 回退到 index.html) |
 
-> **注意**：前端 HLS.js 播放器直连 `服务器IP:8888` 获取视频流，不经过 nginx，
-> 避免 MediaMTX cookie 检查导致的重定向循环。8888 端口需对外开放。
+> **注意**：当前推荐公网方案中，摄像头 HLS 流量仍通过 nginx 的 `/cam_*` 路径同源代理，不再以“浏览器直连 `服务器IP:8888`”作为正式发布方式。若后续要把视频流长期稳定暴露到公网，仍应补充更严格的流访问控制与 HTTPS/WSS 升级方案。
 
 ### 2.6 配置文件
 
@@ -122,6 +124,11 @@ jwt:
 ```
 
 所有 host 使用 Docker 服务名（`postgres`、`redis`、`minio`），通过 Docker 内部 DNS 解析。
+
+> **公网 IP + HTTP 阶段补充**：
+> - 建议在 `.env` 中增加 `ALLOWED_ORIGINS=http://<你的公网IP>`，并由 Compose 注入到 user-file-svc / im-svc / docker-svc / camera-svc / collab-svc。
+> - nginx 需要继续作为统一入口，并补齐 `X-Forwarded-Host`、`X-Forwarded-Proto` 等反代头，供后端识别外层访问协议。
+> - 若未来升级 HTTPS，只需在 nginx 启用 443 与证书，并把 `ALLOWED_ORIGINS` 扩展为 `https://<域名>` 或 `https://<公网IP>`。
 
 **集群部署**使用 `server/config/config.cluster.yaml`（host 指向基础设施服务器 IP）。
 
@@ -389,9 +396,11 @@ curl http://localhost/healthz/camera-svc        # 摄像头服务
 
 - [ ] 修改所有默认密码 (数据库、Redis、MinIO)
 - [ ] 生成强随机 JWT Secret
-- [ ] 启用 HTTPS (Let's Encrypt / 自签证书)
-- [ ] 配置防火墙 (仅开放 80/443/8888)
-- [ ] 数据库连接使用 SSL
-- [ ] Docker 端口不暴露到公网
+- [ ] 配置 `ALLOWED_ORIGINS` 为正式公网入口（当前阶段至少为 `http://<公网IP>`）
+- [ ] 若已进入正式生产，尽快升级到 HTTPS (Let's Encrypt / 自签证书)
+- [ ] 配置防火墙（公网阶段仅开放 80；未来 HTTPS 再开放 443）
+- [ ] 不要把 8081/8082/8083/8085/8086/5432/6379/9000/9001/8889/8000 直接暴露到公网
+- [ ] 数据库连接使用 SSL（如基础设施支持）
+- [ ] 高危路径 `/api/v1/docker`、`/healthz`、`/metrics`、`/admin`、`/status`、`/cam_*` 的公网风险已知并接受
 - [ ] 定期更新依赖和镜像
 - [ ] 配置 AI 推理服务访问令牌 (`AI_INFERENCE_TOKEN`)

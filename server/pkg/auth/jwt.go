@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -106,10 +107,17 @@ func ParseToken(tokenStr string, secret string) (*Claims, error) {
 	return claims, nil
 }
 
+func isHTTPSRequest(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
 // SetTokenCookies 将 access_token 和 refresh_token 设置为 httpOnly Cookie
 // SECURITY: httpOnly Cookie 防止 XSS 攻击窃取 Token
 func SetTokenCookies(c *gin.Context, pair *TokenPair, accessTTL, refreshTTL time.Duration) {
-	isSecure := c.Request.TLS != nil
+	isSecure := isHTTPSRequest(c)
 	// Access Token Cookie - 短有效期
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("access_token", pair.AccessToken, int(accessTTL.Seconds()), "/", "", isSecure, true)
@@ -119,7 +127,7 @@ func SetTokenCookies(c *gin.Context, pair *TokenPair, accessTTL, refreshTTL time
 
 // ClearTokenCookies 清除 Token Cookie（用于登出）
 func ClearTokenCookies(c *gin.Context) {
-	isSecure := c.Request.TLS != nil
+	isSecure := isHTTPSRequest(c)
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("access_token", "", -1, "/", "", isSecure, true)
 	c.SetCookie("refresh_token", "", -1, "/", "", isSecure, true)

@@ -67,6 +67,13 @@ func Logger() gin.HandlerFunc {
 	}
 }
 
+func isHTTPSRequest(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
 func CORS() gin.HandlerFunc {
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOrigins == "" {
@@ -74,7 +81,10 @@ func CORS() gin.HandlerFunc {
 	}
 	allowedSet := make(map[string]bool)
 	for _, o := range strings.Split(allowedOrigins, ",") {
-		allowedSet[strings.TrimSpace(o)] = true
+		trimmed := strings.TrimSpace(o)
+		if trimmed != "" {
+			allowedSet[trimmed] = true
+		}
 	}
 
 	return func(c *gin.Context) {
@@ -90,7 +100,7 @@ func CORS() gin.HandlerFunc {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-XSS-Protection", "1; mode=block")
-		if c.Request.TLS != nil {
+		if isHTTPSRequest(c) {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 		if c.Request.Method == http.MethodOptions {

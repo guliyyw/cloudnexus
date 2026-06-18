@@ -1,5 +1,17 @@
 import api from './api'
 
+export interface TrackVariant {
+  id: string
+  title: string
+  artist: string
+  album: string
+  duration: number
+  mime_type: string
+  file_size: number
+  source: 'public' | 'cloud'
+  is_uploaded?: boolean
+}
+
 export interface Track {
   id: string
   title: string
@@ -9,6 +21,8 @@ export interface Track {
   mime_type: string
   file_size: number
   source: 'public' | 'cloud'
+  is_uploaded?: boolean
+  alternatives?: TrackVariant[]
 }
 
 export interface LibraryResponse {
@@ -35,6 +49,18 @@ export interface PlaylistTrack {
 
 export async function getLibrary(source = 'all', page = 1, pageSize = 50): Promise<LibraryResponse> {
   const res = await api.get('/music/library', { params: { source, page, page_size: pageSize } })
+  return res.data.data
+}
+
+export async function uploadPublicTrack(file: File, metadata?: { title?: string; artist?: string; album?: string }) {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (metadata?.title) formData.append('title', metadata.title)
+  if (metadata?.artist) formData.append('artist', metadata.artist)
+  if (metadata?.album) formData.append('album', metadata.album)
+  const res = await api.post('/music/library/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data.data
 }
 

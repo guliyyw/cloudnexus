@@ -16,6 +16,7 @@ export interface PlayerState {
   isFullScreen: boolean
 
   play: (track?: Track, queue?: Track[]) => void
+  switchTrackSource: (trackId: string, source: 'public' | 'cloud') => void
   pause: () => void
   resume: () => void
   next: () => void
@@ -46,13 +47,46 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   play: (track?: Track, queue?: Track[]) => {
     if (queue) {
-      const idx = track ? queue.findIndex((t) => t.id === track.id) : 0
+      const idx = track ? queue.findIndex((t) => t.id === track.id && t.source === track.source) : 0
       set({ queue, currentIndex: idx >= 0 ? idx : 0, isPlaying: true, isMiniVisible: true })
     } else if (track) {
       set({ queue: [track], currentIndex: 0, isPlaying: true, isMiniVisible: true })
     } else {
       set({ isPlaying: true })
     }
+  },
+
+  switchTrackSource: (trackId: string, source: 'public' | 'cloud') => {
+    const { queue, currentIndex } = get()
+    const nextQueue = queue.map((track, idx) => {
+      if (idx !== currentIndex || track.id !== trackId || !track.alternatives?.length) {
+        return track
+      }
+      const nextVariant = track.alternatives.find((item) => item.source === source)
+      if (!nextVariant) {
+        return track
+      }
+      const remainingAlternatives = [
+        {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          duration: track.duration,
+          mime_type: track.mime_type,
+          file_size: track.file_size,
+          source: track.source,
+          is_uploaded: track.is_uploaded,
+        },
+        ...track.alternatives.filter((item) => !(item.id === nextVariant.id && item.source === nextVariant.source)),
+      ]
+      return {
+        ...track,
+        ...nextVariant,
+        alternatives: remainingAlternatives,
+      }
+    })
+    set({ queue: nextQueue, isPlaying: true, currentTime: 0 })
   },
 
   pause: () => set({ isPlaying: false }),
