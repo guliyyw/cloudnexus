@@ -8,10 +8,16 @@ function readStored(): ThemeMode {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
     if (v === 'light' || v === 'dark') return v
-  } catch { /* localStorage 不可用 */ }
+  } catch {
+    // localStorage 不可用时回退到系统偏好
+  }
+
   try {
     if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light'
-  } catch { /* matchMedia 不可用 */ }
+  } catch {
+    // matchMedia 不可用时继续回退到暗色默认值
+  }
+
   return 'dark'
 }
 
@@ -19,12 +25,20 @@ function persistDOM(t: ThemeMode): void {
   document.documentElement.setAttribute('data-theme', t)
   try {
     localStorage.setItem(STORAGE_KEY, t)
-  } catch { /* quota exceeded */ }
+  } catch {
+    // quota exceeded 时不阻塞界面切换
+  }
+}
+
+function applyAndPersistTheme(t: ThemeMode): void {
+  applyTheme(t)
+  persistDOM(t)
 }
 
 const initial = readStored()
-applyTheme(initial)
-persistDOM(initial)
+
+// 在应用第一次渲染前就同步 token 和 data-theme，避免主题切换闪烁。
+applyAndPersistTheme(initial)
 
 interface ThemeState {
   theme: ThemeMode
@@ -38,8 +52,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 
   toggleTheme: () => {
     const next: ThemeMode = get().theme === 'dark' ? 'light' : 'dark'
-    applyTheme(next)
-    persistDOM(next)
+    applyAndPersistTheme(next)
     set({ theme: next, isDark: next === 'dark' })
   },
 }))
