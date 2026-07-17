@@ -14,25 +14,26 @@ import {
   TeamOutlined,
   ShareAltOutlined,
   DeleteOutlined,
+  PlaySquareOutlined,
 } from '@ant-design/icons'
 import ModuleCard from '../components/dashboard/ModuleCard'
 import { useDashboardStore } from '../stores/dashboardStore'
 
 const { Title } = Typography
 
-// 服务健康状态模块图标
 const serviceIconMap: Record<string, React.ReactNode> = {
   files: <CloudOutlined />,
   im: <MessageOutlined />,
   docker: <ContainerOutlined />,
   camera: <VideoCameraOutlined />,
   collab: <FileTextOutlined />,
+  drama: <PlaySquareOutlined />,
   infra: <ClusterOutlined />,
 }
 
-// 功能模块定义
 const featureModules = [
   { key: 'files', name: '文件管理', icon: <CloudOutlined />, path: '/files' },
+  { key: 'drama', name: '短剧工坊', icon: <PlaySquareOutlined />, path: '/drama' },
   { key: 'album', name: '相册', icon: <PictureOutlined />, path: '/album' },
   { key: 'music', name: '音乐', icon: <CustomerServiceOutlined />, path: '/music' },
   { key: 'playlist', name: '播放列表', icon: <UnorderedListOutlined />, path: '/playlist' },
@@ -48,7 +49,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchStatus()
-  }, [])
+  }, [fetchStatus])
 
   const handleServiceCardClick = (key: string) => {
     const routes: Record<string, string> = {
@@ -57,20 +58,16 @@ export default function Dashboard() {
       docker: '/docker',
       camera: '/cameras',
       collab: '/documents',
+      drama: '/drama',
       infra: '/admin',
     }
     navigate(routes[key] || '/files')
-  }
-
-  const handleFeatureCardClick = (path: string) => {
-    navigate(path)
   }
 
   return (
     <div>
       <Title level={4} style={{ marginBottom: 24 }}>系统概览</Title>
 
-      {/* 功能模块卡片 */}
       <Title level={5} style={{ marginBottom: 16 }}>功能模块</Title>
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         {featureModules.map((mod) => (
@@ -80,13 +77,12 @@ export default function Dashboard() {
               name={mod.name}
               status="green"
               detail="点击进入"
-              onClick={() => handleFeatureCardClick(mod.path)}
+              onClick={() => navigate(mod.path)}
             />
           </Col>
         ))}
       </Row>
 
-      {/* 服务健康状态 */}
       <Title level={5} style={{ marginBottom: 16 }}>服务状态</Title>
       {loading ? (
         <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>

@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Retries=5 && apt-get install -y --fix-missing --no-install-recommends \
+    -o Acquire::Retries=5 \
     libxcb1 libx11-6 libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 

@@ -18,6 +18,10 @@ export default defineConfig({
         target: 'http://localhost:8086',
         changeOrigin: true,
       },
+      '/api/v1/drama': {
+        target: 'http://localhost:8087',
+        changeOrigin: true,
+      },
       '/api/v1/cameras': {
         target: 'http://localhost:8085',
         changeOrigin: true,
