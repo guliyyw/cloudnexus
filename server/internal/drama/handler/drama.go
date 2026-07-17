@@ -4,13 +4,19 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cloudnexus/server/internal/drama/service"
 	"github.com/cloudnexus/server/pkg/httputil"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/response"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
+
+var taskWebSocketUpgrader = websocket.Upgrader{
+	CheckOrigin: func(_ *http.Request) bool { return true },
+}
 
 type DramaHandler struct {
 	svc *service.DramaService
@@ -136,6 +142,27 @@ func (h *DramaHandler) HandleUpdateStoryboard(c *gin.Context) {
 	storyboard, err := h.svc.UpdateStoryboard(httputil.GetUserID(c), projectID, storyboardID, req.Content, req.Prompt)
 	if err != nil {
 		c.JSON(500, response.Error(500, "保存分镜失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"storyboard": storyboard}))
+}
+
+func (h *DramaHandler) HandleSelectStoryboardMedia(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	storyboardID, ok := parseID(c, "storyboardId")
+	if !ok {
+		return
+	}
+	mediaID, ok := parseID(c, "mediaId")
+	if !ok {
+		return
+	}
+	storyboard, err := h.svc.SelectStoryboardMedia(httputil.GetUserID(c), projectID, storyboardID, mediaID)
+	if err != nil {
+		c.JSON(500, response.Error(500, "选择分镜媒体失败"))
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{"storyboard": storyboard}))
@@ -349,6 +376,70 @@ func (h *DramaHandler) HandleCreateTask(c *gin.Context) {
 	c.JSON(201, response.OKWithData(gin.H{"task": task}))
 }
 
+func (h *DramaHandler) HandleCancelTask(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	taskID, ok := parseID(c, "taskId")
+	if !ok {
+		return
+	}
+	task, err := h.svc.CancelTask(httputil.GetUserID(c), projectID, taskID)
+	if err != nil {
+		c.JSON(400, response.Error(400, err.Error()))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"task": task}))
+}
+
+func (h *DramaHandler) HandleRetryTask(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	taskID, ok := parseID(c, "taskId")
+	if !ok {
+		return
+	}
+	task, err := h.svc.RetryTask(httputil.GetUserID(c), projectID, taskID)
+	if err != nil {
+		c.JSON(400, response.Error(400, err.Error()))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"task": task}))
+}
+
+func (h *DramaHandler) HandleTaskWebSocket(c *gin.Context) {
+	events, unsubscribe, err := h.svc.SubscribeTaskEvents(httputil.GetUserID(c))
+	if err != nil {
+		c.JSON(503, response.Error(503, err.Error()))
+		return
+	}
+	defer unsubscribe()
+	conn, err := taskWebSocketUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case event := <-events:
+			if err := conn.WriteJSON(event); err != nil {
+				return
+			}
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+				return
+			}
+		case <-c.Request.Context().Done():
+			return
+		}
+	}
+}
+
 func (h *DramaHandler) HandleGetSetting(c *gin.Context) {
 	setting, err := h.svc.GetSetting(httputil.GetUserID(c))
 	if err != nil {
@@ -356,6 +447,15 @@ func (h *DramaHandler) HandleGetSetting(c *gin.Context) {
 		return
 	}
 	c.JSON(200, response.OKWithData(gin.H{"setting": setting}))
+}
+
+func (h *DramaHandler) HandleComfyStatus(c *gin.Context) {
+	status, err := h.svc.GetComfyStatus(c.Request.Context(), httputil.GetUserID(c), c.Query("url"))
+	if err != nil {
+		c.JSON(500, response.Error(500, "读取 ComfyUI 状态失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"status": status}))
 }
 
 func (h *DramaHandler) HandleSaveSetting(c *gin.Context) {

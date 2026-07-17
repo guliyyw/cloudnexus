@@ -32,6 +32,19 @@ type DramaStoryboard struct {
 	VideoFileID     uint64 `json:"video_file_id,string" gorm:"default:0"`
 }
 
+type DramaStoryboardMedia struct {
+	BaseModel
+	ProjectID    uint64 `json:"project_id,string" gorm:"not null;index"`
+	StoryboardID uint64 `json:"storyboard_id,string" gorm:"not null;index"`
+	OwnerID      uint64 `json:"owner_id,string" gorm:"not null;index"`
+	Kind         string `json:"kind" gorm:"not null;size:20;index"`
+	FileID       uint64 `json:"file_id,string" gorm:"not null;default:0"`
+	Source       string `json:"source" gorm:"size:40;default:'generated'"`
+	Prompt       string `json:"prompt" gorm:"type:text"`
+	SortOrder    int    `json:"sort_order" gorm:"default:0;index"`
+	Selected     bool   `json:"selected" gorm:"default:false;index"`
+}
+
 type DramaAsset struct {
 	BaseModel
 	ProjectID       uint64 `json:"project_id,string" gorm:"not null;index"`
@@ -61,6 +74,7 @@ type DramaSetting struct {
 	BaseModel
 	OwnerID       uint64 `json:"owner_id,string" gorm:"not null;uniqueIndex"`
 	ComfyUIURL    string `json:"comfyui_url" gorm:"size:500"`
+	ImageSettings string `json:"image_settings" gorm:"type:jsonb;default:'{}'"`
 	TTSEngine     string `json:"tts_engine" gorm:"size:50;default:'edge-tts'"`
 	TTSConfig     string `json:"tts_config" gorm:"type:jsonb;default:'{}'"`
 	VideoSettings string `json:"video_settings" gorm:"type:jsonb;default:'{}'"`

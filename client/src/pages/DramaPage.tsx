@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Col,
   Collapse,
   Empty,
   Form,
+  Image,
   Input,
   InputNumber,
   List,
   Modal,
   Popconfirm,
+  Progress,
   Row,
   Select,
   Space,
@@ -28,15 +31,18 @@ import {
   ImportOutlined,
   LeftOutlined,
   PlusOutlined,
+  RedoOutlined,
   RightOutlined,
   SaveOutlined,
   SettingOutlined,
+  StopOutlined,
   ThunderboltOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { useAccess } from '../hooks/useAccess'
 import {
+  ComfyUIStatus,
   DramaAsset,
   DramaDetail,
   DramaProject,
@@ -44,17 +50,22 @@ import {
   DramaTask,
   appendDramaStoryboards,
   batchImportDramaAudio,
+  cancelDramaTask,
   createDramaProject,
   createDramaTask,
   deleteDramaProject,
   exportDramaProject,
+  getComfyUIStatus,
   getDramaProject,
   getDramaSetting,
   importDramaAssets,
   importDramaProject,
   listDramaProjects,
+  listDramaTasks,
   parseDramaScript,
+  retryDramaTask,
   saveDramaSetting,
+  selectDramaStoryboardMedia,
   updateDramaAsset,
   updateDramaProject,
   updateDramaStoryboard,
@@ -82,8 +93,11 @@ export default function DramaPage() {
   const [assetImportOpen, setAssetImportOpen] = useState(false)
   const [suffix, setSuffix] = useState(defaultSuffix)
   const [setting, setSetting] = useState<DramaSetting | null>(null)
+  const [comfyStatus, setComfyStatus] = useState<ComfyUIStatus | null>(null)
+  const [comfyChecking, setComfyChecking] = useState(false)
   const [aiAssetText, setAiAssetText] = useState('')
   const [activeTab, setActiveTab] = useState('script')
+  const [imageCount, setImageCount] = useState(3)
   const [projectForm] = Form.useForm()
   const [settingForm] = Form.useForm()
 
@@ -92,6 +106,10 @@ export default function DramaPage() {
   const canGenerate = hasPermission('drama:generate')
   const canAdmin = hasPermission('drama:admin')
   const current = detail?.storyboards[currentIndex]
+  const currentMedia = useMemo(
+    () => detail?.media?.filter((item) => item.storyboard_id === current?.id).sort((a, b) => a.sort_order - b.sort_order) || [],
+    [detail?.media, current?.id],
+  )
   const modifiedCount = useMemo(() => detail?.storyboards.filter((item) => item.modified).length || 0, [detail])
 
   useEffect(() => {
@@ -100,6 +118,42 @@ export default function DramaPage() {
       loadSetting()
     }
   }, [accessLoading, canRead, keyword, sort])
+
+  useEffect(() => {
+    const projectID = detail?.project.id
+    const token = localStorage.getItem('access_token')
+    if (!projectID || !token) return
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/drama/tasks?token=${encodeURIComponent(token)}`)
+    socket.onmessage = (event) => {
+      try {
+        const update = JSON.parse(event.data) as { type: string; task: DramaTask }
+        if (update.type !== 'task_update' || update.task.project_id !== projectID) return
+        setDetail((previous) => previous ? {
+          ...previous,
+          tasks: [update.task, ...previous.tasks.filter((item) => item.id !== update.task.id)],
+        } : previous)
+        if (update.task.status === 'done') refreshGeneratedResults(projectID)
+      } catch {
+        // Ignore malformed progress events and keep the page usable.
+      }
+    }
+    return () => socket.close()
+  }, [detail?.project.id])
+
+  useEffect(() => {
+    if (activeTab !== 'tasks' || !detail) return
+    const projectID = detail.project.id
+    const timer = window.setInterval(async () => {
+      try {
+        const tasks = await listDramaTasks(projectID)
+        setDetail((previous) => previous?.project.id === projectID ? { ...previous, tasks } : previous)
+      } catch {
+        // WebSocket remains the primary progress channel.
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [activeTab, detail?.project.id])
 
   const loadProjects = async () => {
     setLoading(true)
@@ -120,9 +174,33 @@ export default function DramaPage() {
     try {
       const data = await getDramaSetting()
       setSetting(data)
-      settingForm.setFieldsValue(data)
+      settingForm.setFieldsValue({ ...data, ...parseImageSettings(data.image_settings) })
     } catch {
       // Keep the workbench usable if settings are unavailable.
+    }
+  }
+
+  const refreshGeneratedResults = async (projectID: string) => {
+    try {
+      const remote = await getDramaProject(projectID)
+      setDetail((previous) => {
+        if (!previous || previous.project.id !== projectID) return previous
+        return {
+          ...previous,
+          tasks: remote.tasks,
+          media: remote.media || [],
+          assets: previous.assets.map((asset) => {
+            const next = remote.assets.find((item) => item.id === asset.id)
+            return next ? { ...asset, reference_file_id: next.reference_file_id } : asset
+          }),
+          storyboards: previous.storyboards.map((storyboard) => {
+            const next = remote.storyboards.find((item) => item.id === storyboard.id)
+            return next ? { ...storyboard, image_file_id: next.image_file_id, video_file_id: next.video_file_id } : storyboard
+          }),
+        }
+      })
+    } catch {
+      // The next task refresh will retry.
     }
   }
 
@@ -130,7 +208,7 @@ export default function DramaPage() {
     setLoading(true)
     try {
       const data = await getDramaProject(id)
-      setDetail(data)
+      setDetail({ ...data, media: data.media || [] })
       setScript(data.project.raw_script || '')
       setCurrentIndex(0)
     } catch {
@@ -142,7 +220,8 @@ export default function DramaPage() {
 
   const refreshDetail = async () => {
     if (!detail) return
-    setDetail(await getDramaProject(detail.project.id))
+    const data = await getDramaProject(detail.project.id)
+    setDetail({ ...data, media: data.media || [] })
   }
 
   const handleCreate = async () => {
@@ -154,10 +233,17 @@ export default function DramaPage() {
     await openProject(project.id)
   }
 
+  const handleDeleteProject = async (id: string) => {
+    await deleteDramaProject(id)
+    if (detail?.project.id === id) setDetail(null)
+    await loadProjects()
+    message.success('项目已删除，云盘文件已移入回收站')
+  }
+
   const handleParse = async () => {
     if (!detail || !script.trim()) return
     const data = await parseDramaScript(detail.project.id, script)
-    setDetail(data)
+    setDetail({ ...data, media: data.media || [] })
     setCurrentIndex(0)
     message.success('剧本已拆分为分镜')
   }
@@ -217,21 +303,38 @@ export default function DramaPage() {
     message.success('已导出，并保存到云盘 exports 目录')
   }
 
-  const handleCreateTask = async (type: string, payload?: Record<string, unknown>) => {
+  const handleCreateTask = async (type: string, payload?: Record<string, unknown>, storyboardIDs?: string[]) => {
     if (!detail) return
+    const targetStoryboardIDs = storyboardIDs || detail.storyboards.map((item) => item.id)
     const taskPayload = payload || {
       source: 'storyboards',
       source_label: `全部分镜（${detail.storyboards.length} 镜）`,
       storyboard_count: detail.storyboards.length,
       storyboard_titles: detail.storyboards.map((item) => item.title),
+      image_count: type === 'image' ? imageCount : undefined,
     }
     const task = await createDramaTask(detail.project.id, {
       type,
-      storyboard_ids: detail.storyboards.map((item) => item.id),
+      storyboard_ids: targetStoryboardIDs,
       payload: JSON.stringify(taskPayload),
     })
     setDetail({ ...detail, tasks: [task, ...detail.tasks] })
     message.success('任务已创建')
+  }
+
+  const handleSelectMedia = async (mediaId: string) => {
+    if (!detail || !current) return
+    const storyboard = await selectDramaStoryboardMedia(detail.project.id, current.id, mediaId)
+    setDetail({
+      ...detail,
+      storyboards: detail.storyboards.map((item) => (item.id === storyboard.id ? storyboard : item)),
+      media: (detail.media || []).map((item) => (
+        item.storyboard_id === current.id && item.kind === 'image'
+          ? { ...item, selected: item.id === mediaId }
+          : item
+      )),
+    })
+    message.success('已设为当前分镜图片')
   }
 
   const handleBatchAudioImport = async (files: File[]) => {
@@ -244,15 +347,60 @@ export default function DramaPage() {
 
   const handleSaveSetting = async () => {
     const values = await settingForm.validateFields()
-    const next = await saveDramaSetting(values)
+    const imageSettings = {
+      checkpoint: values.checkpoint || '',
+      width: values.width || 768,
+      height: values.height || 1024,
+      steps: values.steps || 24,
+      cfg: values.cfg || 7,
+      sampler: values.sampler || 'euler',
+      scheduler: values.scheduler || 'normal',
+      negative_prompt: values.negative_prompt || '',
+    }
+    const next = await saveDramaSetting({
+      comfyui_url: values.comfyui_url,
+      image_settings: JSON.stringify(imageSettings),
+      tts_engine: values.tts_engine,
+      tts_config: values.tts_config,
+      video_settings: values.video_settings,
+      storage_root: values.storage_root,
+    })
     setSetting(next)
     message.success('设置已保存')
+  }
+
+  const handleCheckComfyUI = async () => {
+    setComfyChecking(true)
+    try {
+      const status = await getComfyUIStatus(settingForm.getFieldValue('comfyui_url'))
+      setComfyStatus(status)
+      if (status.connected) message.success('ComfyUI 连接成功')
+      else message.error('ComfyUI 无法连接')
+    } finally {
+      setComfyChecking(false)
+    }
+  }
+
+  const replaceTask = (task: DramaTask) => {
+    setDetail((previous) => previous ? {
+      ...previous,
+      tasks: [task, ...previous.tasks.filter((item) => item.id !== task.id)],
+    } : previous)
+  }
+
+  const handleCancelTask = async (task: DramaTask) => {
+    if (!detail) return
+    replaceTask(await cancelDramaTask(detail.project.id, task.id))
+  }
+
+  const handleRetryTask = async (task: DramaTask) => {
+    if (!detail) return
+    replaceTask(await retryDramaTask(detail.project.id, task.id))
   }
 
   const buildAssetPrompt = () => {
     if (!detail) return ''
     return `你是短剧视觉资产分析师。请根据下面的短剧前言和分镜内容，提取角色与场景资产，输出严格 JSON，不要输出解释文字。
-
 输出格式：
 {
   "characters": [
@@ -277,11 +425,10 @@ export default function DramaPage() {
     }
   ]
 }
-
 要求：
 1. 角色名称保持短且稳定，避免别名重复。
 2. 外貌、服装、场景细节要适合做连续分镜一致性参考。
-3. reference_prompt 使用中文，包含写实摄影/影视感/一致性关键词。
+3. reference_prompt 使用中文，包含写实摄影、影视感、一致性关键词。
 4. 只输出 JSON。
 
 前言：
@@ -311,18 +458,10 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
     },
   }
 
-  const handleDeleteProject = async (id: string) => {
-    await deleteDramaProject(id)
-    setDetail(null)
-    await loadProjects()
-  }
-
-  if (!accessLoading && !canRead) {
-    return <Empty description="你还没有短剧工坊权限，请联系管理员授权 drama:* 权限" />
-  }
+  if (accessLoading) return <Empty description="正在检查权限" />
+  if (!canRead) return <Empty description="你还没有短剧工坊权限，请联系管理员授予 drama:* 权限" />
 
   const showStoryboardNav = activeTab === 'storyboards' && !!detail?.storyboards.length
-
   const scrollAreaStyle: React.CSSProperties = {
     height: '100%',
     minHeight: 0,
@@ -360,26 +499,26 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                 loading={loading}
                 dataSource={projects}
                 locale={{ emptyText: '暂无项目' }}
-              renderItem={(item) => (
-                <List.Item
-                  onClick={() => openProject(item.id)}
-                  style={{
-                    cursor: 'pointer',
-                    padding: 12,
-                    borderRadius: 8,
-                    background: detail?.project.id === item.id ? '#fef3e7' : '#fff',
-                    marginBottom: 8,
-                    border: '1px solid #f0eeeb',
-                  }}
-                  actions={[
-                    <Popconfirm title="删除项目？" onConfirm={(e) => { e?.stopPropagation(); handleDeleteProject(item.id) }} disabled={!canWrite}>
-                      <Button size="small" icon={<DeleteOutlined />} disabled={!canWrite} onClick={(e) => e.stopPropagation()} />
-                    </Popconfirm>,
-                  ]}
-                >
-                  <List.Item.Meta title={item.title} description={item.description || '无描述'} />
-                </List.Item>
-              )}
+                renderItem={(item) => (
+                  <List.Item
+                    onClick={() => openProject(item.id)}
+                    style={{
+                      cursor: 'pointer',
+                      padding: 12,
+                      borderRadius: 8,
+                      background: detail?.project.id === item.id ? '#fef3e7' : '#fff',
+                      marginBottom: 8,
+                      border: '1px solid #f0eeeb',
+                    }}
+                    actions={[
+                      <Popconfirm key="delete" title="删除项目？" onConfirm={(e) => { e?.stopPropagation(); handleDeleteProject(item.id) }} disabled={!canWrite}>
+                        <Button size="small" icon={<DeleteOutlined />} disabled={!canWrite} onClick={(e) => e.stopPropagation()} />
+                      </Popconfirm>,
+                    ]}
+                  >
+                    <List.Item.Meta title={item.title} description={item.description || '无描述'} />
+                  </List.Item>
+                )}
               />
             </div>
           </div>
@@ -421,13 +560,13 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                       <div style={scrollAreaStyle}>
                         <Card>
                           <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                          <TextArea
-                            value={script}
-                            onChange={(e) => setScript(e.target.value)}
-                            placeholder="粘贴完整剧本，系统会按【分镜序号】：数字/总数字自动拆分"
-                            autoSize={{ minRows: 12, maxRows: 24 }}
-                          />
-                          <Button type="primary" icon={<EditOutlined />} disabled={!canWrite} onClick={handleParse}>自动分镜解析</Button>
+                            <TextArea
+                              value={script}
+                              onChange={(e) => setScript(e.target.value)}
+                              placeholder="粘贴完整剧本，系统会按【分镜序号】：数字/总数字自动拆分"
+                              autoSize={{ minRows: 12, maxRows: 24 }}
+                            />
+                            <Button type="primary" icon={<EditOutlined />} disabled={!canWrite} onClick={handleParse}>自动分镜解析</Button>
                           </Space>
                         </Card>
                       </div>
@@ -439,68 +578,117 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                     children: (
                       <div style={scrollAreaStyle}>
                         <Row gutter={[16, 16]}>
-                        <Col xs={24} xl={7}>
-                          <Collapse
-                            items={[{
-                              key: 'preface',
-                              label: '前言 / 人物场景档案',
-                              children: <TextArea value={detail.project.preface} autoSize={{ minRows: 8, maxRows: 18 }} onChange={(e) => setDetail({ ...detail, project: { ...detail.project, preface: e.target.value } })} onBlur={() => updateDramaProject(detail.project.id, { preface: detail.project.preface })} />,
-                            }]}
-                          />
-                          <List
-                            style={{ marginTop: 12 }}
-                            dataSource={detail.storyboards}
-                            renderItem={(item, index) => (
-                              <List.Item
-                                onClick={() => setCurrentIndex(index)}
-                                style={{
-                                  cursor: 'pointer',
-                                  padding: 10,
-                                  borderRadius: 8,
-                                  background: index === currentIndex ? '#fef3e7' : '#fff',
-                                  border: '1px solid #f0eeeb',
-                                  marginBottom: 8,
-                                }}
+                          <Col xs={24} xl={7}>
+                            <Collapse
+                              items={[{
+                                key: 'preface',
+                                label: '前言 / 人物场景档案',
+                                children: <TextArea value={detail.project.preface} autoSize={{ minRows: 8, maxRows: 18 }} onChange={(e) => setDetail({ ...detail, project: { ...detail.project, preface: e.target.value } })} onBlur={() => updateDramaProject(detail.project.id, { preface: detail.project.preface })} />,
+                              }]}
+                            />
+                            <List
+                              style={{ marginTop: 12 }}
+                              dataSource={detail.storyboards}
+                              renderItem={(item, index) => (
+                                <List.Item
+                                  onClick={() => setCurrentIndex(index)}
+                                  style={{
+                                    cursor: 'pointer',
+                                    padding: 10,
+                                    borderRadius: 8,
+                                    background: index === currentIndex ? '#fef3e7' : '#fff',
+                                    border: '1px solid #f0eeeb',
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  <Space>
+                                    <Tag color={item.modified ? 'orange' : item.audio_file_id !== '0' ? 'green' : 'default'}>{item.seq}</Tag>
+                                    <Text>{item.title}</Text>
+                                  </Space>
+                                </List.Item>
+                              )}
+                            />
+                          </Col>
+                          <Col xs={24} xl={17}>
+                            {current ? (
+                              <Card
+                                title={<Space><Text strong>{current.title}</Text>{current.modified && <Tag color="orange">已修改</Tag>}</Space>}
+                                extra={
+                                  <Space wrap>
+                                    <Upload showUploadList={false} accept="audio/*" beforeUpload={handleUploadCurrentAudio} disabled={!canWrite}>
+                                      <Button icon={<UploadOutlined />} disabled={!canWrite}>导入音频</Button>
+                                    </Upload>
+                                    <InputNumber min={1} max={8} value={imageCount} onChange={(value) => setImageCount(Number(value || 1))} addonBefore="每镜" addonAfter="张" style={{ width: 150 }} />
+                                    <Button
+                                      icon={<ThunderboltOutlined />}
+                                      disabled={!canGenerate}
+                                      onClick={() => handleCreateTask('image', {
+                                        source: 'storyboard',
+                                        source_label: `分镜 ${current.seq}：${current.title}`,
+                                        storyboard_count: 1,
+                                        image_count: imageCount,
+                                      }, [current.id])}
+                                    >
+                                      {current.image_file_id !== '0' ? '继续生成' : '生成图片'}
+                                    </Button>
+                                    <Button icon={<CopyOutlined />} onClick={() => copyText(current.content)}>复制本镜</Button>
+                                    <Button icon={<SaveOutlined />} type="primary" disabled={!canWrite} onClick={handleSaveStoryboard}>保存</Button>
+                                  </Space>
+                                }
                               >
-                                <Space>
-                                  <Tag color={item.modified ? 'orange' : item.audio_file_id !== '0' ? 'green' : 'default'}>{item.seq}</Tag>
-                                  <Text>{item.title}</Text>
+                                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                                  {current.image_file_id !== '0' && (
+                                    <Image
+                                      src={getPreviewUrl(current.image_file_id)}
+                                      alt={current.title}
+                                      style={{ width: '100%', maxHeight: 520, objectFit: 'contain', borderRadius: 8, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                                    />
+                                  )}
+                                  {currentMedia.filter((item) => item.kind === 'image').length > 0 && (
+                                    <div>
+                                      <Text strong>图片候选</Text>
+                                      <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
+                                        {currentMedia.filter((item) => item.kind === 'image').map((item, index) => (
+                                          <Col xs={12} md={8} xl={6} key={item.id}>
+                                            <Card size="small" bodyStyle={{ padding: 8 }} style={{ borderColor: item.selected ? '#e8964a' : '#f0eeeb' }}>
+                                              <Image
+                                                src={getPreviewUrl(item.file_id)}
+                                                alt={`candidate-${index + 1}`}
+                                                style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 6, background: '#f7f7f5' }}
+                                              />
+                                              {item.prompt && (
+                                                <Text type="secondary" ellipsis={{ tooltip: item.prompt }} style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+                                                  {item.prompt}
+                                                </Text>
+                                              )}
+                                              <Space style={{ marginTop: 8, width: '100%', justifyContent: 'space-between' }}>
+                                                <Tag color={item.selected ? 'orange' : 'default'}>#{index + 1}</Tag>
+                                                <Button size="small" type={item.selected ? 'primary' : 'default'} disabled={item.selected || !canWrite} onClick={() => handleSelectMedia(item.id)}>
+                                                  {item.selected ? '当前' : '设为当前'}
+                                                </Button>
+                                              </Space>
+                                            </Card>
+                                          </Col>
+                                        ))}
+                                      </Row>
+                                    </div>
+                                  )}
+                                  <Space wrap>
+                                    <Tag color={current.audio_file_id !== '0' ? 'green' : 'default'}>
+                                      {current.audio_file_id !== '0' ? `已配音 ${Math.round((current.audio_duration_ms || 0) / 1000)}s` : '未配音'}
+                                    </Tag>
+                                    {current.subtitle_ass && <Button size="small" icon={<CopyOutlined />} onClick={() => copyText(current.subtitle_ass)}>复制字幕 ASS</Button>}
+                                  </Space>
+                                  {current.subtitle_ass && (
+                                    <Collapse size="small" items={[{ key: 'subtitle', label: '字幕预览', children: <TextArea value={current.subtitle_ass} readOnly autoSize={{ minRows: 5, maxRows: 10 }} /> }]} />
+                                  )}
+                                  <TextArea value={current.content} onChange={(e) => updateCurrentContent(e.target.value)} autoSize={{ minRows: 22, maxRows: 38 }} />
                                 </Space>
-                              </List.Item>
+                              </Card>
+                            ) : (
+                              <Empty description="还没有分镜，请先解析剧本" />
                             )}
-                          />
-                        </Col>
-                        <Col xs={24} xl={17}>
-                          {current ? (
-                            <Card
-                              title={<Space><Text strong>{current.title}</Text>{current.modified && <Tag color="orange">已修改</Tag>}</Space>}
-                              extra={
-                                <Space>
-                                  <Upload showUploadList={false} accept="audio/*" beforeUpload={handleUploadCurrentAudio} disabled={!canWrite}>
-                                    <Button icon={<UploadOutlined />} disabled={!canWrite}>导入音频</Button>
-                                  </Upload>
-                                  <Button icon={<CopyOutlined />} onClick={() => copyText(current.content)}>复制本镜</Button>
-                                  <Button icon={<SaveOutlined />} type="primary" disabled={!canWrite} onClick={handleSaveStoryboard}>保存</Button>
-                                </Space>
-                              }
-                            >
-                              <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                                <Space wrap>
-                                  <Tag color={current.audio_file_id !== '0' ? 'green' : 'default'}>
-                                    {current.audio_file_id !== '0' ? `已配音 ${Math.round((current.audio_duration_ms || 0) / 1000)}s` : '未配音'}
-                                  </Tag>
-                                  {current.subtitle_ass && <Button size="small" icon={<CopyOutlined />} onClick={() => copyText(current.subtitle_ass)}>复制字幕 ASS</Button>}
-                                </Space>
-                                {current.subtitle_ass && (
-                                  <Collapse size="small" items={[{ key: 'subtitle', label: '字幕预览', children: <TextArea value={current.subtitle_ass} readOnly autoSize={{ minRows: 5, maxRows: 10 }} /> }]} />
-                                )}
-                                <TextArea value={current.content} onChange={(e) => updateCurrentContent(e.target.value)} autoSize={{ minRows: 22, maxRows: 38 }} />
-                              </Space>
-                            </Card>
-                          ) : (
-                            <Empty description="还没有分镜，请先解析剧本" />
-                          )}
-                        </Col>
+                          </Col>
                         </Row>
                       </div>
                     ),
@@ -511,16 +699,11 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                     children: (
                       <div style={{ ...scrollAreaStyle, width: '100%' }}>
                         <Space wrap>
-                          <Button icon={<CopyOutlined />} onClick={() => copyText(buildAssetPrompt())}>复制 AI 资产解析提示词</Button>
+                          <Button icon={<CopyOutlined />} onClick={() => copyText(buildAssetPrompt())}>复制 AI 资产分析提示词</Button>
                           <Button icon={<ImportOutlined />} disabled={!canWrite} onClick={() => setAssetImportOpen(true)}>粘贴 AI 结果导入</Button>
                         </Space>
                         <div style={{ marginTop: 12 }}>
-                          <AssetPanel
-                            detail={detail}
-                            canWrite={canWrite}
-                            canGenerate={canGenerate}
-                            onChange={setDetail}
-                          />
+                          <AssetPanel detail={detail} canWrite={canWrite} canGenerate={canGenerate} onChange={setDetail} />
                         </div>
                       </div>
                     ),
@@ -531,44 +714,56 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                     children: (
                       <div style={scrollAreaStyle}>
                         <Card>
-                        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                          <Space wrap>
-                            <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('tts')}>创建 TTS 任务</Button>
-                            <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('image')}>创建图片任务</Button>
-                            <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('video')}>创建视频任务</Button>
-                            <Upload
-                              multiple
-                              showUploadList={false}
-                              accept="audio/*"
-                              beforeUpload={() => false}
-                              customRequest={() => undefined}
-                              onChange={({ fileList }) => {
-                                const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[]
-                                handleBatchAudioImport(files)
-                              }}
-                              disabled={!canWrite}
-                            >
-                              <Button icon={<ImportOutlined />} disabled={!canWrite}>批量导入音频</Button>
-                            </Upload>
+                          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                            <Space wrap>
+                              <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('tts')}>创建 TTS 任务</Button>
+                              <InputNumber min={1} max={8} value={imageCount} onChange={(value) => setImageCount(Number(value || 1))} addonBefore="每镜" addonAfter="张" style={{ width: 150 }} />
+                              <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('image')}>创建图片任务</Button>
+                              <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => handleCreateTask('video')}>创建视频任务</Button>
+                              <Upload
+                                multiple
+                                showUploadList={false}
+                                accept="audio/*"
+                                beforeUpload={() => false}
+                                customRequest={() => undefined}
+                                onChange={({ fileList }) => {
+                                  const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[]
+                                  handleBatchAudioImport(files)
+                                }}
+                                disabled={!canWrite}
+                              >
+                                <Button icon={<ImportOutlined />} disabled={!canWrite}>批量导入音频</Button>
+                              </Upload>
+                            </Space>
+                            <List
+                              dataSource={detail.tasks}
+                              locale={{ emptyText: '暂无生成任务' }}
+                              renderItem={(item) => (
+                                <List.Item
+                                  actions={[
+                                    ...(item.status === 'pending' || item.status === 'running' ? [
+                                      <Button key="cancel" size="small" danger icon={<StopOutlined />} onClick={() => handleCancelTask(item)}>取消</Button>,
+                                    ] : []),
+                                    ...(item.status === 'failed' || item.status === 'canceled' ? [
+                                      <Button key="retry" size="small" icon={<RedoOutlined />} onClick={() => handleRetryTask(item)}>重试</Button>,
+                                    ] : []),
+                                  ]}
+                                >
+                                  <List.Item.Meta
+                                    title={<Space><Tag>{getTaskTypeLabel(item.type)}</Tag><Tag color={item.status === 'failed' ? 'red' : item.status === 'done' ? 'green' : item.status === 'canceled' ? 'default' : 'blue'}>{getTaskStatusLabel(item.status)}</Tag></Space>}
+                                    description={
+                                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                                        <Text type="secondary">来源：{getTaskSource(item, detail)}</Text>
+                                        <Text type="secondary">{item.message || `${item.progress}%`}</Text>
+                                        <Progress percent={item.progress} size="small" status={item.status === 'failed' ? 'exception' : item.status === 'done' ? 'success' : 'active'} style={{ maxWidth: 360 }} />
+                                        <TaskResultStrip task={item} />
+                                      </Space>
+                                    }
+                                  />
+                                </List.Item>
+                              )}
+                            />
                           </Space>
-                          <List
-                            dataSource={detail.tasks}
-                            locale={{ emptyText: '暂无生成任务' }}
-                            renderItem={(item) => (
-                              <List.Item>
-                                <List.Item.Meta
-                                  title={<Space><Tag>{item.type}</Tag><Tag color={item.status === 'failed' ? 'red' : item.status === 'done' ? 'green' : 'blue'}>{item.status}</Tag></Space>}
-                                  description={
-                                    <Space direction="vertical" size={2}>
-                                      <Text type="secondary">来源：{getTaskSource(item, detail)}</Text>
-                                      <Text type="secondary">{item.message || `${item.progress}%`}</Text>
-                                    </Space>
-                                  }
-                                />
-                              </List.Item>
-                            )}
-                          />
-                        </Space>
                         </Card>
                       </div>
                     ),
@@ -579,36 +774,52 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                     children: (
                       <div style={scrollAreaStyle}>
                         <Card>
-                        <Form form={settingForm} layout="vertical" initialValues={setting || undefined}>
-                          <Row gutter={16}>
-                            <Col xs={24} md={12}>
-                              <Form.Item name="comfyui_url" label="ComfyUI API 地址">
-                                <Input placeholder="http://localhost:8188" />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={12}>
-                              <Form.Item name="tts_engine" label="TTS 引擎">
-                                <Select options={[{ value: 'edge-tts', label: 'edge-tts' }, { value: 'azure', label: 'Azure Speech' }]} />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={12}>
-                              <Form.Item name="storage_root" label="云盘根目录">
-                                <Input prefix={<SettingOutlined />} />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24}>
-                              <Form.Item name="tts_config" label="TTS 配置 JSON">
-                                <TextArea autoSize={{ minRows: 4 }} />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24}>
-                              <Form.Item name="video_settings" label="视频默认参数 JSON">
-                                <TextArea autoSize={{ minRows: 5 }} />
-                              </Form.Item>
-                            </Col>
-                          </Row>
-                          <Button type="primary" icon={<SaveOutlined />} disabled={!canAdmin} onClick={handleSaveSetting}>保存设置</Button>
-                        </Form>
+                          <Form form={settingForm} layout="vertical" initialValues={setting || undefined}>
+                            <Row gutter={16}>
+                              <Col xs={24} md={18}>
+                                <Form.Item name="comfyui_url" label="ComfyUI API 地址">
+                                  <Input placeholder="http://comfyui:8188" />
+                                </Form.Item>
+                              </Col>
+                              <Col xs={24} md={6} style={{ display: 'flex', alignItems: 'center' }}>
+                                <Button loading={comfyChecking} onClick={handleCheckComfyUI} style={{ width: '100%', marginTop: 6 }}>检测连接与模型</Button>
+                              </Col>
+                              {comfyStatus && (
+                                <Col xs={24}>
+                                  <Alert
+                                    style={{ marginBottom: 16 }}
+                                    type={comfyStatus.connected && comfyStatus.checkpoints.length ? 'success' : comfyStatus.connected ? 'warning' : 'error'}
+                                    showIcon
+                                    message={comfyStatus.connected ? `ComfyUI 已连接，发现 ${comfyStatus.checkpoints.length} 个 Checkpoint` : 'ComfyUI 无法连接'}
+                                    description={
+                                      <Space direction="vertical" size={4}>
+                                        <Text>IP-Adapter：{comfyStatus.ip_adapter ? '已安装' : '未安装'}；ReActor：{comfyStatus.reactor ? '已安装' : '未安装'}</Text>
+                                        {!!comfyStatus.missing?.length && <Text type="secondary">待补全：{comfyStatus.missing.join('、')}</Text>}
+                                        {comfyStatus.error && <Text type="danger">{comfyStatus.error}</Text>}
+                                      </Space>
+                                    }
+                                  />
+                                </Col>
+                              )}
+                              <Col xs={24} md={12}>
+                                <Form.Item name="checkpoint" label="基础图片模型">
+                                  <Select showSearch allowClear placeholder="检测后选择 Checkpoint" options={(comfyStatus?.checkpoints || []).map((value) => ({ value, label: value }))} />
+                                </Form.Item>
+                              </Col>
+                              <Col xs={12} md={6}><Form.Item name="width" label="图片宽度"><InputNumber min={256} max={2048} step={64} style={{ width: '100%' }} /></Form.Item></Col>
+                              <Col xs={12} md={6}><Form.Item name="height" label="图片高度"><InputNumber min={256} max={2048} step={64} style={{ width: '100%' }} /></Form.Item></Col>
+                              <Col xs={12} md={6}><Form.Item name="steps" label="采样步数"><InputNumber min={1} max={100} style={{ width: '100%' }} /></Form.Item></Col>
+                              <Col xs={12} md={6}><Form.Item name="cfg" label="提示词强度"><InputNumber min={1} max={30} step={0.5} style={{ width: '100%' }} /></Form.Item></Col>
+                              <Col xs={12} md={6}><Form.Item name="sampler" label="采样器"><Select options={[{ value: 'euler', label: 'Euler' }, { value: 'euler_ancestral', label: 'Euler a' }, { value: 'dpmpp_2m', label: 'DPM++ 2M' }]} /></Form.Item></Col>
+                              <Col xs={12} md={6}><Form.Item name="scheduler" label="调度器"><Select options={[{ value: 'normal', label: 'Normal' }, { value: 'karras', label: 'Karras' }, { value: 'simple', label: 'Simple' }]} /></Form.Item></Col>
+                              <Col xs={24}><Form.Item name="negative_prompt" label="默认负面提示词"><TextArea autoSize={{ minRows: 2, maxRows: 5 }} /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name="tts_engine" label="TTS 引擎"><Select options={[{ value: 'edge-tts', label: 'edge-tts' }, { value: 'azure', label: 'Azure Speech' }]} /></Form.Item></Col>
+                              <Col xs={24} md={12}><Form.Item name="storage_root" label="云盘根目录"><Input prefix={<SettingOutlined />} /></Form.Item></Col>
+                              <Col xs={24}><Form.Item name="tts_config" label="TTS 配置 JSON"><TextArea autoSize={{ minRows: 4 }} /></Form.Item></Col>
+                              <Col xs={24}><Form.Item name="video_settings" label="视频默认参数 JSON"><TextArea autoSize={{ minRows: 5 }} /></Form.Item></Col>
+                            </Row>
+                            <Button type="primary" icon={<SaveOutlined />} disabled={!canAdmin} onClick={handleSaveSetting}>保存设置</Button>
+                          </Form>
                         </Card>
                       </div>
                     ),
@@ -646,11 +857,36 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
         <TextArea value={suffix} onChange={(e) => setSuffix(e.target.value)} autoSize={{ minRows: 5 }} />
       </Modal>
 
-      <Modal title="粘贴 AI 资产解析结果" open={assetImportOpen} onOk={handleImportAIAssets} onCancel={() => setAssetImportOpen(false)} width={760}>
+      <Modal title="粘贴 AI 资产分析结果" open={assetImportOpen} onOk={handleImportAIAssets} onCancel={() => setAssetImportOpen(false)} width={760}>
         <TextArea value={aiAssetText} onChange={(e) => setAiAssetText(e.target.value)} placeholder="粘贴 AI 输出的 JSON" autoSize={{ minRows: 14, maxRows: 24 }} />
       </Modal>
     </div>
   )
+}
+
+function parseImageSettings(raw?: string) {
+  const defaults = {
+    checkpoint: '', width: 768, height: 1024, steps: 24, cfg: 7,
+    sampler: 'euler', scheduler: 'normal', negative_prompt: '低质量，模糊，变形，多余手指，文字，水印',
+  }
+  try {
+    return { ...defaults, ...JSON.parse(raw || '{}') }
+  } catch {
+    return defaults
+  }
+}
+
+function getTaskTypeLabel(type: string) {
+  return ({
+    asset_reference: '资产参考图',
+    image: '分镜图片',
+    tts: '语音生成',
+    video: '视频合成',
+  } as Record<string, string>)[type] || type
+}
+
+function getTaskStatusLabel(status: string) {
+  return ({ pending: '等待中', running: '生成中', done: '已完成', failed: '失败', canceled: '已取消' } as Record<string, string>)[status] || status
 }
 
 function getTaskSource(task: DramaTask, detail: DramaDetail) {
@@ -660,17 +896,94 @@ function getTaskSource(task: DramaTask, detail: DramaDetail) {
       asset_type?: string
       name?: string
       storyboard_count?: number
+      image_count?: number
     }
-    if (payload.source_label) return payload.source_label
-    if (payload.name && payload.asset_type) {
-      return `${payload.asset_type === 'character' ? '角色' : '场景'}：${payload.name}`
-    }
-    if (payload.storyboard_count) return `全部分镜（${payload.storyboard_count} 镜）`
+    const imageSuffix = payload.image_count && task.type === 'image' ? `，每镜 ${payload.image_count} 张` : ''
+    if (payload.source_label) return `${payload.source_label}${imageSuffix}`
+    if (payload.name && payload.asset_type) return `${payload.asset_type === 'character' ? '角色' : '场景'}：${payload.name}`
+    if (payload.storyboard_count) return `全部分镜（${payload.storyboard_count} 镜）${imageSuffix}`
   } catch {
     // Older tasks may contain an empty or non-JSON payload.
   }
   if (task.type === 'asset_reference') return '角色或场景参考图'
   return detail.storyboards.length ? `全部分镜（${detail.storyboards.length} 镜）` : '当前项目'
+}
+
+interface DramaTaskPayloadView {
+  prompt?: string
+  results?: Array<{
+    kind?: string
+    file_id?: string
+    storyboard_id?: string
+    asset_id?: string
+    title?: string
+    prompt?: string
+  }>
+  prompt_log?: Array<{
+    target?: string
+    prompt?: string
+  }>
+}
+
+function parseTaskPayload(task: DramaTask): DramaTaskPayloadView {
+  try {
+    return JSON.parse(task.payload || '{}') as DramaTaskPayloadView
+  } catch {
+    return {}
+  }
+}
+
+function TaskResultStrip({ task }: { task: DramaTask }) {
+  const payload = parseTaskPayload(task)
+  const results = (payload.results || []).filter((item) => item.file_id && item.file_id !== '0')
+  const promptLog = payload.prompt_log || []
+  if (!results.length && !promptLog.length && !payload.prompt) return null
+
+  return (
+    <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 6 }}>
+      {!!results.length && (
+        <Image.PreviewGroup>
+          <Space wrap size={8}>
+            {results.map((item, index) => (
+              <div key={`${item.file_id}-${index}`} style={{ width: 88 }}>
+                <Image
+                  src={getPreviewUrl(item.file_id || '0')}
+                  alt={item.title || `result-${index + 1}`}
+                  width={88}
+                  height={88}
+                  style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                />
+                <Text type="secondary" ellipsis={{ tooltip: item.title || `#${index + 1}` }} style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                  {item.title || `#${index + 1}`}
+                </Text>
+              </div>
+            ))}
+          </Space>
+        </Image.PreviewGroup>
+      )}
+      {(!!promptLog.length || payload.prompt) && (
+        <Collapse
+          size="small"
+          ghost
+          items={[{
+            key: 'prompts',
+            label: `提示词${promptLog.length ? `（${promptLog.length}）` : ''}`,
+            children: (
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                {payload.prompt && <TextArea value={payload.prompt} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />}
+                {promptLog.map((item, index) => (
+                  <div key={`${item.target || 'prompt'}-${index}`}>
+                    <Text type="secondary">{item.target || `Prompt ${index + 1}`}</Text>
+                    <TextArea value={item.prompt || ''} readOnly autoSize={{ minRows: 3, maxRows: 10 }} style={{ marginTop: 4 }} />
+                  </div>
+                ))}
+              </Space>
+            ),
+          }]}
+        />
+      )}
+    </Space>
+  )
 }
 
 function AssetPanel({
@@ -684,75 +997,63 @@ function AssetPanel({
   canGenerate: boolean
   onChange: (detail: DramaDetail) => void
 }) {
-  const saveAsset = async (asset: DramaAsset) => {
-    const next = await updateDramaAsset(detail.project.id, asset.id, { name: asset.name, description: asset.description, voice_name: asset.voice_name })
+  const updateAsset = async (asset: DramaAsset, patch: Partial<DramaAsset>) => {
+    const next = await updateDramaAsset(detail.project.id, asset.id, {
+      name: patch.name ?? asset.name,
+      description: patch.description ?? asset.description,
+      voice_name: patch.voice_name ?? asset.voice_name,
+    })
     onChange({ ...detail, assets: detail.assets.map((item) => (item.id === next.id ? next : item)) })
-    message.success('资产已保存')
   }
 
   const uploadReference = async (asset: DramaAsset, file: File) => {
     const next = await uploadDramaAssetReference(detail.project.id, asset.id, file)
     onChange({ ...detail, assets: detail.assets.map((item) => (item.id === next.id ? next : item)) })
-    message.success('参考图已上传，并进入云盘 assets 目录')
-  }
-
-  const handlePasteReference = (asset: DramaAsset, event: React.ClipboardEvent<HTMLDivElement>) => {
-    const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'))
-    if (file && canWrite) {
-      uploadReference(asset, file)
-    }
+    message.success('参考图已更新')
+    return Upload.LIST_IGNORE
   }
 
   const createAssetImageTask = async (asset: DramaAsset) => {
     const task = await createDramaTask(detail.project.id, {
       type: 'asset_reference',
       payload: JSON.stringify({
+        source: 'asset',
+        source_label: `${asset.type === 'character' ? '角色' : '场景'}：${asset.name}`,
         asset_id: asset.id,
         asset_type: asset.type,
         name: asset.name,
-        source_label: `${asset.type === 'character' ? '角色' : '场景'}：${asset.name}`,
         prompt: asset.description,
       }),
     })
     onChange({ ...detail, tasks: [task, ...detail.tasks] })
-    message.success('已创建 ComfyUI 参考图任务')
+    message.success('参考图生成任务已创建')
   }
+
+  if (!detail.assets.length) return <Empty description="暂无角色或场景资产" />
 
   return (
     <Row gutter={[16, 16]}>
       {detail.assets.map((asset) => (
         <Col xs={24} md={12} xl={8} key={asset.id}>
           <Card
-            title={<Space><Tag color={asset.type === 'character' ? 'purple' : 'cyan'}>{asset.type === 'character' ? '角色' : '场景'}</Tag>{asset.name}</Space>}
-            extra={asset.reference_file_id !== '0' ? <Tag color="green">已传参考图</Tag> : <Tag>无参考图</Tag>}
+            title={<Space><Tag color={asset.type === 'character' ? 'blue' : 'green'}>{asset.type === 'character' ? '角色' : '场景'}</Tag><Text strong>{asset.name}</Text></Space>}
+            extra={asset.reference_file_id !== '0' ? <Tag color="orange">有参考图</Tag> : <Tag>无参考图</Tag>}
           >
-            <Space direction="vertical" style={{ width: '100%' }} onPaste={(event) => handlePasteReference(asset, event)}>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
               {asset.reference_file_id !== '0' && (
-                <img
+                <Image
                   src={getPreviewUrl(asset.reference_file_id)}
                   alt={asset.name}
-                  style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 8, border: '1px solid #f0eeeb' }}
+                  style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 8, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
                 />
               )}
-              <Input value={asset.name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, name: e.target.value } : item)) })} />
+              <Input value={asset.name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { name: asset.name })} />
+              <TextArea value={asset.description} disabled={!canWrite} autoSize={{ minRows: 5, maxRows: 9 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, description: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { description: asset.description })} />
               {asset.type === 'character' && (
-                <Select
-                  value={asset.voice_name || undefined}
-                  disabled={!canWrite}
-                  placeholder="选择角色音色"
-                  options={[
-                    { value: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao 女声' },
-                    { value: 'zh-CN-YunxiNeural', label: 'Yunxi 男声' },
-                    { value: 'zh-CN-XiaoyiNeural', label: 'Xiaoyi 女声' },
-                    { value: 'zh-CN-YunjianNeural', label: 'Yunjian 男声' },
-                  ]}
-                  onChange={(value) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, voice_name: value } : item)) })}
-                />
+                <Input placeholder="角色音色，例如 zh-CN-XiaoxiaoNeural" value={asset.voice_name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, voice_name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { voice_name: asset.voice_name })} />
               )}
-              <TextArea value={asset.description} disabled={!canWrite} autoSize={{ minRows: 4 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, description: e.target.value } : item)) })} />
               <Space wrap>
-                <Button icon={<SaveOutlined />} disabled={!canWrite} onClick={() => saveAsset(asset)}>保存</Button>
-                <Upload showUploadList={false} disabled={!canWrite} beforeUpload={(file) => { uploadReference(asset, file); return Upload.LIST_IGNORE }}>
+                <Upload showUploadList={false} accept="image/*" beforeUpload={(file) => uploadReference(asset, file)} disabled={!canWrite}>
                   <Button icon={<UploadOutlined />} disabled={!canWrite}>上传/粘贴参考图</Button>
                 </Upload>
                 <Button icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => createAssetImageTask(asset)}>ComfyUI 生成</Button>
@@ -761,7 +1062,6 @@ function AssetPanel({
           </Card>
         </Col>
       ))}
-      {!detail.assets.length && <Col span={24}><Empty description="复制 AI 提示词解析剧本，再粘贴结果导入角色与场景资产" /></Col>}
     </Row>
   )
 }

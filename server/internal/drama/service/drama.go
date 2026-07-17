@@ -22,18 +22,24 @@ type DramaService struct {
 	repo        *repository.DramaRepository
 	minioClient *minio.Client
 	bucket      string
+	taskRunner  *TaskRunner
 }
 
 func NewDramaService(repo *repository.DramaRepository, minioClient *minio.Client, bucket string) *DramaService {
 	return &DramaService{repo: repo, minioClient: minioClient, bucket: bucket}
 }
 
+func (s *DramaService) SetTaskRunner(runner *TaskRunner) {
+	s.taskRunner = runner
+}
+
 type ProjectDetail struct {
-	Project     *model.DramaProject     `json:"project"`
-	Storyboards []model.DramaStoryboard `json:"storyboards"`
-	Assets      []model.DramaAsset      `json:"assets"`
-	Tasks       []model.DramaTask       `json:"tasks"`
-	Summary     map[string]interface{}  `json:"summary"`
+	Project     *model.DramaProject          `json:"project"`
+	Storyboards []model.DramaStoryboard      `json:"storyboards"`
+	Media       []model.DramaStoryboardMedia `json:"media"`
+	Assets      []model.DramaAsset           `json:"assets"`
+	Tasks       []model.DramaTask            `json:"tasks"`
+	Summary     map[string]interface{}       `json:"summary"`
 }
 
 type ExportPayload struct {
@@ -104,6 +110,10 @@ func (s *DramaService) GetProject(ownerID, id uint64) (*ProjectDetail, error) {
 	if err != nil {
 		return nil, err
 	}
+	media, err := s.repo.ListStoryboardMedia(ownerID, id)
+	if err != nil {
+		return nil, err
+	}
 	tasks, err := s.repo.ListTasks(ownerID, id)
 	if err != nil {
 		return nil, err
@@ -117,6 +127,7 @@ func (s *DramaService) GetProject(ownerID, id uint64) (*ProjectDetail, error) {
 	return &ProjectDetail{
 		Project:     project,
 		Storyboards: storyboards,
+		Media:       media,
 		Assets:      assets,
 		Tasks:       tasks,
 		Summary: map[string]interface{}{
@@ -125,6 +136,30 @@ func (s *DramaService) GetProject(ownerID, id uint64) (*ProjectDetail, error) {
 			"modified_count":   modified,
 		},
 	}, nil
+}
+
+func (s *DramaService) SelectStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64) (*model.DramaStoryboard, error) {
+	storyboard, err := s.repo.GetStoryboard(ownerID, projectID, storyboardID)
+	if err != nil {
+		return nil, err
+	}
+	media, err := s.repo.GetStoryboardMedia(ownerID, projectID, storyboardID, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.SelectStoryboardMedia(ownerID, projectID, storyboardID, mediaID, media.Kind); err != nil {
+		return nil, err
+	}
+	switch media.Kind {
+	case "image":
+		storyboard.ImageFileID = media.FileID
+	case "video":
+		storyboard.VideoFileID = media.FileID
+	}
+	if err := s.repo.UpdateStoryboard(storyboard); err != nil {
+		return nil, err
+	}
+	return storyboard, nil
 }
 
 func (s *DramaService) UpdateProject(ownerID, id uint64, title, description, preface, settings string) (*model.DramaProject, error) {
@@ -274,26 +309,36 @@ func (s *DramaService) CreateTask(ownerID, projectID uint64, input CreateTaskInp
 	if taskType == "" {
 		taskType = "custom"
 	}
-	payload := input.Payload
-	if payload == "" {
-		data, _ := json.Marshal(map[string]interface{}{
-			"storyboard_ids": input.StoryboardIDs,
-		})
-		payload = string(data)
+	var payloadData map[string]interface{}
+	if err := json.Unmarshal([]byte(input.Payload), &payloadData); err != nil || payloadData == nil {
+		payloadData = make(map[string]interface{})
 	}
-	now := time.Now()
+	if len(input.StoryboardIDs) > 0 {
+		payloadData["storyboard_ids"] = input.StoryboardIDs
+	}
+	payloadBytes, _ := json.Marshal(payloadData)
 	task := &model.DramaTask{
 		ProjectID: projectID,
 		OwnerID:   ownerID,
 		Type:      taskType,
 		Status:    "pending",
 		Progress:  0,
-		Message:   "任务已创建，等待生成引擎接入",
-		Payload:   payload,
-		StartedAt: &now,
+		Message:   "任务已创建，等待执行",
+		Payload:   string(payloadBytes),
 	}
 	if err := s.repo.CreateTask(task); err != nil {
 		return nil, err
+	}
+	if s.taskRunner != nil {
+		if err := s.taskRunner.Enqueue(task.ID); err != nil {
+			task.Status = "failed"
+			task.Message = "任务入队失败：" + err.Error()
+			now := time.Now()
+			task.FinishedAt = &now
+			_ = s.repo.UpdateTask(task)
+			return task, nil
+		}
+		s.taskRunner.Publish(*task)
 	}
 	return task, nil
 }
@@ -506,6 +551,9 @@ func (s *DramaService) SaveSetting(ownerID uint64, input model.DramaSetting) (*m
 		return nil, err
 	}
 	setting.ComfyUIURL = input.ComfyUIURL
+	if input.ImageSettings != "" {
+		setting.ImageSettings = input.ImageSettings
+	}
 	if input.TTSEngine != "" {
 		setting.TTSEngine = input.TTSEngine
 	}

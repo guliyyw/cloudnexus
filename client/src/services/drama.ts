@@ -30,6 +30,19 @@ export interface DramaStoryboard {
   video_file_id: string
 }
 
+export interface DramaStoryboardMedia {
+  id: string
+  project_id: string
+  storyboard_id: string
+  kind: 'image' | 'video'
+  file_id: string
+  source: string
+  prompt: string
+  sort_order: number
+  selected: boolean
+  created_at: string
+}
+
 export interface DramaAsset {
   id: string
   project_id: string
@@ -42,26 +55,41 @@ export interface DramaAsset {
 
 export interface DramaTask {
   id: string
+  project_id: string
   type: string
   status: string
   progress: number
   message: string
   payload: string
   created_at: string
+  started_at?: string
+  finished_at?: string
 }
 
 export interface DramaSetting {
   id: string
   comfyui_url: string
+  image_settings: string
   tts_engine: string
   tts_config: string
   video_settings: string
   storage_root: string
 }
 
+export interface ComfyUIStatus {
+  connected: boolean
+  url: string
+  checkpoints: string[]
+  ip_adapter: boolean
+  reactor: boolean
+  missing: string[]
+  error?: string
+}
+
 export interface DramaDetail {
   project: DramaProject
   storyboards: DramaStoryboard[]
+  media: DramaStoryboardMedia[]
   assets: DramaAsset[]
   tasks: DramaTask[]
   summary: {
@@ -105,6 +133,11 @@ export async function updateDramaStoryboard(projectId: string, storyboardId: str
   return res.data.data.storyboard as DramaStoryboard
 }
 
+export async function selectDramaStoryboardMedia(projectId: string, storyboardId: string, mediaId: string) {
+  const res = await api.put(`/drama/projects/${projectId}/storyboards/${storyboardId}/media/${mediaId}/select`)
+  return res.data.data.storyboard as DramaStoryboard
+}
+
 export async function uploadStoryboardAudio(projectId: string, storyboardId: string, file: File, durationMs?: number) {
   const form = new FormData()
   form.append('file', file)
@@ -144,6 +177,21 @@ export async function createDramaTask(projectId: string, data: { type: string; s
   return res.data.data.task as DramaTask
 }
 
+export async function listDramaTasks(projectId: string) {
+  const res = await api.get(`/drama/projects/${projectId}/tasks`)
+  return res.data.data.items as DramaTask[]
+}
+
+export async function cancelDramaTask(projectId: string, taskId: string) {
+  const res = await api.post(`/drama/projects/${projectId}/tasks/${taskId}/cancel`)
+  return res.data.data.task as DramaTask
+}
+
+export async function retryDramaTask(projectId: string, taskId: string) {
+  const res = await api.post(`/drama/projects/${projectId}/tasks/${taskId}/retry`)
+  return res.data.data.task as DramaTask
+}
+
 export async function uploadDramaAssetReference(projectId: string, assetId: string, file: File) {
   const form = new FormData()
   form.append('file', file)
@@ -170,6 +218,11 @@ export async function exportDramaProject(id: string) {
 export async function getDramaSetting() {
   const res = await api.get('/drama/settings')
   return res.data.data.setting as DramaSetting
+}
+
+export async function getComfyUIStatus(url?: string) {
+  const res = await api.get('/drama/settings/comfyui/status', { params: url ? { url } : undefined })
+  return res.data.data.status as ComfyUIStatus
 }
 
 export async function saveDramaSetting(data: Partial<DramaSetting>) {

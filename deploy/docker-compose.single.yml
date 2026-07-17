@@ -197,34 +197,6 @@ services:
           memory: 2G
           cpus: '1.0'
 
-  comfyui:
-    build:
-      context: .
-      dockerfile: ./comfyui/Dockerfile
-      args:
-        COMFYUI_REF: ${COMFYUI_REF:-master}
-    command: ["--listen", "0.0.0.0", "--port", "8188"]
-    ports:
-      - "${COMFYUI_PORT:-8188}:8188"
-    volumes:
-      - comfyui_models:/app/ComfyUI/models
-      - comfyui_custom_nodes:/app/ComfyUI/custom_nodes
-      - comfyui_input:/app/ComfyUI/input
-      - comfyui_output:/app/ComfyUI/output
-      - comfyui_user:/app/ComfyUI/user
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: '4.0'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8188/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
   camera-svc:
     build:
       context: ../server
@@ -334,6 +306,9 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
     restart: unless-stopped
     deploy:
       resources:
@@ -346,6 +321,35 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+
+  comfyui:
+    build:
+      context: ./comfyui
+      args:
+        COMFYUI_REF: ${COMFYUI_REF:-master}
+        PYTORCH_CUDA_INDEX: ${PYTORCH_CUDA_INDEX:-https://download.pytorch.org/whl/cu128}
+    command: ["--listen", "0.0.0.0", "--port", "8188"]
+    ports:
+      - "${COMFYUI_PORT:-8188}:8188"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    gpus: all
+    shm_size: "8gb"
+    volumes:
+      - comfyui_models:/app/ComfyUI/models
+      - comfyui_custom_nodes:/app/ComfyUI/custom_nodes
+      - comfyui_input:/app/ComfyUI/input
+      - comfyui_output:/app/ComfyUI/output
+      - comfyui_user:/app/ComfyUI/user
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8188/system_stats', timeout=5).read()"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 90s
 
   nginx:
     image: nginx:alpine

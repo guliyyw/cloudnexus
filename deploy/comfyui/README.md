@@ -1,13 +1,13 @@
-# ComfyUI Docker Deployment
+# ComfyUI GPU Docker Deployment
 
-This directory contains the Docker build used by `deploy/docker-compose.single.yml`.
+This image is used by `deploy/docker-compose.single.yml` and is tuned for NVIDIA GPU acceleration.
 
 ## Start
 
-From `deploy/`:
+From the repository root:
 
 ```bash
-docker compose -f docker-compose.single.yml up --build -d comfyui
+docker compose -f deploy/docker-compose.single.yml up --build -d comfyui
 ```
 
 Open:
@@ -16,16 +16,17 @@ Open:
 http://localhost:8188
 ```
 
-## Configuration
+## GPU
+
+The compose service uses `gpus: all` and the NVIDIA container runtime. The image installs CUDA 12.8 PyTorch wheels by default, suitable for newer NVIDIA cards such as RTX 50 series.
 
 Optional `.env` values:
 
 ```env
 COMFYUI_PORT=8188
 COMFYUI_REF=master
+PYTORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu128
 ```
-
-`COMFYUI_REF` can be changed to a ComfyUI branch or tag before rebuilding.
 
 ## Persistent Data
 
@@ -37,8 +38,4 @@ The compose service keeps these Docker volumes:
 - `comfyui_output` -> `/app/ComfyUI/output`
 - `comfyui_user` -> `/app/ComfyUI/user`
 
-To add checkpoints, LoRAs, VAEs, or custom nodes, copy them into the matching volume or mount a host directory instead.
-
-## NVIDIA GPU
-
-The default image installs CPU PyTorch so it can run everywhere. For NVIDIA GPU acceleration, switch the PyTorch install line in `Dockerfile` to a CUDA wheel index that matches your host driver, then run Docker with NVIDIA Container Toolkit enabled.
+Put checkpoints under `models/checkpoints`. IP-Adapter, ControlNet, LoRA and VAE files should go into their matching ComfyUI model folders.

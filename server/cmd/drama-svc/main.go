@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/cloudnexus/server/internal/drama/repository"
 	"github.com/cloudnexus/server/internal/drama/service"
 	"github.com/cloudnexus/server/pkg/auth"
+	"github.com/cloudnexus/server/pkg/cache"
 	"github.com/cloudnexus/server/pkg/config"
 	"github.com/cloudnexus/server/pkg/database"
 	"github.com/cloudnexus/server/pkg/logger"
@@ -60,6 +62,7 @@ func main() {
 		&model.File{},
 		&model.DramaProject{},
 		&model.DramaStoryboard{},
+		&model.DramaStoryboardMedia{},
 		&model.DramaAsset{},
 		&model.DramaTask{},
 		&model.DramaSetting{},
@@ -77,6 +80,11 @@ func main() {
 	if err != nil {
 		logger.Log.Fatal("connect minio failed", zap.Error(err))
 	}
+	redisClient, err := cache.NewRedis(cache.Config{Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
+	if err != nil {
+		logger.Log.Fatal("connect redis failed", zap.Error(err))
+	}
+	defer redisClient.Close()
 
 	nodeReg := system.NewNodeRegistrar(db, os.Getenv("NODE_NAME"), os.Getenv("NODE_HOST"), "drama-svc", 8087)
 	nodeReg.Start()
@@ -91,6 +99,11 @@ func main() {
 
 	dramaRepo := repository.NewDramaRepository(db)
 	dramaSvc := service.NewDramaService(dramaRepo, minioClient, cfg.MinIO.Bucket)
+	taskRunner := service.NewTaskRunner(dramaSvc, dramaRepo, redisClient)
+	dramaSvc.SetTaskRunner(taskRunner)
+	if err := taskRunner.Start(context.Background()); err != nil {
+		logger.Log.Fatal("start drama task runner failed", zap.Error(err))
+	}
 	dramaH := handler.NewDramaHandler(dramaSvc)
 
 	r := gin.Default()
@@ -113,16 +126,21 @@ func main() {
 			drama.GET("/projects/:id/export", middleware.RequirePermission("drama:read"), dramaH.HandleExportProject)
 			drama.GET("/projects/:id/tasks", middleware.RequirePermission("drama:read"), dramaH.HandleListTasks)
 			drama.POST("/projects/:id/tasks", middleware.RequirePermission("drama:generate"), dramaH.HandleCreateTask)
+			drama.POST("/projects/:id/tasks/:taskId/cancel", middleware.RequirePermission("drama:generate"), dramaH.HandleCancelTask)
+			drama.POST("/projects/:id/tasks/:taskId/retry", middleware.RequirePermission("drama:generate"), dramaH.HandleRetryTask)
 			drama.PUT("/projects/:id/storyboards/:storyboardId", middleware.RequirePermission("drama:write"), dramaH.HandleUpdateStoryboard)
+			drama.PUT("/projects/:id/storyboards/:storyboardId/media/:mediaId/select", middleware.RequirePermission("drama:write"), dramaH.HandleSelectStoryboardMedia)
 			drama.POST("/projects/:id/storyboards/:storyboardId/audio", middleware.RequirePermission("drama:write"), dramaH.HandleUploadStoryboardAudio)
 			drama.POST("/projects/:id/audio/import", middleware.RequirePermission("drama:write"), dramaH.HandleBatchImportAudio)
 			drama.POST("/projects/:id/assets/import", middleware.RequirePermission("drama:write"), dramaH.HandleImportAssets)
 			drama.PUT("/projects/:id/assets/:assetId", middleware.RequirePermission("drama:write"), dramaH.HandleUpdateAsset)
 			drama.POST("/projects/:id/assets/:assetId/reference", middleware.RequirePermission("drama:write"), dramaH.HandleUploadAssetReference)
 			drama.GET("/settings", middleware.RequirePermission("drama:read"), dramaH.HandleGetSetting)
+			drama.GET("/settings/comfyui/status", middleware.RequirePermission("drama:read"), dramaH.HandleComfyStatus)
 			drama.PUT("/settings", middleware.RequirePermission("drama:admin"), dramaH.HandleSaveSetting)
 		}
 	}
+	r.GET("/ws/drama/tasks", middleware.AuthRequired(jwtCfg.AccessSecret), middleware.RequirePermission("drama:read"), dramaH.HandleTaskWebSocket)
 
 	r.GET("/healthz", system.HealthzHandler("drama-svc",
 		func() (string, string) {

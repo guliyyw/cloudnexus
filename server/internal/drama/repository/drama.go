@@ -65,6 +65,9 @@ func (r *DramaRepository) DeleteProject(ownerID, id uint64) error {
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaTask{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaStoryboardMedia{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaAsset{}).Error; err != nil {
 			return err
 		}
@@ -77,6 +80,9 @@ func (r *DramaRepository) DeleteProject(ownerID, id uint64) error {
 
 func (r *DramaRepository) ReplaceStoryboards(ownerID, projectID uint64, storyboards []model.DramaStoryboard) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Delete(&model.DramaStoryboardMedia{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Delete(&model.DramaStoryboard{}).Error; err != nil {
 			return err
 		}
@@ -104,6 +110,46 @@ func (r *DramaRepository) GetStoryboard(ownerID, projectID, id uint64) (*model.D
 
 func (r *DramaRepository) UpdateStoryboard(storyboard *model.DramaStoryboard) error {
 	return r.db.Save(storyboard).Error
+}
+
+func (r *DramaRepository) ListStoryboardMedia(ownerID, projectID uint64) ([]model.DramaStoryboardMedia, error) {
+	var media []model.DramaStoryboardMedia
+	err := r.db.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Order("storyboard_id ASC, sort_order ASC, created_at ASC").Find(&media).Error
+	return media, err
+}
+
+func (r *DramaRepository) GetStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64) (*model.DramaStoryboardMedia, error) {
+	var media model.DramaStoryboardMedia
+	err := r.db.Where("id = ? AND owner_id = ? AND project_id = ? AND storyboard_id = ?", mediaID, ownerID, projectID, storyboardID).First(&media).Error
+	if err != nil {
+		return nil, err
+	}
+	return &media, nil
+}
+
+func (r *DramaRepository) CreateStoryboardMedia(media *model.DramaStoryboardMedia) error {
+	return r.db.Create(media).Error
+}
+
+func (r *DramaRepository) NextStoryboardMediaSort(ownerID, projectID, storyboardID uint64) (int, error) {
+	var maxOrder int
+	err := r.db.Model(&model.DramaStoryboardMedia{}).
+		Where("owner_id = ? AND project_id = ? AND storyboard_id = ?", ownerID, projectID, storyboardID).
+		Select("COALESCE(MAX(sort_order), 0)").Scan(&maxOrder).Error
+	return maxOrder + 1, err
+}
+
+func (r *DramaRepository) SelectStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64, kind string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.DramaStoryboardMedia{}).
+			Where("owner_id = ? AND project_id = ? AND storyboard_id = ? AND kind = ?", ownerID, projectID, storyboardID, kind).
+			Update("selected", false).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.DramaStoryboardMedia{}).
+			Where("id = ? AND owner_id = ? AND project_id = ? AND storyboard_id = ?", mediaID, ownerID, projectID, storyboardID).
+			Update("selected", true).Error
+	})
 }
 
 func (r *DramaRepository) UpsertAssets(assets []model.DramaAsset) error {
@@ -193,12 +239,63 @@ func (r *DramaRepository) CreateTask(task *model.DramaTask) error {
 	return r.db.Create(task).Error
 }
 
+func (r *DramaRepository) GetTask(ownerID, projectID, id uint64) (*model.DramaTask, error) {
+	var task model.DramaTask
+	if err := r.db.Where("id = ? AND owner_id = ? AND project_id = ?", id, ownerID, projectID).First(&task).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (r *DramaRepository) GetTaskByID(id uint64) (*model.DramaTask, error) {
+	var task model.DramaTask
+	if err := r.db.First(&task, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (r *DramaRepository) UpdateTask(task *model.DramaTask) error {
+	return r.db.Save(task).Error
+}
+
+func (r *DramaRepository) ClaimTask(id uint64) (bool, error) {
+	now := time.Now()
+	result := r.db.Model(&model.DramaTask{}).
+		Where("id = ? AND status = ?", id, "pending").
+		Updates(map[string]interface{}{
+			"status":      "running",
+			"started_at":  &now,
+			"finished_at": nil,
+			"message":     "任务开始执行",
+		})
+	return result.RowsAffected == 1, result.Error
+}
+
+func (r *DramaRepository) ListPendingTasks() ([]model.DramaTask, error) {
+	var tasks []model.DramaTask
+	err := r.db.Where("status = ?", "pending").Order("created_at ASC").Find(&tasks).Error
+	return tasks, err
+}
+
+func (r *DramaRepository) RecoverRunningTasks() error {
+	return r.db.Model(&model.DramaTask{}).
+		Where("status = ?", "running").
+		Updates(map[string]interface{}{
+			"status":   "pending",
+			"progress": 0,
+			"message":  "服务重启，任务已重新排队",
+		}).Error
+}
+
 func (r *DramaRepository) GetSetting(ownerID uint64) (*model.DramaSetting, error) {
 	var setting model.DramaSetting
 	err := r.db.Where("owner_id = ?", ownerID).First(&setting).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		setting = model.DramaSetting{
 			OwnerID:       ownerID,
+			ComfyUIURL:    "http://comfyui:8188",
+			ImageSettings: `{"width":768,"height":1024,"steps":24,"cfg":7,"sampler":"euler","scheduler":"normal","negative_prompt":"低质量，模糊，变形，多余手指，文字，水印"}`,
 			TTSEngine:     "edge-tts",
 			TTSConfig:     "{}",
 			VideoSettings: `{"resolution":"1080p","fps":30,"bitrate":"8M","subtitle":{"font":"Microsoft YaHei","size":42,"color":"#FFFFFF","outline":"#000000","position":"bottom"}}`,
