@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
@@ -32,103 +33,95 @@ import PlaylistDetailPage from './pages/PlaylistDetailPage'
 import DramaPage from './pages/DramaPage'
 import ServiceStatusPage from './pages/ServiceStatusPage'
 import ErrorBoundary from './components/ErrorBoundary'
-import { colors } from './theme/tokens'
+import { colors, radius, shadow } from './theme/tokens'
 
 const { darkAlgorithm, defaultAlgorithm } = antdTheme
 
 export default function App() {
   const isDark = useThemeStore((s) => s.isDark)
 
-  const theme = {
+  // 自定义 token 和 Ant Design token 必须同时更新，避免组件库和页面内联样式出现两套主题语言。
+  const theme = useMemo(() => ({
     algorithm: isDark ? darkAlgorithm : defaultAlgorithm,
     token: {
       colorPrimary: colors.primary,
       colorPrimaryBg: colors.primaryLight,
-      colorPrimaryBorder: isDark ? 'rgba(129,236,254,0.25)' : '#f5d5b0',
+      colorPrimaryBorder: colors.borderStrong,
       colorPrimaryHover: isDark ? '#a0f0ff' : colors.primaryDark,
       colorPrimaryActive: colors.primaryDark,
       colorBgLayout: colors.bg,
-      colorBgContainer: colors.bgCard,
-      colorBgElevated: isDark ? 'rgba(255,255,255,0.06)' : colors.bgCard,
-      colorBgSpotlight: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.02)',
-      colorBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-      colorBorderSecondary: isDark ? 'rgba(255,255,255,0.04)' : '#f0eeeb',
+      colorBgContainer: colors.surfaceRaised,
+      colorBgElevated: colors.panelBg,
+      colorBgSpotlight: colors.surfaceRaised,
+      colorBorder: colors.borderSubtle,
+      colorBorderSecondary: colors.surfaceMuted,
       colorText: colors.text,
       colorTextSecondary: colors.textSecondary,
-      colorTextTertiary: isDark ? '#666666' : '#999999',
-      borderRadius: isDark ? 12 : 10,
-      borderRadiusLG: 16,
-      borderRadiusSM: 8,
-      borderRadiusXS: 4,
-      boxShadow: isDark
-        ? '0 0 20px rgba(0,0,0,0.3)'
-        : '0 1px 3px rgba(0,0,0,0.04)',
-      boxShadowSecondary: isDark
-        ? '0 0 40px rgba(0,0,0,0.4)'
-        : '0 2px 8px rgba(0,0,0,0.06)',
-      controlHeight: isDark ? 40 : 38,
+      colorTextTertiary: colors.mutedText,
+      borderRadius: radius.md,
+      borderRadiusLG: radius.lg,
+      borderRadiusSM: radius.sm,
+      borderRadiusXS: radius.sm,
+      boxShadow: shadow.card,
+      boxShadowSecondary: shadow.shell,
+      controlHeight: isDark ? 42 : 40,
       colorLink: colors.primary,
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      colorSplit: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      colorSplit: colors.borderSubtle,
       wireframe: false,
     },
     components: {
       Button: {
-        borderRadius: isDark ? 500 : 8,
-        controlHeight: isDark ? 40 : 38,
-        defaultBg: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
-        defaultBorderColor: isDark ? 'rgba(255,255,255,0.12)' : '#d9d9d9',
+        borderRadius: isDark ? radius.xl : radius.md,
+        controlHeight: isDark ? 42 : 40,
+        defaultBg: colors.surface,
+        defaultBorderColor: colors.borderSubtle,
         defaultColor: colors.text,
-        defaultHoverBg: isDark ? 'rgba(255,255,255,0.08)' : '#f5f5f5',
-        defaultHoverBorderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.primary,
-        primaryShadow: isDark ? '0 0 20px rgba(129,236,254,0.3)' : 'none',
-        fontWeight: 500,
+        defaultHoverBg: colors.hoverBg,
+        defaultHoverBorderColor: colors.borderStrong,
+        primaryShadow: isDark ? '0 0 20px rgba(129,236,254,0.24)' : '0 12px 24px rgba(232,150,74,0.18)',
+        fontWeight: 600,
       },
       Card: {
-        borderRadiusLG: isDark ? 16 : 12,
+        borderRadiusLG: radius.lg,
         paddingLG: 24,
+        headerBg: 'transparent',
       },
       Table: {
-        borderRadius: isDark ? 12 : 10,
-        headerBg: isDark ? 'rgba(255,255,255,0.03)' : '#fafaf8',
-        headerColor: isDark ? '#666666' : '#6b6b6b',
-        rowHoverBg: isDark
-          ? 'rgba(129,236,254,0.04)'
-          : 'rgba(232,150,74,0.04)',
-        borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#f0eeeb',
+        borderRadius: radius.lg,
+        headerBg: colors.surfaceMuted,
+        headerColor: colors.textSecondary,
+        rowHoverBg: colors.hoverBg,
+        borderColor: colors.borderSubtle,
       },
       Input: {
-        borderRadius: isDark ? 500 : 8,
-        controlHeight: isDark ? 40 : 38,
+        borderRadius: radius.md,
+        controlHeight: isDark ? 42 : 40,
         activeBorderColor: colors.primary,
-        hoverBorderColor: isDark
-          ? 'rgba(129,236,254,0.3)'
-          : 'rgba(232,150,74,0.3)',
-        colorBgContainer: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+        hoverBorderColor: colors.borderStrong,
+        colorBgContainer: colors.surfaceRaised,
       },
       Modal: {
-        borderRadiusLG: isDark ? 16 : 14,
+        borderRadiusLG: radius.lg,
         headerBg: 'transparent',
-        contentBg: isDark ? 'rgba(0,0,0,0.95)' : '#ffffff',
+        contentBg: colors.panelBg,
       },
       Menu: {
         itemBg: 'transparent',
         subMenuItemBg: 'transparent',
         darkItemBg: 'transparent',
-        itemSelectedBg: isDark
-          ? 'rgba(129,236,254,0.1)'
-          : 'rgba(232,150,74,0.1)',
+        itemSelectedBg: colors.hoverBg,
         itemSelectedColor: colors.primary,
       },
       Tag: {
-        defaultBg: isDark ? 'rgba(255,255,255,0.06)' : '#f5f5f5',
+        defaultBg: colors.surfaceMuted,
         defaultColor: colors.textSecondary,
       },
       Progress: {
-        remainingColor: isDark ? 'rgba(255,255,255,0.04)' : '#f0f0f0',
+        remainingColor: colors.surfaceMuted,
       },
       Slider: {
-        railBg: isDark ? 'rgba(255,255,255,0.1)' : '#f0f0f0',
+        railBg: colors.surfaceMuted,
         trackBg: colors.primary,
         handleColor: colors.primary,
       },
@@ -138,19 +131,26 @@ export default function App() {
         colorBgContainer: 'transparent',
       },
       Breadcrumb: {
-        lastColor: colors.textSecondary,
+        lastColor: colors.text,
         linkColor: colors.textSecondary,
       },
       Switch: {
         colorPrimary: colors.primary,
       },
+      Drawer: {
+        colorBgElevated: colors.panelBg,
+      },
+      Dropdown: {
+        colorBgElevated: colors.panelBg,
+      },
     },
-  }
+  }), [isDark])
+
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
         <Routes>
-          {/* 公开路由 */}
+          {/* 公开路由不挂应用壳，避免登录和分享页被业务导航打断。 */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -158,7 +158,7 @@ export default function App() {
           <Route path="/forbidden" element={<ForbiddenPage />} />
           <Route path="/s/:code" element={<ShareAccessPage />} />
 
-          {/* 普通用户路由 */}
+          {/* 普通用户路由统一复用应用壳，让导航、留白和播放器行为保持一致。 */}
           <Route element={<AuthGuard />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -184,7 +184,7 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* 管理员路由 */}
+          {/* 管理员路由和普通应用壳共用视觉体系，只在权限上额外加一层守卫。 */}
           <Route element={<AuthGuard />}>
             <Route element={<AdminGuard />}>
               <Route element={<AppLayout />}>

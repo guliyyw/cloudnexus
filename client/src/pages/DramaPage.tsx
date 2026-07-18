@@ -1043,6 +1043,10 @@ ${current.content}`
       <Modal title="粘贴片段分析结果" open={segmentImportOpen} onOk={handleImportAISegments} onCancel={() => setSegmentImportOpen(false)} width={820}>
         <TextArea value={aiSegmentText} onChange={(e) => setAiSegmentText(e.target.value)} placeholder="粘贴 AI 输出的片段 JSON" autoSize={{ minRows: 16, maxRows: 28 }} />
       </Modal>
+
+      <Modal title="生成任务详情" open={!!taskDetail} onCancel={() => setTaskDetail(null)} footer={null} width={900}>
+        {taskDetail && detail && <TaskDetailPanel task={taskDetail} detail={detail} />}
+      </Modal>
     </div>
   )
 }
@@ -1196,6 +1200,63 @@ function TaskResultStrip({ task }: { task: DramaTask }) {
           }]}
         />
       )}
+    </Space>
+  )
+}
+
+function TaskDetailPanel({ task, detail }: { task: DramaTask; detail: DramaDetail }) {
+  const payload = parseTaskPayload(task)
+  const promptLog = payload.prompt_log?.length
+    ? payload.prompt_log
+    : (payload.results || []).filter((item) => item.prompt).map((item) => ({ target: item.title, prompt: item.prompt }))
+
+  return (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <Space wrap>
+        <Tag color="blue">{getTaskTypeLabel(task.type)}</Tag>
+        <Tag color={task.status === 'done' ? 'green' : task.status === 'failed' ? 'red' : task.status === 'running' ? 'orange' : 'default'}>
+          {getTaskStatusLabel(task.status)}
+        </Tag>
+        <Text type="secondary">来源：{getTaskSource(task, detail)}</Text>
+      </Space>
+      <Progress
+        percent={task.progress}
+        status={task.status === 'failed' ? 'exception' : task.status === 'done' ? 'success' : task.status === 'running' ? 'active' : 'normal'}
+      />
+      {task.message && <Text type={task.status === 'failed' ? 'danger' : 'secondary'}>{task.message}</Text>}
+      <TaskResultStrip task={task} />
+      {!!promptLog.length && (
+        <Collapse
+          size="small"
+          items={[{
+            key: 'prompts',
+            label: `生成提示词（${promptLog.length}）`,
+            children: (
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                {promptLog.map((item, index) => (
+                  <div key={`${item.target || 'prompt'}-${index}`}>
+                    <Text type="secondary">{item.target || `Prompt ${index + 1}`}</Text>
+                    <TextArea value={item.prompt || ''} readOnly autoSize={{ minRows: 4, maxRows: 12 }} style={{ marginTop: 4 }} />
+                  </div>
+                ))}
+              </Space>
+            ),
+          }]}
+        />
+      )}
+      <Collapse
+        size="small"
+        items={[{
+          key: 'payload',
+          label: '任务原始数据',
+          children: <TextArea value={task.payload || '{}'} readOnly autoSize={{ minRows: 4, maxRows: 14 }} />,
+        }]}
+      />
+      <Space wrap size={12}>
+        <Text type="secondary">创建：{task.created_at || '-'}</Text>
+        <Text type="secondary">开始：{task.started_at || '-'}</Text>
+        <Text type="secondary">结束：{task.finished_at || '-'}</Text>
+      </Space>
     </Space>
   )
 }

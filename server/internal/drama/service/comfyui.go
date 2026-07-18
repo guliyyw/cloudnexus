@@ -17,14 +17,14 @@ import (
 const defaultComfyUIURL = "http://comfyui:8188"
 
 type ComfyStatus struct {
-	Connected   bool     `json:"connected"`
-	URL         string   `json:"url"`
-	Checkpoints []string `json:"checkpoints"`
-	IPAdapter   bool     `json:"ip_adapter"`
-	ReActor     bool     `json:"reactor"`
+	Connected   bool            `json:"connected"`
+	URL         string          `json:"url"`
+	Checkpoints []string        `json:"checkpoints"`
+	IPAdapter   bool            `json:"ip_adapter"`
+	ReActor     bool            `json:"reactor"`
 	Models      map[string]bool `json:"models"`
-	Missing     []string `json:"missing"`
-	Error       string   `json:"error,omitempty"`
+	Missing     []string        `json:"missing"`
+	Error       string          `json:"error,omitempty"`
 }
 
 type ImageGenerationSettings struct {
