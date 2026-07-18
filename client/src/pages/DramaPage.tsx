@@ -96,6 +96,7 @@ export default function DramaPage() {
   const [suffixModalOpen, setSuffixModalOpen] = useState(false)
   const [assetImportOpen, setAssetImportOpen] = useState(false)
   const [segmentImportOpen, setSegmentImportOpen] = useState(false)
+  const [taskDetail, setTaskDetail] = useState<DramaTask | null>(null)
   const [suffix, setSuffix] = useState(defaultSuffix)
   const [setting, setSetting] = useState<DramaSetting | null>(null)
   const [comfyStatus, setComfyStatus] = useState<ComfyUIStatus | null>(null)
@@ -970,6 +971,7 @@ ${current.content}`
                                     description={
                                       <Space direction="vertical" size={4}>
                                         <Text>IP-Adapter：{comfyStatus.ip_adapter ? '已安装' : '未安装'}；ReActor：{comfyStatus.reactor ? '已安装' : '未安装'}</Text>
+                                        <ComfyModelChecklist status={comfyStatus} />
                                         {!!comfyStatus.missing?.length && <Text type="secondary">待补全：{comfyStatus.missing.join('、')}</Text>}
                                         {comfyStatus.error && <Text type="danger">{comfyStatus.error}</Text>}
                                       </Space>
@@ -1054,6 +1056,27 @@ function parseImageSettings(raw?: string) {
   } catch {
     return defaults
   }
+}
+
+function ComfyModelChecklist({ status }: { status: ComfyUIStatus }) {
+  const models = status.models || {}
+  const items = [
+    { key: 'clip_vision_sdxl', label: 'CLIP Vision' },
+    { key: 'ipadapter_plus_sdxl', label: 'IPAdapter SDXL' },
+    { key: 'wan22_high_noise', label: 'Wan2.2 High' },
+    { key: 'wan22_low_noise', label: 'Wan2.2 Low' },
+    { key: 'wan22_text_encoder', label: 'Wan 文本编码器' },
+    { key: 'wan_vae', label: 'Wan VAE' },
+  ]
+  return (
+    <Space wrap size={4}>
+      {items.map((item) => (
+        <Tag key={item.key} color={models[item.key] ? 'green' : 'red'}>
+          {item.label}{models[item.key] ? ' 已就绪' : ' 缺失'}
+        </Tag>
+      ))}
+    </Space>
+  )
 }
 
 function getTaskTypeLabel(type: string) {
