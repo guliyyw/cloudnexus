@@ -585,3 +585,45 @@
 | 2026-05-05 | v0.1.0-dev | 文件移动/复制：拖拽移动、批量移动/复制、目录选择器、后端递归复制 | CloudNexus 团队 |
 | 2026-05-04 | v0.1.0-dev | Phase 2 功能完善 + 全容器化部署 | CloudNexus 团队 |
 | 2026-05-03 | v0.1.0-dev | Phase 1 单机 MVP 开发完成：用户认证、文件管理、即时通讯、Docker管理 | CloudNexus 团队 |
+
+---
+
+## 6. AI 短剧工坊进度补充
+
+> 更新：2026-07-18
+
+### 6.1 已完成
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| drama-svc 服务 | 已完成 | 新增独立短剧服务入口，提供项目、分镜、片段、资产、任务和设置 API |
+| 短剧前端入口 | 已完成 | `/drama` 工作台接入主路由、顶部导航和首页模块卡片 |
+| 剧本与分镜 | 已完成 | 支持剧本解析、分镜追加、分镜编辑、片段 JSON 导入 |
+| 角色/场景资产 | 已完成 | 支持资产导入、描述维护、参考提示词、参考图上传 |
+| 音频导入 | 已完成 | 支持单分镜音频上传和按文件名批量匹配导入 |
+| 异步生成任务 | 已完成 | Redis 队列驱动任务执行，支持进度更新、取消、重试和任务详情查看 |
+| ComfyUI 集成 | 已完成 | 支持图片、视频生成调用，并返回 checkpoint、插件和关键模型检查状态 |
+| 任务可观测性 | 已完成 | 任务详情展示来源、结果、提示词日志和原始 payload |
+
+### 6.2 当前重点
+
+- 提高分镜提示词质量，减少多人物、多场景生成时的漂移。
+- 完善 ComfyUI 失败原因归类，区分模型缺失、节点失败、输出缺失和提示词问题。
+- 补齐 OpenAPI 中短剧工坊完整接口定义。
+- 为关键生成链路补充后端单元测试和前端交互测试。
+
+### 6.3 新增 API 摘要
+
+| Endpoint | Method | 说明 |
+|---|---|---|
+| `/api/v1/drama/projects` | GET / POST | 项目列表 / 创建项目 |
+| `/api/v1/drama/projects/import` | POST | 导入项目 |
+| `/api/v1/drama/projects/:id` | GET / PUT / DELETE | 项目详情 / 更新 / 删除 |
+| `/api/v1/drama/projects/:id/parse` | POST | 解析剧本 |
+| `/api/v1/drama/projects/:id/append` | POST | 追加分镜 |
+| `/api/v1/drama/projects/:id/export` | GET | 导出项目 |
+| `/api/v1/drama/projects/:id/tasks` | GET / POST | 任务列表 / 创建生成任务 |
+| `/api/v1/drama/projects/:id/tasks/:taskId/cancel` | POST | 取消任务 |
+| `/api/v1/drama/projects/:id/tasks/:taskId/retry` | POST | 重试任务 |
+| `/api/v1/drama/settings` | GET / PUT | 获取 / 保存短剧生成设置 |
+| `/api/v1/drama/settings/comfyui/status` | GET | 检测 ComfyUI 状态与本地模型 |

@@ -419,3 +419,27 @@ netstat -ano | findstr :80
 # Linux/Mac
 lsof -i :80
 ```
+
+---
+
+## 9. 短剧工坊开发补充
+
+`drama-svc` 是 AI 短剧工坊的独立 Go 服务，默认监听 `8087`，前端入口为 `/drama`，API 前缀为 `/api/v1/drama`。本模块遵循 `handler -> service -> repository` 三层结构，代码位于：
+
+- `server/cmd/drama-svc/`：服务启动、依赖初始化、路由注册、节点注册、任务执行器启动。
+- `server/internal/drama/handler/`：项目、分镜、资产、任务、设置等 HTTP 入口。
+- `server/internal/drama/service/`：剧本解析、ComfyUI 调用、生成任务执行、任务队列。
+- `server/internal/drama/repository/`：短剧项目、分镜、媒体、资产、任务和设置的数据访问。
+- `client/src/pages/DramaPage.tsx`：短剧工坊主页面。
+- `client/src/services/drama.ts`：短剧 API 类型与请求封装。
+
+本地开发时，后端可按单服务方式启动：
+
+```bash
+cd server
+CONFIG_PATH=config/config.single.yaml go run ./cmd/drama-svc
+```
+
+短剧生成依赖 ComfyUI。开发调试时优先通过 `/api/v1/drama/settings/comfyui/status` 或前端“ComfyUI 检测”确认连通性、checkpoint、IP-Adapter、ReActor 以及 Wan2.2/IP-Adapter 相关本地模型是否就绪。
+
+任务执行由 `server/internal/drama/service/task_runner.go` 管理：任务进入 Redis 队列 `drama:tasks:queue` 后异步执行，执行进度写回 `drama_tasks`，并通过事件发布给前端。排查失败任务时，应优先查看任务详情里的生成提示词、原始 payload、错误消息和 ComfyUI 模型检查清单。
