@@ -34,20 +34,23 @@ func (s *DramaService) SetTaskRunner(runner *TaskRunner) {
 }
 
 type ProjectDetail struct {
-	Project     *model.DramaProject          `json:"project"`
-	Storyboards []model.DramaStoryboard      `json:"storyboards"`
-	Media       []model.DramaStoryboardMedia `json:"media"`
-	Assets      []model.DramaAsset           `json:"assets"`
-	Tasks       []model.DramaTask            `json:"tasks"`
-	Summary     map[string]interface{}       `json:"summary"`
+	Project     *model.DramaProject            `json:"project"`
+	Storyboards []model.DramaStoryboard        `json:"storyboards"`
+	Media       []model.DramaStoryboardMedia   `json:"media"`
+	Segments    []model.DramaStoryboardSegment `json:"segments"`
+	Assets      []model.DramaAsset             `json:"assets"`
+	Tasks       []model.DramaTask              `json:"tasks"`
+	Summary     map[string]interface{}         `json:"summary"`
 }
 
 type ExportPayload struct {
-	Version     int                     `json:"version"`
-	ExportedAt  time.Time               `json:"exported_at"`
-	Project     model.DramaProject      `json:"project"`
-	Storyboards []model.DramaStoryboard `json:"storyboards"`
-	Assets      []model.DramaAsset      `json:"assets"`
+	Version     int                            `json:"version"`
+	ExportedAt  time.Time                      `json:"exported_at"`
+	Project     model.DramaProject             `json:"project"`
+	Storyboards []model.DramaStoryboard        `json:"storyboards"`
+	Segments    []model.DramaStoryboardSegment `json:"segments"`
+	Media       []model.DramaStoryboardMedia   `json:"media"`
+	Assets      []model.DramaAsset             `json:"assets"`
 }
 
 type CreateTaskInput struct {
@@ -66,6 +69,26 @@ type AudioImportResult struct {
 type AIAssetImport struct {
 	Characters []map[string]interface{} `json:"characters"`
 	Scenes     []map[string]interface{} `json:"scenes"`
+}
+
+type AISegmentImport struct {
+	Segments []AISegment `json:"segments"`
+}
+
+type AISegment struct {
+	Seq               int      `json:"seq"`
+	Title             string   `json:"title"`
+	DurationSec       int      `json:"duration_sec"`
+	Purpose           string   `json:"purpose"`
+	Characters        []string `json:"characters"`
+	Scene             string   `json:"scene"`
+	Dialogue          string   `json:"dialogue"`
+	Action            string   `json:"action"`
+	Shot              string   `json:"shot"`
+	CompositionPrompt string   `json:"composition_prompt"`
+	ReferencePrompt   string   `json:"reference_prompt"`
+	VideoPrompt       string   `json:"video_prompt"`
+	NegativePrompt    string   `json:"negative_prompt"`
 }
 
 func (s *DramaService) ListProjects(ownerID uint64, keyword, sort string, page, pageSize int) ([]model.DramaProject, int64, error) {
@@ -114,6 +137,11 @@ func (s *DramaService) GetProject(ownerID, id uint64) (*ProjectDetail, error) {
 	if err != nil {
 		return nil, err
 	}
+	segments, err := s.repo.ListStoryboardSegments(ownerID, id)
+	if err != nil {
+		return nil, err
+	}
+	hydrateSegmentReferenceFiles(segments, assets)
 	tasks, err := s.repo.ListTasks(ownerID, id)
 	if err != nil {
 		return nil, err
@@ -128,6 +156,7 @@ func (s *DramaService) GetProject(ownerID, id uint64) (*ProjectDetail, error) {
 		Project:     project,
 		Storyboards: storyboards,
 		Media:       media,
+		Segments:    segments,
 		Assets:      assets,
 		Tasks:       tasks,
 		Summary: map[string]interface{}{
@@ -147,6 +176,9 @@ func (s *DramaService) SelectStoryboardMedia(ownerID, projectID, storyboardID, m
 	if err != nil {
 		return nil, err
 	}
+	if media.SegmentID != 0 {
+		return nil, fmt.Errorf("片段图片不能设为分镜当前图")
+	}
 	if err := s.repo.SelectStoryboardMedia(ownerID, projectID, storyboardID, mediaID, media.Kind); err != nil {
 		return nil, err
 	}
@@ -160,6 +192,183 @@ func (s *DramaService) SelectStoryboardMedia(ownerID, projectID, storyboardID, m
 		return nil, err
 	}
 	return storyboard, nil
+}
+
+func (s *DramaService) DeleteStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64) (*model.DramaStoryboard, []model.DramaStoryboardMedia, error) {
+	storyboard, err := s.repo.GetStoryboard(ownerID, projectID, storyboardID)
+	if err != nil {
+		return nil, nil, err
+	}
+	media, err := s.repo.GetStoryboardMedia(ownerID, projectID, storyboardID, mediaID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if media.FileID != 0 && media.Source != "asset_reference" {
+		if err := s.repo.SoftDeleteFiles(ownerID, []uint64{media.FileID}); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := s.repo.DeleteStoryboardMedia(ownerID, projectID, storyboardID, mediaID); err != nil {
+		return nil, nil, err
+	}
+
+	remaining, err := s.repo.ListStoryboardMediaByStoryboard(ownerID, projectID, storyboardID, media.Kind)
+	if err != nil {
+		return nil, nil, err
+	}
+	storyboardLevelRemaining := filterStoryboardLevelMedia(remaining)
+	currentDeleted := media.SegmentID == 0 && media.Selected
+	switch media.Kind {
+	case "image":
+		currentDeleted = currentDeleted || (media.SegmentID == 0 && storyboard.ImageFileID == media.FileID)
+	case "video":
+		currentDeleted = currentDeleted || (media.SegmentID == 0 && storyboard.VideoFileID == media.FileID)
+	}
+	if currentDeleted {
+		if len(storyboardLevelRemaining) > 0 {
+			replacement := storyboardLevelRemaining[0]
+			if err := s.repo.SelectStoryboardMedia(ownerID, projectID, storyboardID, replacement.ID, replacement.Kind); err != nil {
+				return nil, nil, err
+			}
+			switch replacement.Kind {
+			case "image":
+				storyboard.ImageFileID = replacement.FileID
+			case "video":
+				storyboard.VideoFileID = replacement.FileID
+			}
+		} else {
+			switch media.Kind {
+			case "image":
+				storyboard.ImageFileID = 0
+			case "video":
+				storyboard.VideoFileID = 0
+			}
+		}
+		if err := s.repo.UpdateStoryboard(storyboard); err != nil {
+			return nil, nil, err
+		}
+		remaining, err = s.repo.ListStoryboardMediaByStoryboard(ownerID, projectID, storyboardID, media.Kind)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	allMedia, err := s.repo.ListStoryboardMediaByStoryboard(ownerID, projectID, storyboardID, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	return storyboard, allMedia, nil
+}
+
+func filterStoryboardLevelMedia(media []model.DramaStoryboardMedia) []model.DramaStoryboardMedia {
+	result := make([]model.DramaStoryboardMedia, 0, len(media))
+	for _, item := range media {
+		if item.SegmentID == 0 {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func (s *DramaService) ImportStoryboardSegments(ownerID, projectID, storyboardID uint64, text string) ([]model.DramaStoryboardSegment, error) {
+	if _, err := s.repo.GetProject(ownerID, projectID); err != nil {
+		return nil, err
+	}
+	if _, err := s.repo.GetStoryboard(ownerID, projectID, storyboardID); err != nil {
+		return nil, err
+	}
+	payload, err := parseAISegments(text)
+	if err != nil {
+		return nil, err
+	}
+	segments := make([]model.DramaStoryboardSegment, 0, len(payload.Segments))
+	for index, item := range payload.Segments {
+		seq := item.Seq
+		if seq <= 0 {
+			seq = index + 1
+		}
+		duration := item.DurationSec
+		if duration <= 0 {
+			duration = 3
+		}
+		segments = append(segments, model.DramaStoryboardSegment{
+			ProjectID:         projectID,
+			StoryboardID:      storyboardID,
+			OwnerID:           ownerID,
+			Seq:               seq,
+			Title:             strings.TrimSpace(item.Title),
+			DurationSec:       duration,
+			Purpose:           strings.TrimSpace(item.Purpose),
+			Characters:        strings.Join(item.Characters, ", "),
+			Scene:             strings.TrimSpace(item.Scene),
+			Dialogue:          strings.TrimSpace(item.Dialogue),
+			Action:            strings.TrimSpace(item.Action),
+			Shot:              strings.TrimSpace(item.Shot),
+			CompositionPrompt: strings.TrimSpace(item.CompositionPrompt),
+			ReferencePrompt:   strings.TrimSpace(item.ReferencePrompt),
+			VideoPrompt:       strings.TrimSpace(item.VideoPrompt),
+			NegativePrompt:    strings.TrimSpace(item.NegativePrompt),
+		})
+	}
+	assets, err := s.repo.ListAssets(ownerID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	hydrateSegmentReferenceFiles(segments, assets)
+	if err := s.repo.ReplaceStoryboardSegments(ownerID, projectID, storyboardID, segments); err != nil {
+		return nil, err
+	}
+	all, err := s.repo.ListStoryboardSegments(ownerID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.DramaStoryboardSegment, 0, len(segments))
+	for _, segment := range all {
+		if segment.StoryboardID == storyboardID {
+			result = append(result, segment)
+		}
+	}
+	return result, nil
+}
+
+func hydrateSegmentReferenceFiles(segments []model.DramaStoryboardSegment, assets []model.DramaAsset) {
+	if len(segments) == 0 || len(assets) == 0 {
+		return
+	}
+	for index := range segments {
+		if segments[index].ReferenceFileID != 0 {
+			continue
+		}
+		if fileID := matchSegmentAssetReference(segments[index], assets); fileID != 0 {
+			segments[index].ReferenceFileID = fileID
+		}
+	}
+}
+
+func matchSegmentAssetReference(segment model.DramaStoryboardSegment, assets []model.DramaAsset) uint64 {
+	scene := strings.TrimSpace(segment.Scene)
+	characters := strings.TrimSpace(segment.Characters)
+	for _, asset := range assets {
+		if asset.ReferenceFileID == 0 {
+			continue
+		}
+		name := strings.TrimSpace(asset.Name)
+		if name == "" {
+			continue
+		}
+		if asset.Type == "scene" && scene != "" && strings.Contains(scene, name) {
+			return asset.ReferenceFileID
+		}
+	}
+	for _, asset := range assets {
+		if asset.ReferenceFileID == 0 || asset.Type != "character" {
+			continue
+		}
+		name := strings.TrimSpace(asset.Name)
+		if name != "" && strings.Contains(characters, name) {
+			return asset.ReferenceFileID
+		}
+	}
+	return 0
 }
 
 func (s *DramaService) UpdateProject(ownerID, id uint64, title, description, preface, settings string) (*model.DramaProject, error) {
@@ -265,7 +474,7 @@ func (s *DramaService) AppendToStoryboards(ownerID, projectID uint64, suffix str
 	return storyboards, nil
 }
 
-func (s *DramaService) UpdateAsset(ownerID, projectID, assetID uint64, name, description, voiceName string) (*model.DramaAsset, error) {
+func (s *DramaService) UpdateAsset(ownerID, projectID, assetID uint64, name, description, referencePrompt, voiceName string) (*model.DramaAsset, error) {
 	asset, err := s.repo.GetAsset(ownerID, projectID, assetID)
 	if err != nil {
 		return nil, err
@@ -274,6 +483,7 @@ func (s *DramaService) UpdateAsset(ownerID, projectID, assetID uint64, name, des
 		asset.Name = strings.TrimSpace(name)
 	}
 	asset.Description = description
+	asset.ReferencePrompt = strings.TrimSpace(referencePrompt)
 	asset.VoiceName = strings.TrimSpace(voiceName)
 	if err := s.repo.UpdateAsset(asset); err != nil {
 		return nil, err
@@ -295,10 +505,38 @@ func (s *DramaService) ImportAssetsFromAI(ownerID, projectID uint64, text string
 			assets = append(assets, model.DramaAsset{OwnerID: ownerID, ProjectID: projectID, Type: "scene", Name: scene.Name, Description: scene.Description})
 		}
 	}
-	if err := s.repo.ReplaceAssets(ownerID, projectID, assets); err != nil {
+	existing, err := s.repo.ListAssets(ownerID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	preserveAssetReferences(assets, existing)
+	if err := s.repo.UpsertAssets(assets); err != nil {
 		return nil, err
 	}
 	return s.repo.ListAssets(ownerID, projectID)
+}
+
+func preserveAssetReferences(next []model.DramaAsset, existing []model.DramaAsset) {
+	byKey := make(map[string]model.DramaAsset, len(existing))
+	for _, asset := range existing {
+		byKey[assetIdentityKey(asset.Type, asset.Name)] = asset
+	}
+	for index := range next {
+		old, ok := byKey[assetIdentityKey(next[index].Type, next[index].Name)]
+		if !ok {
+			continue
+		}
+		if next[index].ReferenceFileID == 0 {
+			next[index].ReferenceFileID = old.ReferenceFileID
+		}
+		if strings.TrimSpace(next[index].VoiceName) == "" {
+			next[index].VoiceName = old.VoiceName
+		}
+	}
+}
+
+func assetIdentityKey(assetType, name string) string {
+	return strings.ToLower(strings.TrimSpace(assetType)) + "\x00" + strings.TrimSpace(name)
 }
 
 func (s *DramaService) CreateTask(ownerID, projectID uint64, input CreateTaskInput) (*model.DramaTask, error) {
@@ -480,6 +718,8 @@ func (s *DramaService) ExportProject(ownerID, projectID uint64, saveToDrive bool
 		ExportedAt:  time.Now(),
 		Project:     *detail.Project,
 		Storyboards: detail.Storyboards,
+		Segments:    detail.Segments,
+		Media:       detail.Media,
 		Assets:      detail.Assets,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
@@ -526,6 +766,41 @@ func (s *DramaService) ImportProject(ownerID uint64, data []byte) (*model.DramaP
 	}
 	if err := s.repo.ReplaceStoryboards(ownerID, project.ID, storyboards); err != nil {
 		return nil, err
+	}
+	newStoryboards, err := s.repo.ListStoryboards(ownerID, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	oldStoryboardSeq := make(map[uint64]int, len(payload.Storyboards))
+	for _, old := range payload.Storyboards {
+		oldStoryboardSeq[old.ID] = old.Seq
+	}
+	newStoryboardBySeq := make(map[int]model.DramaStoryboard, len(newStoryboards))
+	for _, storyboard := range newStoryboards {
+		newStoryboardBySeq[storyboard.Seq] = storyboard
+	}
+	segmentsByStoryboard := make(map[uint64][]model.DramaStoryboardSegment)
+	for _, old := range payload.Segments {
+		seq, ok := oldStoryboardSeq[old.StoryboardID]
+		if !ok {
+			continue
+		}
+		storyboard, ok := newStoryboardBySeq[seq]
+		if !ok {
+			continue
+		}
+		old.ID = 0
+		old.ProjectID = project.ID
+		old.OwnerID = ownerID
+		old.StoryboardID = storyboard.ID
+		old.ReferenceFileID = 0
+		old.VideoFileID = 0
+		segmentsByStoryboard[storyboard.ID] = append(segmentsByStoryboard[storyboard.ID], old)
+	}
+	for storyboardID, segments := range segmentsByStoryboard {
+		if err := s.repo.ReplaceStoryboardSegments(ownerID, project.ID, storyboardID, segments); err != nil {
+			return nil, err
+		}
 	}
 	assets := make([]model.DramaAsset, 0, len(payload.Assets))
 	for _, old := range payload.Assets {
@@ -863,13 +1138,7 @@ func sanitizeName(name string) string {
 }
 
 func parseAIAssets(ownerID, projectID uint64, text string) []model.DramaAsset {
-	text = strings.TrimSpace(text)
-	if strings.HasPrefix(text, "```") {
-		text = strings.TrimPrefix(text, "```json")
-		text = strings.TrimPrefix(text, "```")
-		text = strings.TrimSuffix(text, "```")
-		text = strings.TrimSpace(text)
-	}
+	text = cleanJSONText(text)
 	var payload AIAssetImport
 	if err := json.Unmarshal([]byte(text), &payload); err != nil {
 		return nil
@@ -881,12 +1150,13 @@ func parseAIAssets(ownerID, projectID uint64, text string) []model.DramaAsset {
 			continue
 		}
 		assets = append(assets, model.DramaAsset{
-			OwnerID:     ownerID,
-			ProjectID:   projectID,
-			Type:        "character",
-			Name:        name,
-			Description: assetDescription(item, []string{"age", "appearance", "clothing", "personality", "voice_suggestion", "reference_prompt", "notes"}),
-			VoiceName:   stringField(item, "voice_name"),
+			OwnerID:         ownerID,
+			ProjectID:       projectID,
+			Type:            "character",
+			Name:            name,
+			Description:     assetDescription(item, []string{"age", "appearance", "clothing", "personality", "voice_suggestion", "notes"}),
+			ReferencePrompt: stringField(item, "reference_prompt"),
+			VoiceName:       stringField(item, "voice_name"),
 		})
 	}
 	for _, item := range payload.Scenes {
@@ -895,14 +1165,39 @@ func parseAIAssets(ownerID, projectID uint64, text string) []model.DramaAsset {
 			continue
 		}
 		assets = append(assets, model.DramaAsset{
-			OwnerID:     ownerID,
-			ProjectID:   projectID,
-			Type:        "scene",
-			Name:        name,
-			Description: assetDescription(item, []string{"environment", "lighting", "style", "reference_prompt", "notes"}),
+			OwnerID:         ownerID,
+			ProjectID:       projectID,
+			Type:            "scene",
+			Name:            name,
+			Description:     assetDescription(item, []string{"environment", "lighting", "style", "notes"}),
+			ReferencePrompt: stringField(item, "reference_prompt"),
 		})
 	}
 	return assets
+}
+
+func parseAISegments(text string) (AISegmentImport, error) {
+	var payload AISegmentImport
+	err := json.Unmarshal([]byte(cleanJSONText(text)), &payload)
+	if err != nil {
+		return payload, err
+	}
+	if len(payload.Segments) == 0 {
+		return payload, fmt.Errorf("segments is empty")
+	}
+	return payload, nil
+}
+
+func cleanJSONText(text string) string {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "```") {
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```JSON")
+		text = strings.TrimPrefix(text, "```")
+		text = strings.TrimSuffix(text, "```")
+		text = strings.TrimSpace(text)
+	}
+	return text
 }
 
 func stringField(item map[string]interface{}, key string) string {

@@ -182,6 +182,7 @@ func (r *TaskRunner) process(parent context.Context, taskID uint64) {
 
 	task.Progress = 5
 	task.Message = "正在准备生成参数"
+	r.svc.clearTaskGeneratedPayload(task)
 	_ = r.repo.UpdateTask(task)
 	r.Publish(*task)
 
@@ -195,6 +196,9 @@ func (r *TaskRunner) process(parent context.Context, taskID uint64) {
 		r.Publish(*task)
 	}
 	err = r.svc.executeGenerationTask(ctx, task, update)
+	if latest, latestErr := r.repo.GetTaskByID(task.ID); latestErr == nil {
+		task = latest
+	}
 	now := time.Now()
 	task.FinishedAt = &now
 	if ctx.Err() != nil {

@@ -63,6 +63,7 @@ func main() {
 		&model.DramaProject{},
 		&model.DramaStoryboard{},
 		&model.DramaStoryboardMedia{},
+		&model.DramaStoryboardSegment{},
 		&model.DramaAsset{},
 		&model.DramaTask{},
 		&model.DramaSetting{},
@@ -130,6 +131,8 @@ func main() {
 			drama.POST("/projects/:id/tasks/:taskId/retry", middleware.RequirePermission("drama:generate"), dramaH.HandleRetryTask)
 			drama.PUT("/projects/:id/storyboards/:storyboardId", middleware.RequirePermission("drama:write"), dramaH.HandleUpdateStoryboard)
 			drama.PUT("/projects/:id/storyboards/:storyboardId/media/:mediaId/select", middleware.RequirePermission("drama:write"), dramaH.HandleSelectStoryboardMedia)
+			drama.DELETE("/projects/:id/storyboards/:storyboardId/media/:mediaId", middleware.RequirePermission("drama:write"), dramaH.HandleDeleteStoryboardMedia)
+			drama.POST("/projects/:id/storyboards/:storyboardId/segments/import", middleware.RequirePermission("drama:write"), dramaH.HandleImportStoryboardSegments)
 			drama.POST("/projects/:id/storyboards/:storyboardId/audio", middleware.RequirePermission("drama:write"), dramaH.HandleUploadStoryboardAudio)
 			drama.POST("/projects/:id/audio/import", middleware.RequirePermission("drama:write"), dramaH.HandleBatchImportAudio)
 			drama.POST("/projects/:id/assets/import", middleware.RequirePermission("drama:write"), dramaH.HandleImportAssets)

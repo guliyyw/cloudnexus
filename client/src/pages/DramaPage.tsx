@@ -47,6 +47,8 @@ import {
   DramaDetail,
   DramaProject,
   DramaSetting,
+  DramaStoryboardMedia,
+  DramaStoryboardSegment,
   DramaTask,
   appendDramaStoryboards,
   batchImportDramaAudio,
@@ -54,11 +56,13 @@ import {
   createDramaProject,
   createDramaTask,
   deleteDramaProject,
+  deleteDramaStoryboardMedia,
   exportDramaProject,
   getComfyUIStatus,
   getDramaProject,
   getDramaSetting,
   importDramaAssets,
+  importDramaStoryboardSegments,
   importDramaProject,
   listDramaProjects,
   listDramaTasks,
@@ -91,11 +95,13 @@ export default function DramaPage() {
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [suffixModalOpen, setSuffixModalOpen] = useState(false)
   const [assetImportOpen, setAssetImportOpen] = useState(false)
+  const [segmentImportOpen, setSegmentImportOpen] = useState(false)
   const [suffix, setSuffix] = useState(defaultSuffix)
   const [setting, setSetting] = useState<DramaSetting | null>(null)
   const [comfyStatus, setComfyStatus] = useState<ComfyUIStatus | null>(null)
   const [comfyChecking, setComfyChecking] = useState(false)
   const [aiAssetText, setAiAssetText] = useState('')
+  const [aiSegmentText, setAiSegmentText] = useState('')
   const [activeTab, setActiveTab] = useState('script')
   const [imageCount, setImageCount] = useState(3)
   const [projectForm] = Form.useForm()
@@ -109,6 +115,14 @@ export default function DramaPage() {
   const currentMedia = useMemo(
     () => detail?.media?.filter((item) => item.storyboard_id === current?.id).sort((a, b) => a.sort_order - b.sort_order) || [],
     [detail?.media, current?.id],
+  )
+  const currentStoryboardMedia = useMemo(
+    () => currentMedia.filter((item) => !item.segment_id || item.segment_id === '0'),
+    [currentMedia],
+  )
+  const currentSegments = useMemo(
+    () => detail?.segments?.filter((item) => item.storyboard_id === current?.id).sort((a, b) => a.seq - b.seq) || [],
+    [detail?.segments, current?.id],
   )
   const modifiedCount = useMemo(() => detail?.storyboards.filter((item) => item.modified).length || 0, [detail])
 
@@ -133,7 +147,9 @@ export default function DramaPage() {
           ...previous,
           tasks: [update.task, ...previous.tasks.filter((item) => item.id !== update.task.id)],
         } : previous)
-        if (update.task.status === 'done') refreshGeneratedResults(projectID)
+        if (['done', 'failed', 'canceled'].includes(update.task.status)) {
+          refreshGeneratedResults(projectID)
+        }
       } catch {
         // Ignore malformed progress events and keep the page usable.
       }
@@ -189,6 +205,7 @@ export default function DramaPage() {
           ...previous,
           tasks: remote.tasks,
           media: remote.media || [],
+          segments: remote.segments || [],
           assets: previous.assets.map((asset) => {
             const next = remote.assets.find((item) => item.id === asset.id)
             return next ? { ...asset, reference_file_id: next.reference_file_id } : asset
@@ -208,7 +225,7 @@ export default function DramaPage() {
     setLoading(true)
     try {
       const data = await getDramaProject(id)
-      setDetail({ ...data, media: data.media || [] })
+      setDetail({ ...data, media: data.media || [], segments: data.segments || [] })
       setScript(data.project.raw_script || '')
       setCurrentIndex(0)
     } catch {
@@ -221,7 +238,7 @@ export default function DramaPage() {
   const refreshDetail = async () => {
     if (!detail) return
     const data = await getDramaProject(detail.project.id)
-    setDetail({ ...data, media: data.media || [] })
+    setDetail({ ...data, media: data.media || [], segments: data.segments || [] })
   }
 
   const handleCreate = async () => {
@@ -243,7 +260,7 @@ export default function DramaPage() {
   const handleParse = async () => {
     if (!detail || !script.trim()) return
     const data = await parseDramaScript(detail.project.id, script)
-    setDetail({ ...data, media: data.media || [] })
+    setDetail({ ...data, media: data.media || [], segments: data.segments || [] })
     setCurrentIndex(0)
     message.success('剧本已拆分为分镜')
   }
@@ -337,6 +354,30 @@ export default function DramaPage() {
     message.success('已设为当前分镜图片')
   }
 
+  const handleDeleteMedia = async (mediaId: string) => {
+    if (!detail || !current) return
+    const result = await deleteDramaStoryboardMedia(detail.project.id, current.id, mediaId)
+    const otherMedia = (detail.media || []).filter((item) => item.storyboard_id !== current.id)
+    setDetail({
+      ...detail,
+      storyboards: detail.storyboards.map((item) => (item.id === result.storyboard.id ? result.storyboard : item)),
+      media: [...otherMedia, ...(result.media || [])],
+    })
+    message.success('图片已删除，文件已移入回收站')
+  }
+
+  const handleGenerateSegmentImage = async (segment: DramaStoryboardSegment) => {
+    if (!detail || !current) return
+    await handleCreateTask('image', {
+      source: 'storyboard_segment',
+      source_label: `分镜 ${current.seq} 片段 ${segment.seq}：${segment.title || '未命名片段'}`,
+      storyboard_count: 1,
+      image_count: 1,
+      segment_ids: [segment.id],
+      force_generate: true,
+    }, [current.id])
+  }
+
   const handleBatchAudioImport = async (files: File[]) => {
     if (!detail || !files.length) return
     const results = await batchImportDramaAudio(detail.project.id, files)
@@ -400,7 +441,7 @@ export default function DramaPage() {
 
   const buildAssetPrompt = () => {
     if (!detail) return ''
-    return `你是短剧视觉资产分析师。请根据下面的短剧前言和分镜内容，提取角色与场景资产，输出严格 JSON，不要输出解释文字。
+    return `你是短剧视觉资产分析师，同时熟悉 ComfyUI / Stable Diffusion XL 提示词写法。请根据下面的短剧前言和分镜内容，提取角色与场景资产，输出严格 JSON，不要输出解释文字。
 输出格式：
 {
   "characters": [
@@ -412,7 +453,7 @@ export default function DramaPage() {
       "personality": "气质与表演状态",
       "voice_suggestion": "适合的中文音色建议",
       "voice_name": "可选：zh-CN-XiaoxiaoNeural 或 zh-CN-YunxiNeural 等",
-      "reference_prompt": "可直接发给 ComfyUI/SD 的角色参考图提示词"
+      "reference_prompt": "可直接发给 ComfyUI/SDXL 的角色参考图提示词"
     }
   ],
   "scenes": [
@@ -421,21 +462,121 @@ export default function DramaPage() {
       "environment": "空间结构、陈设、时代、地域",
       "lighting": "光线、天气、时间",
       "style": "视觉风格",
-      "reference_prompt": "可直接发给 ComfyUI/SD 的场景参考图提示词"
+      "reference_prompt": "可直接发给 ComfyUI/SDXL 的场景参考图提示词"
     }
   ]
 }
 要求：
 1. 角色名称保持短且稳定，避免别名重复。
 2. 外貌、服装、场景细节要适合做连续分镜一致性参考。
-3. reference_prompt 使用中文，包含写实摄影、影视感、一致性关键词。
-4. 只输出 JSON。
+3. reference_prompt 必须是“适合 SDXL 的短提示词”，不要写成长篇档案，不要包含解释、字段名或换行。
+4. reference_prompt 使用中英混合：开头先给英文强约束，再接中文关键细节。角色提示词格式参考：
+   modern realistic cinematic photo of a [age] [Chinese man/woman], [face/hair/body], [exact clothing], [accessories], clear face, full body or medium full shot, natural skin texture, warm indoor lighting, 影视感, 写实摄影, 一致性保持
+5. 现代都市/家庭/职场短剧角色必须保留现代现实服装。禁止把西装、衬衫、连衣裙、家居服改写成铠甲、长袍、斗篷、奇幻服装、游戏角色、概念设定图。
+6. 场景 reference_prompt 要明确空间类型、时代、布置、光线和镜头，如：realistic cinematic environment photo, modern apartment living room, warm indoor light, clear spatial layout, no people, 影视感。
+7. 如果原文没有奇幻、古装、科幻设定，不要生成 fantasy、medieval、armor、knight、sci-fi 等词。
+8. 只输出 JSON。
 
 前言：
 ${detail.project.preface || '无'}
 
 分镜：
 ${detail.storyboards.map((item) => item.content).join('\n\n')}`
+  }
+
+  const buildSegmentPrompt = () => {
+    if (!detail || !current) return ''
+    const assets = detail.assets.map((asset) => ({
+      type: asset.type,
+      name: asset.name,
+      description: asset.description,
+      reference_prompt: asset.reference_prompt,
+      has_reference_image: asset.reference_file_id !== '0',
+    }))
+    return `你是短剧分镜导演，同时熟悉 ComfyUI / SDXL / IPAdapter 多参考图工作流。请根据“当前分镜文本”在原有剧情、人物、场景、动作、台词基础上进一步完善提示词，生成可直接用于片段图片和片段视频的提示词，输出严格 JSON，不要输出解释文字。
+
+重要前提：
+- 当前分镜文本是唯一剧情依据，必须从这段分镜文本中提取人物、地点、动作、台词、情绪和镜头信息。
+- 你的任务不是续写剧情，而是在不改变原分镜含义的前提下补全可见画面细节：人物数量、站位、姿态、手部动作、视线、道具、空间锚点、景别、光线、反向约束。
+- “角色与场景资产”是已经确定的全局视觉资产，后续片段必须复用它们，不能重新设计人物或场景。
+- has_reference_image=true 表示系统已有该资产参考图，生成片段图片时会用 IPAdapter 输入这张图；你的 reference_prompt 只需要描述本片段构图、动作、情绪、镜头和光线。
+- 已有参考图只用于保持角色身份、服装和场景布局，不能照抄参考图的单人肖像构图；当前分镜的 composition_prompt 优先级最高。
+- reference_prompt 中必须使用资产 name 原文，例如“丈夫”“妻子”“家中餐厅”，不要改名、不要写成陌生男人/陌生女人、不要替换服装和场景。
+- 如果片段发生在某个资产场景中，scene 必须填写资产库里的场景 name；如果没有完全匹配，选择最接近的资产场景并在 action 中说明局部位置。
+
+输出格式：
+{
+  "storyboard_seq": ${current.seq},
+  "storyboard_title": "${current.title}",
+  "segments": [
+    {
+      "seq": 1,
+      "title": "片段标题",
+      "duration_sec": 3,
+      "purpose": "这个片段承担的剧情作用",
+      "characters": ["角色名"],
+      "scene": "场景名",
+      "asset_names": ["本片段必须使用的角色资产名和场景资产名"],
+      "scene_asset": "使用的场景资产名",
+      "dialogue": "本片段台词，没有则为空字符串",
+      "action": "人物动作与情绪变化",
+      "shot": "景别、镜头角度、构图",
+      "composition_prompt": "用于控制片段参考图人物位置、姿态、视线、手部动作、前后景关系的构图提示词",
+      "reference_prompt": "用于先生成片段参考图的 ComfyUI/SDXL 正向提示词",
+      "video_prompt": "用于图生视频的运动提示词",
+      "negative_prompt": "用于排除错误内容的负面提示词"
+    }
+  ]
+}
+
+拆分要求：
+1. 先阅读当前分镜文本，再按镜头/动作/台词变化拆成片段；每个片段建议 2-5 秒，只表达一个明确动作或情绪变化。
+2. characters 只能填写资产库中已有的角色 name；scene 和 scene_asset 只能填写资产库中已有的场景 name。不要创造新角色、新地点、新服装。
+3. asset_names 必须列出本片段用到的全部角色资产和场景资产，例如 ["丈夫","妻子","父亲","母亲","家中餐厅"]。
+4. composition_prompt 是最重要的构图控制字段，必须用英文短语 + 中文补充，明确：
+   - 先写镜头类型和人数；两人镜头必须以 two-shot, two characters visible in same frame, medium wide shot 开头；三人以上必须以 group shot, all listed characters visible in same frame 开头
+   - 人物数量和每个人在画面中的位置：left/right/center/foreground/background/opposite side
+   - 坐姿/站姿/身体朝向/头部朝向
+   - 手部动作和道具位置，如 chopsticks above husband's bowl
+   - 视线关系，如 husband looks down at bowl, wife looks at husband
+   - 镜头距离和角度，如 medium wide shot, eye-level camera, rectangular dining table centered
+   - 前后景关系，如 parents slightly blurred in background
+5. composition_prompt 不要写情绪概念，必须写可见的画面事实。错误示例：warm family atmosphere。正确示例：wife on right side of table, husband on left, wife right hand holding chopsticks above husband's bowl, parents seated opposite in background, medium wide shot。
+6. reference_prompt 用于静态片段参考图，必须描述“最终画面状态”，不要写镜头运动，不要写连续动作。它应当像导演给摄影师的画面说明，而不是角色设定表。
+7. reference_prompt 必须在原分镜基础上完善，而不是替换原分镜；必须把 composition_prompt 放在开头并以这类结构输出：
+   realistic cinematic still frame, use IPAdapter references for [资产名列表], keep exact identity, clothing and scene layout from references, [场景资产名], [人物站位和动作], [景别/构图], [光线], clear faces, natural skin texture, no redesign, 影视感, 写实摄影
+8. reference_prompt 不要重复大段外貌档案；有参考图的角色只写资产名 + 必要动作/表情/站位。错误示例：32-year-old Chinese man in dark suit standing in modern hallway。正确示例：丈夫坐在家中餐厅餐桌右侧，保持资产参考图中的脸、发型和深色西装。
+9. 如果 characters 有 2 个或更多角色，reference_prompt 必须明确 all listed characters visible in same frame, no solo portrait, no close-up portrait，并逐个写出每个角色的位置、朝向、手部动作和视线；不要只描述其中一个角色。
+10. 如果分镜要求“家中餐厅”，reference_prompt 必须明确餐桌、餐椅、菜肴、暖黄餐厅灯光，不能生成走廊、办公室、卧室、酒店大堂等其它空间。
+11. 如果一个动作包含前后变化，请拆成两个片段，不要让单张参考图同时表达“先低头再抬头”。每个片段只保留一个瞬间动作。
+12. video_prompt 用于图生视频，必须描述“运动变化”，例如 slow push-in, 妻子夹菜放入丈夫碗中, 丈夫低头再抬眼, subtle breathing。
+13. negative_prompt 必须根据本片段补强，至少包含：wrong identity, different face, different clothing, different room, wrong pose, wrong hand position, wrong gaze direction, single person, solo portrait, close-up portrait, cropped second person, missing character, missing husband, missing wife, mirror frame, decorative frame, oversized foreground lamp, foreground obstruction, hallway, office, bedroom, hotel lobby, extra people, armor, fantasy costume, medieval, knight, cape, cloak, game character, concept art, anime, illustration, text, watermark, logo, UI, close-up, extreme close-up。
+14. 现代都市/家庭/职场短剧必须保持现实服装与现实空间，禁止把西装、衬衫、家居服改写成铠甲、斗篷、长袍、奇幻服装、游戏角色、概念设定图。
+15. 输出只允许 JSON。
+
+项目背景：
+${detail.project.preface || '无'}
+
+角色与场景资产：
+${JSON.stringify(assets, null, 2)}
+
+当前分镜：
+${current.content}`
+  }
+
+  const handleImportAISegments = async () => {
+    if (!detail || !current || !aiSegmentText.trim()) return
+    const segments = await importDramaStoryboardSegments(detail.project.id, current.id, aiSegmentText)
+    setDetail({
+      ...detail,
+      segments: [
+        ...(detail.segments || []).filter((item) => item.storyboard_id !== current.id),
+        ...segments,
+      ],
+    })
+    setSegmentImportOpen(false)
+    setAiSegmentText('')
+    message.success(`已导入 ${segments.length} 个片段`)
   }
 
   const handleImportAIAssets = async () => {
@@ -573,6 +714,21 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                     ),
                   },
                   {
+                    key: 'assets',
+                    label: '角色与场景资产',
+                    children: (
+                      <div style={{ ...scrollAreaStyle, width: '100%' }}>
+                        <Space wrap>
+                          <Button icon={<CopyOutlined />} onClick={() => copyText(buildAssetPrompt())}>复制 AI 资产分析提示词</Button>
+                          <Button icon={<ImportOutlined />} disabled={!canWrite} onClick={() => setAssetImportOpen(true)}>粘贴 AI 结果导入</Button>
+                        </Space>
+                        <div style={{ marginTop: 12 }}>
+                          <AssetPanel detail={detail} canWrite={canWrite} canGenerate={canGenerate} onChange={setDetail} />
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
                     key: 'storyboards',
                     label: '分镜编辑',
                     children: (
@@ -631,6 +787,20 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                                     >
                                       {current.image_file_id !== '0' ? '继续生成' : '生成图片'}
                                     </Button>
+                                    <Button
+                                      icon={<ThunderboltOutlined />}
+                                      disabled={!canGenerate || current.image_file_id === '0'}
+                                      onClick={() => handleCreateTask('video', {
+                                        source: 'storyboard',
+                                        source_label: `分镜 ${current.seq}：${current.title}`,
+                                        storyboard_count: 1,
+                                        duration_sec: 10,
+                                      }, [current.id])}
+                                    >
+                                      生成10秒视频
+                                    </Button>
+                                    <Button icon={<CopyOutlined />} onClick={() => copyText(buildSegmentPrompt())}>复制生成AI提示词</Button>
+                                    <Button icon={<ImportOutlined />} disabled={!canWrite} onClick={() => setSegmentImportOpen(true)}>粘贴 AI 提示词结果</Button>
                                     <Button icon={<CopyOutlined />} onClick={() => copyText(current.content)}>复制本镜</Button>
                                     <Button icon={<SaveOutlined />} type="primary" disabled={!canWrite} onClick={handleSaveStoryboard}>保存</Button>
                                   </Space>
@@ -644,11 +814,11 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                                       style={{ width: '100%', maxHeight: 520, objectFit: 'contain', borderRadius: 8, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
                                     />
                                   )}
-                                  {currentMedia.filter((item) => item.kind === 'image').length > 0 && (
+                                  {currentStoryboardMedia.filter((item) => item.kind === 'image').length > 0 && (
                                     <div>
                                       <Text strong>图片候选</Text>
                                       <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
-                                        {currentMedia.filter((item) => item.kind === 'image').map((item, index) => (
+                                        {currentStoryboardMedia.filter((item) => item.kind === 'image').map((item, index) => (
                                           <Col xs={12} md={8} xl={6} key={item.id}>
                                             <Card size="small" bodyStyle={{ padding: 8 }} style={{ borderColor: item.selected ? '#e8964a' : '#f0eeeb' }}>
                                               <Image
@@ -666,12 +836,33 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                                                 <Button size="small" type={item.selected ? 'primary' : 'default'} disabled={item.selected || !canWrite} onClick={() => handleSelectMedia(item.id)}>
                                                   {item.selected ? '当前' : '设为当前'}
                                                 </Button>
+                                                <Popconfirm
+                                                  title="删除这张图片？"
+                                                  description="文件会移入回收站"
+                                                  okText="删除"
+                                                  cancelText="取消"
+                                                  onConfirm={() => handleDeleteMedia(item.id)}
+                                                  disabled={!canWrite}
+                                                >
+                                                  <Button size="small" danger icon={<DeleteOutlined />} disabled={!canWrite} />
+                                                </Popconfirm>
                                               </Space>
                                             </Card>
                                           </Col>
                                         ))}
                                       </Row>
                                     </div>
+                                  )}
+                                  {currentSegments.length > 0 && (
+                                    <StoryboardSegmentList
+                                      segments={currentSegments}
+                                      media={currentMedia}
+                                      canGenerate={canGenerate}
+                                      canWrite={canWrite}
+                                      onCopy={copyText}
+                                      onGenerate={handleGenerateSegmentImage}
+                                      onDeleteMedia={handleDeleteMedia}
+                                    />
                                   )}
                                   <Space wrap>
                                     <Tag color={current.audio_file_id !== '0' ? 'green' : 'default'}>
@@ -690,21 +881,6 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
                             )}
                           </Col>
                         </Row>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'assets',
-                    label: '角色与场景资产',
-                    children: (
-                      <div style={{ ...scrollAreaStyle, width: '100%' }}>
-                        <Space wrap>
-                          <Button icon={<CopyOutlined />} onClick={() => copyText(buildAssetPrompt())}>复制 AI 资产分析提示词</Button>
-                          <Button icon={<ImportOutlined />} disabled={!canWrite} onClick={() => setAssetImportOpen(true)}>粘贴 AI 结果导入</Button>
-                        </Space>
-                        <div style={{ marginTop: 12 }}>
-                          <AssetPanel detail={detail} canWrite={canWrite} canGenerate={canGenerate} onChange={setDetail} />
-                        </div>
                       </div>
                     ),
                   },
@@ -860,6 +1036,10 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
       <Modal title="粘贴 AI 资产分析结果" open={assetImportOpen} onOk={handleImportAIAssets} onCancel={() => setAssetImportOpen(false)} width={760}>
         <TextArea value={aiAssetText} onChange={(e) => setAiAssetText(e.target.value)} placeholder="粘贴 AI 输出的 JSON" autoSize={{ minRows: 14, maxRows: 24 }} />
       </Modal>
+
+      <Modal title="粘贴片段分析结果" open={segmentImportOpen} onOk={handleImportAISegments} onCancel={() => setSegmentImportOpen(false)} width={820}>
+        <TextArea value={aiSegmentText} onChange={(e) => setAiSegmentText(e.target.value)} placeholder="粘贴 AI 输出的片段 JSON" autoSize={{ minRows: 16, maxRows: 28 }} />
+      </Modal>
     </div>
   )
 }
@@ -915,6 +1095,7 @@ interface DramaTaskPayloadView {
     kind?: string
     file_id?: string
     storyboard_id?: string
+    segment_id?: string
     asset_id?: string
     title?: string
     prompt?: string
@@ -936,8 +1117,10 @@ function parseTaskPayload(task: DramaTask): DramaTaskPayloadView {
 function TaskResultStrip({ task }: { task: DramaTask }) {
   const payload = parseTaskPayload(task)
   const results = (payload.results || []).filter((item) => item.file_id && item.file_id !== '0')
-  const promptLog = payload.prompt_log || []
-  if (!results.length && !promptLog.length && !payload.prompt) return null
+  const promptLog = payload.prompt_log?.length
+    ? payload.prompt_log
+    : results.filter((item) => item.prompt).map((item) => ({ target: item.title, prompt: item.prompt }))
+  if (!results.length && !promptLog.length) return null
 
   return (
     <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 6 }}>
@@ -945,14 +1128,22 @@ function TaskResultStrip({ task }: { task: DramaTask }) {
         <Image.PreviewGroup>
           <Space wrap size={8}>
             {results.map((item, index) => (
-              <div key={`${item.file_id}-${index}`} style={{ width: 88 }}>
-                <Image
-                  src={getPreviewUrl(item.file_id || '0')}
-                  alt={item.title || `result-${index + 1}`}
-                  width={88}
-                  height={88}
-                  style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
-                />
+              <div key={`${item.file_id}-${index}`} style={{ width: item.kind?.includes('video') ? 180 : 88 }}>
+                {item.kind?.includes('video') ? (
+                  <video
+                    src={getPreviewUrl(item.file_id || '0')}
+                    controls
+                    style={{ width: 180, height: 102, objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#111' }}
+                  />
+                ) : (
+                  <Image
+                    src={getPreviewUrl(item.file_id || '0')}
+                    alt={item.title || `result-${index + 1}`}
+                    width={88}
+                    height={88}
+                    style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                  />
+                )}
                 <Text type="secondary" ellipsis={{ tooltip: item.title || `#${index + 1}` }} style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
                   {item.title || `#${index + 1}`}
                 </Text>
@@ -961,7 +1152,7 @@ function TaskResultStrip({ task }: { task: DramaTask }) {
           </Space>
         </Image.PreviewGroup>
       )}
-      {(!!promptLog.length || payload.prompt) && (
+      {!!promptLog.length && (
         <Collapse
           size="small"
           ghost
@@ -970,7 +1161,6 @@ function TaskResultStrip({ task }: { task: DramaTask }) {
             label: `提示词${promptLog.length ? `（${promptLog.length}）` : ''}`,
             children: (
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                {payload.prompt && <TextArea value={payload.prompt} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />}
                 {promptLog.map((item, index) => (
                   <div key={`${item.target || 'prompt'}-${index}`}>
                     <Text type="secondary">{item.target || `Prompt ${index + 1}`}</Text>
@@ -983,6 +1173,135 @@ function TaskResultStrip({ task }: { task: DramaTask }) {
         />
       )}
     </Space>
+  )
+}
+
+function StoryboardSegmentList({
+  segments,
+  media,
+  canGenerate,
+  canWrite,
+  onCopy,
+  onGenerate,
+  onDeleteMedia,
+}: {
+  segments: DramaStoryboardSegment[]
+  media: DramaStoryboardMedia[]
+  canGenerate: boolean
+  canWrite: boolean
+  onCopy: (text: string) => void
+  onGenerate: (segment: DramaStoryboardSegment) => void
+  onDeleteMedia: (mediaId: string) => void
+}) {
+  return (
+    <div>
+      <Text strong>片段</Text>
+      <List
+        style={{ marginTop: 8 }}
+        dataSource={segments}
+        renderItem={(segment) => {
+          const segmentMedia = media.filter((item) => item.segment_id === segment.id && item.kind === 'image')
+          return (
+          <List.Item style={{ border: '1px solid #f0eeeb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+                <Space wrap>
+                  <Tag color="blue">#{segment.seq}</Tag>
+                  <Text strong>{segment.title || '未命名片段'}</Text>
+                  <Tag>{segment.duration_sec || 3}s</Tag>
+                  {segment.scene && <Tag color="green">{segment.scene}</Tag>}
+                </Space>
+                <Button size="small" icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => onGenerate(segment)}>生成图片</Button>
+              </Space>
+              {segment.purpose && <Text type="secondary">{segment.purpose}</Text>}
+              {segment.action && <Text>{segment.action}</Text>}
+              {segment.shot && <Text type="secondary">镜头：{segment.shot}</Text>}
+              {segment.composition_prompt && <Text type="secondary">构图：{segment.composition_prompt}</Text>}
+              {segment.dialogue && <Text type="secondary">台词：{segment.dialogue}</Text>}
+              {segment.reference_file_id !== '0' && (
+                <Image
+                  src={getPreviewUrl(segment.reference_file_id)}
+                  alt={segment.title || `segment-${segment.seq}`}
+                  style={{ width: 180, maxWidth: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                />
+              )}
+              {segmentMedia.length > 0 && (
+                <Image.PreviewGroup>
+                  <Space wrap size={8}>
+                    {segmentMedia.map((item, index) => (
+                      <div key={item.id} style={{ width: 104 }}>
+                        <Image
+                          src={getPreviewUrl(item.file_id)}
+                          alt={`${segment.title || `segment-${segment.seq}`}-${index + 1}`}
+                          width={104}
+                          height={72}
+                          style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                        />
+                        <Space size={4} style={{ marginTop: 4, width: '100%', justifyContent: 'space-between' }}>
+                          <Tag>#{index + 1}</Tag>
+                          <Popconfirm
+                            title="删除这张片段图片？"
+                            description="文件会移入回收站"
+                            okText="删除"
+                            cancelText="取消"
+                            onConfirm={() => onDeleteMedia(item.id)}
+                            disabled={!canWrite}
+                          >
+                            <Button size="small" danger icon={<DeleteOutlined />} disabled={!canWrite} />
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                    ))}
+                  </Space>
+                </Image.PreviewGroup>
+              )}
+              <Collapse
+                size="small"
+                ghost
+                items={[
+                  {
+                    key: 'composition',
+                    label: '构图控制提示词',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <TextArea value={segment.composition_prompt || ''} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => onCopy(segment.composition_prompt || '')}>复制构图提示词</Button>
+                      </Space>
+                    ),
+                  },
+                  {
+                    key: 'reference',
+                    label: '参考图提示词',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <TextArea value={segment.reference_prompt || ''} readOnly autoSize={{ minRows: 3, maxRows: 8 }} />
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => onCopy(segment.reference_prompt || '')}>复制参考图提示词</Button>
+                      </Space>
+                    ),
+                  },
+                  {
+                    key: 'video',
+                    label: '视频运动提示词',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <TextArea value={segment.video_prompt || ''} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => onCopy(segment.video_prompt || '')}>复制视频提示词</Button>
+                      </Space>
+                    ),
+                  },
+                  {
+                    key: 'negative',
+                    label: '负面提示词',
+                    children: <TextArea value={segment.negative_prompt || ''} readOnly autoSize={{ minRows: 2, maxRows: 6 }} />,
+                  },
+                ]}
+              />
+            </Space>
+          </List.Item>
+          )
+        }}
+      />
+    </div>
   )
 }
 
@@ -1001,6 +1320,7 @@ function AssetPanel({
     const next = await updateDramaAsset(detail.project.id, asset.id, {
       name: patch.name ?? asset.name,
       description: patch.description ?? asset.description,
+      reference_prompt: patch.reference_prompt ?? asset.reference_prompt,
       voice_name: patch.voice_name ?? asset.voice_name,
     })
     onChange({ ...detail, assets: detail.assets.map((item) => (item.id === next.id ? next : item)) })
@@ -1022,7 +1342,7 @@ function AssetPanel({
         asset_id: asset.id,
         asset_type: asset.type,
         name: asset.name,
-        prompt: asset.description,
+        prompt: asset.reference_prompt || asset.description,
       }),
     })
     onChange({ ...detail, tasks: [task, ...detail.tasks] })
@@ -1049,6 +1369,7 @@ function AssetPanel({
               )}
               <Input value={asset.name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { name: asset.name })} />
               <TextArea value={asset.description} disabled={!canWrite} autoSize={{ minRows: 5, maxRows: 9 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, description: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { description: asset.description })} />
+              <TextArea placeholder="参考图提示词：用于 ComfyUI 生成资产参考图" value={asset.reference_prompt || ''} disabled={!canWrite} autoSize={{ minRows: 3, maxRows: 7 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, reference_prompt: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { reference_prompt: asset.reference_prompt || '' })} />
               {asset.type === 'character' && (
                 <Input placeholder="角色音色，例如 zh-CN-XiaoxiaoNeural" value={asset.voice_name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, voice_name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { voice_name: asset.voice_name })} />
               )}

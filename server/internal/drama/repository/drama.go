@@ -65,6 +65,9 @@ func (r *DramaRepository) DeleteProject(ownerID, id uint64) error {
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaTask{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaStoryboardSegment{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, id).Delete(&model.DramaStoryboardMedia{}).Error; err != nil {
 			return err
 		}
@@ -80,6 +83,9 @@ func (r *DramaRepository) DeleteProject(ownerID, id uint64) error {
 
 func (r *DramaRepository) ReplaceStoryboards(ownerID, projectID uint64, storyboards []model.DramaStoryboard) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Delete(&model.DramaStoryboardSegment{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Delete(&model.DramaStoryboardMedia{}).Error; err != nil {
 			return err
 		}
@@ -112,9 +118,37 @@ func (r *DramaRepository) UpdateStoryboard(storyboard *model.DramaStoryboard) er
 	return r.db.Save(storyboard).Error
 }
 
+func (r *DramaRepository) ListStoryboardSegments(ownerID, projectID uint64) ([]model.DramaStoryboardSegment, error) {
+	var segments []model.DramaStoryboardSegment
+	err := r.db.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Order("storyboard_id ASC, seq ASC, created_at ASC").Find(&segments).Error
+	return segments, err
+}
+
+func (r *DramaRepository) ReplaceStoryboardSegments(ownerID, projectID, storyboardID uint64, segments []model.DramaStoryboardSegment) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("owner_id = ? AND project_id = ? AND storyboard_id = ?", ownerID, projectID, storyboardID).Delete(&model.DramaStoryboardSegment{}).Error; err != nil {
+			return err
+		}
+		if len(segments) == 0 {
+			return nil
+		}
+		return tx.Create(&segments).Error
+	})
+}
+
 func (r *DramaRepository) ListStoryboardMedia(ownerID, projectID uint64) ([]model.DramaStoryboardMedia, error) {
 	var media []model.DramaStoryboardMedia
 	err := r.db.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Order("storyboard_id ASC, sort_order ASC, created_at ASC").Find(&media).Error
+	return media, err
+}
+
+func (r *DramaRepository) ListStoryboardMediaByStoryboard(ownerID, projectID, storyboardID uint64, kind string) ([]model.DramaStoryboardMedia, error) {
+	var media []model.DramaStoryboardMedia
+	query := r.db.Where("owner_id = ? AND project_id = ? AND storyboard_id = ?", ownerID, projectID, storyboardID)
+	if kind != "" {
+		query = query.Where("kind = ?", kind)
+	}
+	err := query.Order("sort_order ASC, created_at ASC").Find(&media).Error
 	return media, err
 }
 
@@ -142,14 +176,19 @@ func (r *DramaRepository) NextStoryboardMediaSort(ownerID, projectID, storyboard
 func (r *DramaRepository) SelectStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64, kind string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.DramaStoryboardMedia{}).
-			Where("owner_id = ? AND project_id = ? AND storyboard_id = ? AND kind = ?", ownerID, projectID, storyboardID, kind).
+			Where("owner_id = ? AND project_id = ? AND storyboard_id = ? AND kind = ? AND segment_id = 0", ownerID, projectID, storyboardID, kind).
 			Update("selected", false).Error; err != nil {
 			return err
 		}
 		return tx.Model(&model.DramaStoryboardMedia{}).
-			Where("id = ? AND owner_id = ? AND project_id = ? AND storyboard_id = ?", mediaID, ownerID, projectID, storyboardID).
+			Where("id = ? AND owner_id = ? AND project_id = ? AND storyboard_id = ? AND segment_id = 0", mediaID, ownerID, projectID, storyboardID).
 			Update("selected", true).Error
 	})
+}
+
+func (r *DramaRepository) DeleteStoryboardMedia(ownerID, projectID, storyboardID, mediaID uint64) error {
+	return r.db.Where("id = ? AND owner_id = ? AND project_id = ? AND storyboard_id = ?", mediaID, ownerID, projectID, storyboardID).
+		Delete(&model.DramaStoryboardMedia{}).Error
 }
 
 func (r *DramaRepository) UpsertAssets(assets []model.DramaAsset) error {
@@ -158,7 +197,7 @@ func (r *DramaRepository) UpsertAssets(assets []model.DramaAsset) error {
 	}
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "project_id"}, {Name: "type"}, {Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"description", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"description", "reference_prompt", "updated_at"}),
 	}).Create(&assets).Error
 }
 
@@ -218,6 +257,15 @@ func (r *DramaRepository) ListFilesByParent(ownerID, parentID uint64) ([]model.F
 func (r *DramaRepository) ListFilesByStoragePrefix(ownerID uint64, prefix string) ([]model.File, error) {
 	var files []model.File
 	err := r.db.Where("user_id = ? AND storage_key LIKE ? AND deleted_at IS NULL", ownerID, prefix+"%").Find(&files).Error
+	return files, err
+}
+
+func (r *DramaRepository) ListFilesByIDs(ownerID uint64, ids []uint64) ([]model.File, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var files []model.File
+	err := r.db.Where("user_id = ? AND id IN ? AND deleted_at IS NULL", ownerID, ids).Find(&files).Error
 	return files, err
 }
 

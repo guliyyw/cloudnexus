@@ -36,6 +36,7 @@ type DramaStoryboardMedia struct {
 	BaseModel
 	ProjectID    uint64 `json:"project_id,string" gorm:"not null;index"`
 	StoryboardID uint64 `json:"storyboard_id,string" gorm:"not null;index"`
+	SegmentID    uint64 `json:"segment_id,string" gorm:"default:0;index"`
 	OwnerID      uint64 `json:"owner_id,string" gorm:"not null;index"`
 	Kind         string `json:"kind" gorm:"not null;size:20;index"`
 	FileID       uint64 `json:"file_id,string" gorm:"not null;default:0"`
@@ -45,6 +46,28 @@ type DramaStoryboardMedia struct {
 	Selected     bool   `json:"selected" gorm:"default:false;index"`
 }
 
+type DramaStoryboardSegment struct {
+	BaseModel
+	ProjectID         uint64 `json:"project_id,string" gorm:"not null;index"`
+	StoryboardID      uint64 `json:"storyboard_id,string" gorm:"not null;index"`
+	OwnerID           uint64 `json:"owner_id,string" gorm:"not null;index"`
+	Seq               int    `json:"seq" gorm:"not null;index"`
+	Title             string `json:"title" gorm:"size:200"`
+	DurationSec       int    `json:"duration_sec" gorm:"default:3"`
+	Purpose           string `json:"purpose" gorm:"type:text"`
+	Characters        string `json:"characters" gorm:"type:text"`
+	Scene             string `json:"scene" gorm:"size:200"`
+	Dialogue          string `json:"dialogue" gorm:"type:text"`
+	Action            string `json:"action" gorm:"type:text"`
+	Shot              string `json:"shot" gorm:"type:text"`
+	CompositionPrompt string `json:"composition_prompt" gorm:"type:text"`
+	ReferencePrompt   string `json:"reference_prompt" gorm:"type:text"`
+	VideoPrompt       string `json:"video_prompt" gorm:"type:text"`
+	NegativePrompt    string `json:"negative_prompt" gorm:"type:text"`
+	ReferenceFileID   uint64 `json:"reference_file_id,string" gorm:"default:0"`
+	VideoFileID       uint64 `json:"video_file_id,string" gorm:"default:0"`
+}
+
 type DramaAsset struct {
 	BaseModel
 	ProjectID       uint64 `json:"project_id,string" gorm:"not null;index"`
@@ -52,6 +75,7 @@ type DramaAsset struct {
 	Type            string `json:"type" gorm:"not null;size:20;index"`
 	Name            string `json:"name" gorm:"not null;size:120"`
 	Description     string `json:"description" gorm:"type:text"`
+	ReferencePrompt string `json:"reference_prompt" gorm:"type:text"`
 	VoiceName       string `json:"voice_name" gorm:"size:100"`
 	ReferenceFileID uint64 `json:"reference_file_id,string" gorm:"default:0"`
 }

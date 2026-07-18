@@ -168,6 +168,51 @@ func (h *DramaHandler) HandleSelectStoryboardMedia(c *gin.Context) {
 	c.JSON(200, response.OKWithData(gin.H{"storyboard": storyboard}))
 }
 
+func (h *DramaHandler) HandleDeleteStoryboardMedia(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	storyboardID, ok := parseID(c, "storyboardId")
+	if !ok {
+		return
+	}
+	mediaID, ok := parseID(c, "mediaId")
+	if !ok {
+		return
+	}
+	storyboard, media, err := h.svc.DeleteStoryboardMedia(httputil.GetUserID(c), projectID, storyboardID, mediaID)
+	if err != nil {
+		c.JSON(500, response.Error(500, "删除分镜媒体失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"storyboard": storyboard, "media": media}))
+}
+
+func (h *DramaHandler) HandleImportStoryboardSegments(c *gin.Context) {
+	projectID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	storyboardID, ok := parseID(c, "storyboardId")
+	if !ok {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
+		c.JSON(400, response.Error(400, "请粘贴片段分析结果"))
+		return
+	}
+	segments, err := h.svc.ImportStoryboardSegments(httputil.GetUserID(c), projectID, storyboardID, req.Text)
+	if err != nil {
+		c.JSON(400, response.Error(400, "片段分析结果格式不正确"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"segments": segments}))
+}
+
 func (h *DramaHandler) HandleAppendStoryboards(c *gin.Context) {
 	projectID, ok := parseID(c, "id")
 	if !ok {
@@ -198,15 +243,16 @@ func (h *DramaHandler) HandleUpdateAsset(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		VoiceName   string `json:"voice_name"`
+		Name            string `json:"name"`
+		Description     string `json:"description"`
+		ReferencePrompt string `json:"reference_prompt"`
+		VoiceName       string `json:"voice_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, response.Error(400, "参数错误"))
 		return
 	}
-	asset, err := h.svc.UpdateAsset(httputil.GetUserID(c), projectID, assetID, req.Name, req.Description, req.VoiceName)
+	asset, err := h.svc.UpdateAsset(httputil.GetUserID(c), projectID, assetID, req.Name, req.Description, req.ReferencePrompt, req.VoiceName)
 	if err != nil {
 		c.JSON(500, response.Error(500, "保存资产失败"))
 		return

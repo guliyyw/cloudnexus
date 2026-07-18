@@ -34,6 +34,7 @@ export interface DramaStoryboardMedia {
   id: string
   project_id: string
   storyboard_id: string
+  segment_id: string
   kind: 'image' | 'video'
   file_id: string
   source: string
@@ -43,12 +44,34 @@ export interface DramaStoryboardMedia {
   created_at: string
 }
 
+export interface DramaStoryboardSegment {
+  id: string
+  project_id: string
+  storyboard_id: string
+  seq: number
+  title: string
+  duration_sec: number
+  purpose: string
+  characters: string
+  scene: string
+  dialogue: string
+  action: string
+  shot: string
+  composition_prompt: string
+  reference_prompt: string
+  video_prompt: string
+  negative_prompt: string
+  reference_file_id: string
+  video_file_id: string
+}
+
 export interface DramaAsset {
   id: string
   project_id: string
   type: 'character' | 'scene'
   name: string
   description: string
+  reference_prompt: string
   voice_name: string
   reference_file_id: string
 }
@@ -90,6 +113,7 @@ export interface DramaDetail {
   project: DramaProject
   storyboards: DramaStoryboard[]
   media: DramaStoryboardMedia[]
+  segments: DramaStoryboardSegment[]
   assets: DramaAsset[]
   tasks: DramaTask[]
   summary: {
@@ -138,6 +162,16 @@ export async function selectDramaStoryboardMedia(projectId: string, storyboardId
   return res.data.data.storyboard as DramaStoryboard
 }
 
+export async function deleteDramaStoryboardMedia(projectId: string, storyboardId: string, mediaId: string) {
+  const res = await api.delete(`/drama/projects/${projectId}/storyboards/${storyboardId}/media/${mediaId}`)
+  return res.data.data as { storyboard: DramaStoryboard; media: DramaStoryboardMedia[] }
+}
+
+export async function importDramaStoryboardSegments(projectId: string, storyboardId: string, text: string) {
+  const res = await api.post(`/drama/projects/${projectId}/storyboards/${storyboardId}/segments/import`, { text })
+  return res.data.data.segments as DramaStoryboardSegment[]
+}
+
 export async function uploadStoryboardAudio(projectId: string, storyboardId: string, file: File, durationMs?: number) {
   const form = new FormData()
   form.append('file', file)
@@ -162,7 +196,7 @@ export async function appendDramaStoryboards(projectId: string, suffix: string) 
   return res.data.data.storyboards as DramaStoryboard[]
 }
 
-export async function updateDramaAsset(projectId: string, assetId: string, data: { name: string; description: string; voice_name?: string }) {
+export async function updateDramaAsset(projectId: string, assetId: string, data: { name: string; description: string; reference_prompt?: string; voice_name?: string }) {
   const res = await api.put(`/drama/projects/${projectId}/assets/${assetId}`, data)
   return res.data.data.asset as DramaAsset
 }
