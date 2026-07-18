@@ -918,6 +918,7 @@ ${current.content}`
                               renderItem={(item) => (
                                 <List.Item
                                   actions={[
+                                    <Button key="detail" size="small" icon={<EditOutlined />} onClick={() => setTaskDetail(item)}>详情</Button>,
                                     ...(item.status === 'pending' || item.status === 'running' ? [
                                       <Button key="cancel" size="small" danger icon={<StopOutlined />} onClick={() => handleCancelTask(item)}>取消</Button>,
                                     ] : []),
