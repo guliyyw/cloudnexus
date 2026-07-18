@@ -22,6 +22,7 @@ type ComfyStatus struct {
 	Checkpoints []string `json:"checkpoints"`
 	IPAdapter   bool     `json:"ip_adapter"`
 	ReActor     bool     `json:"reactor"`
+	Models      map[string]bool `json:"models"`
 	Missing     []string `json:"missing"`
 	Error       string   `json:"error,omitempty"`
 }
@@ -82,6 +83,7 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		return status
 	}
 	status.Connected = true
+	status.Models = make(map[string]bool)
 
 	var objectInfo map[string]interface{}
 	if err := c.getJSON(ctx, "/object_info", &objectInfo); err != nil {
@@ -90,6 +92,13 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		return status
 	}
 	status.Checkpoints = extractCheckpoints(objectInfo)
+	status.Models["clip_vision_sdxl"] = objectOptionContains(objectInfo, "CLIPVisionLoader", "clip_name", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors")
+	status.Models["ipadapter_plus_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus_sdxl_vit-h.safetensors")
+	status.Models["ipadapter_plus_face_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus-face_sdxl_vit-h.safetensors")
+	status.Models["wan22_high_noise"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors")
+	status.Models["wan22_low_noise"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors")
+	status.Models["wan22_text_encoder"] = objectOptionContains(objectInfo, "CLIPLoader", "clip_name", "umt5_xxl_fp8_e4m3fn_scaled.safetensors")
+	status.Models["wan_vae"] = objectOptionContains(objectInfo, "VAELoader", "vae_name", "wan_2.1_vae.safetensors")
 	for name := range objectInfo {
 		lower := strings.ToLower(name)
 		if strings.Contains(lower, "ipadapter") || strings.Contains(lower, "ip_adapter") {
@@ -104,6 +113,19 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 	}
 	if !status.IPAdapter {
 		status.Missing = append(status.Missing, "IP-Adapter 节点（角色一致性阶段使用）")
+	}
+	requiredModels := map[string]string{
+		"clip_vision_sdxl":    "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+		"ipadapter_plus_sdxl": "ip-adapter-plus_sdxl_vit-h.safetensors",
+		"wan22_high_noise":    "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+		"wan22_low_noise":     "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+		"wan22_text_encoder":  "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+		"wan_vae":             "wan_2.1_vae.safetensors",
+	}
+	for key, label := range requiredModels {
+		if !status.Models[key] {
+			status.Missing = append(status.Missing, label)
+		}
 	}
 	return status
 }
