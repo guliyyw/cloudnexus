@@ -1,0 +1,2 @@
+ALTER TABLE drama_assets ADD COLUMN IF NOT EXISTS voice_name VARCHAR(100);
+ALTER TABLE drama_tasks ADD COLUMN IF NOT EXISTS payload JSONB DEFAULT '{}'::jsonb;

@@ -29,6 +29,7 @@ import AlbumDetailPage from './pages/AlbumDetailPage'
 import MusicPage from './pages/MusicPage'
 import PlaylistPage from './pages/PlaylistPage'
 import PlaylistDetailPage from './pages/PlaylistDetailPage'
+import DramaPage from './pages/DramaPage'
 import ServiceStatusPage from './pages/ServiceStatusPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { colors } from './theme/tokens'
@@ -177,6 +178,7 @@ export default function App() {
               <Route path="/music" element={<PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition>} />
               <Route path="/playlist" element={<PageTransition><ErrorBoundary><PlaylistPage /></ErrorBoundary></PageTransition>} />
               <Route path="/playlist/:id" element={<PageTransition><ErrorBoundary><PlaylistDetailPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/drama" element={<ErrorBoundary><DramaPage /></ErrorBoundary>} />
               <Route path="/trash" element={<PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition>} />
               <Route path="/settings" element={<PageTransition><ErrorBoundary><UserSettingsPage /></ErrorBoundary></PageTransition>} />
             </Route>

@@ -86,8 +86,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-    ports:
-      - "8081:8081"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
       - ../server/logs:/app/logs
@@ -123,8 +123,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-    ports:
-      - "8082:8082"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
       - ../server/logs:/app/logs
@@ -156,8 +156,7 @@ services:
       SERVICE_VERSION: latest
       SNOWFLAKE_NODE_ID: 3
       SERVER_PORT: 8083
-    ports:
-      - "8083:8083"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
@@ -217,8 +216,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-    ports:
-      - "8085:8085"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
       - ../server/logs:/app/logs
@@ -256,8 +255,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-    ports:
-      - "8086:8086"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
       - ../server/logs:/app/logs
@@ -280,6 +279,77 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+
+  drama-svc:
+    build:
+      context: ../server
+      args:
+        SERVICE: drama-svc
+    environment:
+      CONFIG_PATH: /app/config/config.docker.yaml
+      SERVICE_VERSION: latest
+      SNOWFLAKE_NODE_ID: 7
+      SERVER_PORT: 8087
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ../server/config/config.docker.yaml:/app/config/config.docker.yaml:ro
+      - ../server/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  comfyui:
+    build:
+      context: ./comfyui
+      args:
+        COMFYUI_REF: ${COMFYUI_REF:-master}
+        PYTORCH_CUDA_INDEX: ${PYTORCH_CUDA_INDEX:-https://download.pytorch.org/whl/cu128}
+    command: ["--listen", "0.0.0.0", "--port", "8188"]
+    ports:
+      - "${COMFYUI_PORT:-8188}:8188"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    gpus: all
+    shm_size: "8gb"
+    volumes:
+      - comfyui_models:/app/ComfyUI/models
+      - comfyui_custom_nodes:/app/ComfyUI/custom_nodes
+      - comfyui_input:/app/ComfyUI/input
+      - comfyui_output:/app/ComfyUI/output
+      - comfyui_user:/app/ComfyUI/user
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8188/system_stats', timeout=5).read()"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 90s
 
   nginx:
     image: nginx:alpine
@@ -306,8 +376,15 @@ services:
         condition: service_healthy
       collab-svc:
         condition: service_healthy
+      drama-svc:
+        condition: service_healthy
 
 volumes:
   pgdata:
   redisdata:
   miniodata:
+  comfyui_models:
+  comfyui_custom_nodes:
+  comfyui_input:
+  comfyui_output:
+  comfyui_user:

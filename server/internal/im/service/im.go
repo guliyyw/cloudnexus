@@ -171,10 +171,69 @@ func (s *IMService) DeleteConversation(userID, convID uint64) error {
 }
 
 func (s *IMService) GetMessages(conversationID, userID uint64, before uint64, limit int) ([]model.Message, error) {
+	isMember, err := s.repo.IsConversationMember(conversationID, userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询会话成员失败", err)
+	}
+	if !isMember {
+		return nil, apperrors.NewAppError(403, "你不是该会话的成员", apperrors.ErrForbidden)
+	}
 	if limit < 1 || limit > 100 {
 		limit = 50
 	}
 	return s.repo.FindMessages(conversationID, before, limit)
+}
+
+func (s *IMService) SearchMessages(userID uint64, keyword string, conversationID uint64, page, pageSize int) ([]model.MessageSearchResult, int64, error) {
+	if strings.TrimSpace(keyword) == "" {
+		return []model.MessageSearchResult{}, 0, nil
+	}
+	if conversationID > 0 {
+		isMember, err := s.repo.IsConversationMember(conversationID, userID)
+		if err != nil {
+			return nil, 0, apperrors.NewAppError(500, "查询会话成员失败", err)
+		}
+		if !isMember {
+			return nil, 0, apperrors.NewAppError(403, "你不是该会话的成员", apperrors.ErrForbidden)
+		}
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.SearchMessages(userID, keyword, conversationID, page, pageSize)
+}
+
+func (s *IMService) GetMessageContext(conversationID, messageID, userID uint64, before, after int) ([]model.Message, error) {
+	isMember, err := s.repo.IsConversationMember(conversationID, userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "查询会话成员失败", err)
+	}
+	if !isMember {
+		return nil, apperrors.NewAppError(403, "你不是该会话的成员", apperrors.ErrForbidden)
+	}
+	msg, err := s.repo.FindMessageByID(messageID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "消息不存在", apperrors.ErrNotFound)
+	}
+	if msg.ConversationID != conversationID {
+		return nil, apperrors.NewAppError(400, "消息不属于该会话", apperrors.ErrBadRequest)
+	}
+	if before < 0 {
+		before = 20
+	}
+	if after < 0 {
+		after = 20
+	}
+	if before > 100 {
+		before = 100
+	}
+	if after > 100 {
+		after = 100
+	}
+	return s.repo.FindMessageContext(conversationID, msg.Seq, before, after)
 }
 
 // --- Group chat methods ---

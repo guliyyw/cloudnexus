@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
@@ -43,9 +44,10 @@ var moduleDefs = []struct {
 }{
 	{Key: "files", Name: "云存储", Icon: "CloudOutlined", Service: "user-file-svc"},
 	{Key: "im", Name: "即时通讯", Icon: "MessageOutlined", Service: "im-svc"},
-	{Key: "docker", Name: "Docker管理", Icon: "ContainerOutlined", Service: "docker-svc"},
+	{Key: "docker", Name: "Docker 管理", Icon: "ContainerOutlined", Service: "docker-svc"},
 	{Key: "camera", Name: "视频监控", Icon: "VideoCameraOutlined", Service: "camera-svc"},
 	{Key: "collab", Name: "在线文档", Icon: "FileTextOutlined", Service: "collab-svc"},
+	{Key: "drama", Name: "短剧工坊", Icon: "PlaySquareOutlined", Service: "drama-svc"},
 	{Key: "infra", Name: "基础设施", Icon: "ClusterOutlined", Service: ""},
 }
 
@@ -65,9 +67,8 @@ func (s *DashboardService) GetStatus() (*DashboardStatus, error) {
 		}
 	}
 
-	var modules []ModuleInfo
+	modules := make([]ModuleInfo, 0, len(moduleDefs))
 	summary := DashboardSummary{}
-
 	for _, def := range moduleDefs {
 		var mod ModuleInfo
 		if def.Key == "infra" {
@@ -131,29 +132,22 @@ func formatNodeDetail(healthy, unresponsive, offline, total int) string {
 	if total == 0 {
 		return "无节点"
 	}
-	parts := make([]string, 0)
+	parts := make([]string, 0, 3)
 	if healthy > 0 {
-		parts = append(parts, pluralize(healthy, "个", "节点", "正常"))
+		parts = append(parts, pluralize(healthy, "正常"))
 	}
 	if unresponsive > 0 {
-		parts = append(parts, pluralize(unresponsive, "个", "节点", "无响应"))
+		parts = append(parts, pluralize(unresponsive, "无响应"))
 	}
 	if offline > 0 {
-		parts = append(parts, pluralize(offline, "个", "节点", "离线"))
+		parts = append(parts, pluralize(offline, "离线"))
 	}
 	if len(parts) == 1 && healthy == total {
-		return pluralize(total, "个", "节点", "正常")
+		return pluralize(total, "正常")
 	}
-	result := ""
-	for i, p := range parts {
-		if i > 0 {
-			result += "，"
-		}
-		result += p
-	}
-	return result
+	return strings.Join(parts, "；")
 }
 
-func pluralize(count int, unit, noun, state string) string {
-	return fmt.Sprintf("%d", count) + unit + noun + state
+func pluralize(count int, state string) string {
+	return fmt.Sprintf("%d 个节点%s", count, state)
 }

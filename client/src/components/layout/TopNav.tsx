@@ -20,6 +20,7 @@ import {
   DeleteOutlined,
   SunOutlined,
   MoonOutlined,
+  PlaySquareOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../../stores/authStore'
 import { useThemeStore } from '../../stores/themeStore'
@@ -49,11 +50,12 @@ export default function TopNav() {
 
   useEffect(() => {
     if (!user) fetchProfile()
-  }, [])
+  }, [fetchProfile, user])
 
-const allNavItems: NavItem[] = [
+  const allNavItems: NavItem[] = [
     { key: 'dashboard', icon: <DashboardOutlined />, label: '首页', path: '/dashboard' },
     { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files' },
+    { key: 'drama', icon: <PlaySquareOutlined />, label: '短剧工坊', path: '/drama' },
     { key: 'shares', icon: <ShareAltOutlined />, label: '我的分享', path: '/shares' },
     { key: 'trash', icon: <DeleteOutlined />, label: '回收站', path: '/trash' },
     { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat' },
@@ -141,7 +143,7 @@ const allNavItems: NavItem[] = [
               fontSize: 20,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
-              letterSpacing: -0.5,
+              letterSpacing: 0,
             }}
             onClick={() => navigate('/dashboard')}
           >

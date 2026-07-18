@@ -1,6 +1,9 @@
 package repository
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
 )
@@ -38,6 +41,23 @@ func (r *MusicRepository) FindAllTracks(page, pageSize int) ([]model.PublicTrack
 	return tracks, total, err
 }
 
+func (r *MusicRepository) FindPublicTrackByMetadata(title, artist, album string) (*model.PublicTrack, error) {
+	var track model.PublicTrack
+	err := r.db.Where(
+		"LOWER(TRIM(title)) = ? AND LOWER(TRIM(COALESCE(artist, ''))) = ? AND LOWER(TRIM(COALESCE(album, ''))) = ?",
+		strings.ToLower(strings.TrimSpace(title)),
+		strings.ToLower(strings.TrimSpace(artist)),
+		strings.ToLower(strings.TrimSpace(album)),
+	).First(&track).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &track, nil
+}
+
 func (r *MusicRepository) DeleteTrack(id uint64) error {
 	return r.db.Delete(&model.PublicTrack{}, id).Error
 }
@@ -70,7 +90,6 @@ func (r *MusicRepository) FindPlaylistByID(id uint64) (*model.Playlist, error) {
 func (r *MusicRepository) FindPlaylistsByOwner(ownerID uint64) ([]model.Playlist, error) {
 	var pls []model.Playlist
 	err := r.db.Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&pls).Error
-	// fill track_count
 	for i := range pls {
 		var cnt int64
 		r.db.Model(&model.PlaylistTrack{}).Where("playlist_id = ?", pls[i].ID).Count(&cnt)

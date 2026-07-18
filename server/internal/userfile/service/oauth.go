@@ -1,33 +1,41 @@
 package service
 
 import (
+	apperrors "github.com/cloudnexus/server/pkg/errors"
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
 )
 
-// TODO: OAuth 令牌应加密存储
-// 当前 AccessToken/RefreshToken 明文存储在数据库中，存在泄露风险
-// 建议实现：
-// 1. 在配置中添加 oauth_encryption_key
-// 2. 存储 AES-GCM 加密后的令牌
-// 3. 读取时解密
-
-type OAuthService struct {
-	db *gorm.DB
+type tokenCipher interface {
+	Encrypt(plain string) (string, error)
+	Decrypt(encrypted string) (string, error)
 }
 
-func NewOAuthService(db *gorm.DB) *OAuthService {
-	return &OAuthService{db: db}
+type OAuthService struct {
+	db     *gorm.DB
+	cipher tokenCipher
+}
+
+func NewOAuthService(db *gorm.DB, cipher tokenCipher) *OAuthService {
+	return &OAuthService{db: db, cipher: cipher}
 }
 
 func (s *OAuthService) BindOAuth(userID uint64, provider, openID, accessToken, refreshToken string) error {
-	// TODO: 加密 accessToken 和 refreshToken
+	encryptedAccessToken, err := s.cipher.Encrypt(accessToken)
+	if err != nil {
+		return apperrors.NewAppError(500, "加密 OAuth access token 失败", apperrors.ErrInternalServer)
+	}
+	encryptedRefreshToken, err := s.cipher.Encrypt(refreshToken)
+	if err != nil {
+		return apperrors.NewAppError(500, "加密 OAuth refresh token 失败", apperrors.ErrInternalServer)
+	}
 	binding := &model.OAuthBinding{
-		UserID:       userID,
-		Provider:     provider,
-		OpenID:       openID,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		UserID:                 userID,
+		Provider:               provider,
+		OpenID:                 openID,
+		AccessToken:            encryptedAccessToken,
+		RefreshToken:           encryptedRefreshToken,
+		TokenEncryptionVersion: 1,
 	}
 	return s.db.Where(model.OAuthBinding{Provider: provider, OpenID: openID}).
 		Assign(binding).FirstOrCreate(binding).Error
@@ -44,6 +52,9 @@ func (s *OAuthService) FindByOAuth(provider, openID string) (*model.OAuthBinding
 	if err != nil {
 		return nil, err
 	}
+	if err := s.decryptBinding(&binding); err != nil {
+		return nil, err
+	}
 	return &binding, nil
 }
 
@@ -51,4 +62,21 @@ func (s *OAuthService) ListBindings(userID uint64) ([]model.OAuthBinding, error)
 	var bindings []model.OAuthBinding
 	err := s.db.Where("user_id = ?", userID).Find(&bindings).Error
 	return bindings, err
+}
+
+func (s *OAuthService) decryptBinding(binding *model.OAuthBinding) error {
+	if binding.TokenEncryptionVersion == 0 {
+		return nil
+	}
+	accessToken, err := s.cipher.Decrypt(binding.AccessToken)
+	if err != nil {
+		return apperrors.NewAppError(500, "解密 OAuth access token 失败", apperrors.ErrInternalServer)
+	}
+	refreshToken, err := s.cipher.Decrypt(binding.RefreshToken)
+	if err != nil {
+		return apperrors.NewAppError(500, "解密 OAuth refresh token 失败", apperrors.ErrInternalServer)
+	}
+	binding.AccessToken = accessToken
+	binding.RefreshToken = refreshToken
+	return nil
 }

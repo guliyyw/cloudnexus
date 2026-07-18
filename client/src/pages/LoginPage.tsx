@@ -7,6 +7,15 @@ import { colors } from '../theme/tokens'
 
 const { Title, Text } = Typography
 
+function getLoginErrorMessage(err: any) {
+  const status = err?.response?.status
+  const serverMessage = err?.response?.data?.message
+
+  if (status === 429) return '账户已被锁定，请稍后再试'
+  if (status === 401) return '用户名或密码错误'
+  return serverMessage || '登录失败，请稍后重试'
+}
+
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -19,7 +28,7 @@ export default function LoginPage() {
       message.success('登录成功')
       navigate('/dashboard')
     } catch (err: any) {
-      message.error(err.response?.data?.message || '登录失败')
+      message.error(getLoginErrorMessage(err))
     } finally {
       setLoading(false)
     }

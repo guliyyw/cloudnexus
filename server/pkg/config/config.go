@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/base64"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -47,6 +49,9 @@ type AppConfig struct {
 		Password string `yaml:"password"`
 		From     string `yaml:"from"`
 	} `yaml:"smtp"`
+	OAuth struct {
+		EncryptionKey string `yaml:"encryption_key"`
+	} `yaml:"oauth"`
 }
 
 // Host extracts the hostname from a PostgreSQL DSN.
@@ -114,11 +119,28 @@ func applyEnvOverrides(cfg *AppConfig) {
 	if v := os.Getenv("SMTP_PASSWORD"); v != "" {
 		cfg.SMTP.Password = v
 	}
+	if v := os.Getenv("OAUTH_ENCRYPTION_KEY"); v != "" {
+		cfg.OAuth.EncryptionKey = v
+	}
 	if v := os.Getenv("SERVER_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil {
 			cfg.Server.Port = port
 		}
 	}
+}
+
+func (c *AppConfig) ValidateOAuthEncryptionKey() error {
+	if c.OAuth.EncryptionKey == "" {
+		return fmt.Errorf("oauth encryption key is required")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(c.OAuth.EncryptionKey)
+	if err != nil {
+		return fmt.Errorf("oauth encryption key must be valid base64: %w", err)
+	}
+	if len(decoded) != 32 {
+		return fmt.Errorf("oauth encryption key must decode to 32 bytes")
+	}
+	return nil
 }
 
 func overrideDSNPassword(dsn, newPass string) string {

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "subject=$(node -e 'const fs=require(\"fs\"); const data=JSON.parse(fs.readFileSync(0,\"utf8\")||\"{}\"); const raw=(data.task&&data.task.subject)||\"completed task\"; const safe=String(raw).replace(/[\\r\\n\"$`\\\\]+/g, \" \").trim() || \"completed task\"; process.stdout.write(safe);') && git add -A && if git diff --cached --quiet; then exit 0; fi; git commit -m \"chore: complete task - ${subject}\" -m \"Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\"",
+            "timeout": 120,
+            "statusMessage": "Auto-committing completed task"
+          }
+        ]
+      }
+    ]
+  }
+}
