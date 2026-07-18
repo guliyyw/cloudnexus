@@ -105,6 +105,7 @@ export interface ComfyUIStatus {
   checkpoints: string[]
   ip_adapter: boolean
   reactor: boolean
+  models?: Record<string, boolean>
   missing: string[]
   error?: string
 }
