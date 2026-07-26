@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline, Select } from 'antd'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline, InputNumber } from 'antd'
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined, FolderOpenOutlined, ClockCircleOutlined, StepForwardOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
@@ -93,7 +93,8 @@ export default function CameraLiveView() {
   const [recording, setRecording] = useState(false)
   const [recordings, setRecordings] = useState<CameraRecording[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
-  const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(7200)
+  const [recordingHours, setRecordingHours] = useState(2)
+  const [recordingMinutes, setRecordingMinutes] = useState(0)
   const [recordingEndsAt, setRecordingEndsAt] = useState<string | null>(null)
   const [playbackUrl, setPlaybackUrl] = useState('')
   const segmentSeconds = 300
@@ -102,6 +103,7 @@ export default function CameraLiveView() {
   const [selectedRecordingId, setSelectedRecordingId] = useState('')
   const [continuousPlayback, setContinuousPlayback] = useState(true)
   const recordingDateKey = recordingDate.format('YYYY-MM-DD')
+  const recordingDurationSeconds = recordingHours * 3600 + recordingMinutes * 60
 
   // Canvas dimensions for face detection input + display size for overlay scaling
   const canvasSizeRef = useRef({ w: 640, h: 360 })
@@ -141,7 +143,10 @@ export default function CameraLiveView() {
       ])
       setRecording(status.recording)
       setRecordingEndsAt(status.ends_at)
-      if (status.recording) setRecordingDurationSeconds(status.duration_seconds)
+      if (status.recording) {
+        setRecordingHours(Math.floor(status.duration_seconds / 3600))
+        setRecordingMinutes(Math.floor((status.duration_seconds % 3600) / 60))
+      }
       setRecordings(list.items)
     } catch { /* ignore */ }
   }, [id, recordingDateKey])
@@ -765,21 +770,50 @@ export default function CameraLiveView() {
                   <Tag color="green">保存到云盘</Tag>
                   <Tag>手动删除前永久保留</Tag>
                 </Space>
-                <Select
-                  value={recordingDurationSeconds}
-                  disabled={recording || recordingLoading}
-                  style={{ width: '100%' }}
-                  options={[
-                    { value: 0, label: '不限时，手动停止' },
-                    { value: 1800, label: '连续录像 30 分钟' },
-                    { value: 3600, label: '连续录像 1 小时' },
-                    { value: 7200, label: '连续录像 2 小时' },
-                    { value: 14400, label: '连续录像 4 小时' },
-                    { value: 28800, label: '连续录像 8 小时' },
-                    { value: 86400, label: '连续录像 24 小时' },
-                  ]}
-                  onChange={setRecordingDurationSeconds}
-                />
+                <div>
+                  <Space size="small" style={{ marginBottom: 8 }}>
+                    <span>连续录像时长</span>
+                    {recordingDurationSeconds === 0 && <Tag>不限时</Tag>}
+                  </Space>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8 }}>
+                    <Space.Compact style={{ width: '100%' }}>
+                      <InputNumber
+                        aria-label="连续录像小时"
+                        min={0}
+                        max={168}
+                        step={1}
+                        precision={0}
+                        controls
+                        changeOnWheel
+                        value={recordingHours}
+                        disabled={recording || recordingLoading}
+                        style={{ width: '100%' }}
+                        onChange={(value) => {
+                          const hours = value ?? 0
+                          setRecordingHours(hours)
+                          if (hours >= 168) setRecordingMinutes(0)
+                        }}
+                      />
+                      <Button disabled style={{ width: 56 }}>小时</Button>
+                    </Space.Compact>
+                    <Space.Compact style={{ width: '100%' }}>
+                      <InputNumber
+                        aria-label="连续录像分钟"
+                        min={0}
+                        max={recordingHours >= 168 ? 0 : 59}
+                        step={1}
+                        precision={0}
+                        controls
+                        changeOnWheel
+                        value={recordingMinutes}
+                        disabled={recording || recordingLoading}
+                        style={{ width: '100%' }}
+                        onChange={(value) => setRecordingMinutes(value ?? 0)}
+                      />
+                      <Button disabled style={{ width: 56 }}>分钟</Button>
+                    </Space.Compact>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <Space size="small">
                     <span>连续回放</span>
