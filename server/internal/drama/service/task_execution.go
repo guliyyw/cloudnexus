@@ -154,7 +154,11 @@ func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTa
 		return fmt.Errorf("ComfyUI is not reachable: %s", status.Error)
 	}
 	imageSettings := defaultImageGenerationSettings(setting.ImageSettings)
-	imageSettings.Checkpoint = selectImageCheckpoint(imageSettings.Checkpoint, status.Checkpoints)
+	imageSettings.Checkpoint = selectImageCheckpoint(
+		imageSettings.Checkpoint,
+		status.Checkpoints,
+		project.Description+" "+project.Settings+" "+project.Preface,
+	)
 	if imageSettings.Checkpoint == "" {
 		return fmt.Errorf("ComfyUI is connected, but no checkpoint model was detected")
 	}
@@ -186,10 +190,11 @@ func (s *DramaService) generateAssetReference(ctx context.Context, task *model.D
 	if prompt == "" {
 		prompt = asset.Description
 	}
-	prompt = buildAssetReferencePrompt(asset, prompt)
+	styleHint := project.Description + " " + project.Settings + " " + project.Preface + " " + prompt
+	prompt = buildAssetReferencePrompt(asset, prompt, styleHint)
 	s.appendTaskPromptLog(task, asset.Name, prompt)
 	update(15, fmt.Sprintf("Generating reference image: %s", asset.Name))
-	data, filename, err := client.Generate(ctx, prompt, assetReferenceSettings(settings), update)
+	data, filename, err := client.Generate(ctx, prompt, assetReferenceSettings(settings, styleHint), update)
 	if err != nil {
 		return err
 	}
@@ -644,6 +649,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	}
 	characters := make([]string, 0)
 	characterNames := make([]string, 0)
+	characterLabels := make([]string, 0)
 	scenes := make([]string, 0)
 	for _, asset := range relevantAssets {
 		name := strings.TrimSpace(asset.Name)
@@ -658,14 +664,15 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		if asset.Type == "character" {
 			characters = append(characters, line)
 			characterNames = append(characterNames, name)
+			characterLabels = append(characterLabels, characterSemanticLabel(name, asset.Description+" "+asset.ReferencePrompt))
 		} else if asset.Type == "scene" {
 			scenes = append(scenes, line)
 		}
 	}
 	parts := []string{
-		"Mandatory frame constraints: " + mandatoryStoryboardConstraints(characterNames, basePrompt+" "+scene),
+		"Mandatory frame constraints: " + mandatoryStoryboardConstraints(characterLabels, basePrompt+" "+scene),
 		"Composition priority: " + compactText(compositionPrompt, 260),
-		"Realistic cinematic still frame, wide horizontal 16:9, coherent natural lighting, clear faces and hands.",
+		projectVisualStyleDirective(project, basePrompt+" "+compositionPrompt) + ", wide horizontal 16:9, coherent lighting, clear subjects and details.",
 		"Visible action and dialogue state: " + compactText(plot, 360),
 		"Scene: " + compactText(scene, 180),
 		"Visual details: " + compactText(basePrompt, 380),
@@ -694,12 +701,55 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	return strings.Join(kept, "\n")
 }
 
-func mandatoryStoryboardConstraints(characterNames []string, visualPrompt string) string {
-	constraints := make([]string, 0, len(characterNames)+3)
-	if len(characterNames) > 0 {
-		constraints = append(constraints, fmt.Sprintf("exactly %d people visible in one coherent scene", len(characterNames)))
-		for index, name := range characterNames {
-			constraints = append(constraints, fmt.Sprintf("%s on the %s", characterSemanticLabel(name), characterRegionLabel(index, len(characterNames))))
+func projectVisualStyleDirective(project *model.DramaProject, localPrompt string) string {
+	styleText := localPrompt
+	if project != nil {
+		styleText = strings.Join([]string{
+			project.Description,
+			project.Settings,
+			project.Preface,
+			localPrompt,
+		}, " ")
+	}
+	switch detectDramaVisualStyle(styleText) {
+	case "anime":
+		return "high-quality anime cinematic still frame, consistent character design, polished linework"
+	case "3d":
+		return "high-quality stylized 3D cinematic still frame, consistent character models and materials"
+	case "illustration":
+		return "high-quality illustrated cinematic still frame, consistent art direction and character design"
+	case "realistic":
+		return "photorealistic cinematic still frame, natural skin and material detail"
+	default:
+		return "high-quality cinematic still frame matching the approved reference style"
+	}
+}
+
+func detectDramaVisualStyle(text string) string {
+	lower := strings.ToLower(text)
+	switch {
+	case containsAny(lower, []string{"anime", "manga", "二次元", "动漫", "日漫", "赛璐璐"}):
+		return "anime"
+	case containsAny(lower, []string{"3d animation", "3d render", "三维动画", "3d动画", "皮克斯", "pixar"}):
+		return "3d"
+	case containsAny(lower, []string{"illustration", "watercolor", "comic", "插画", "水彩", "绘本", "漫画"}):
+		return "illustration"
+	case containsAny(lower, []string{"photorealistic", "realistic photo", "live action", "真人", "写实", "实拍", "摄影"}):
+		return "realistic"
+	default:
+		return "reference"
+	}
+}
+
+func mandatoryStoryboardConstraints(characterLabels []string, visualPrompt string) string {
+	constraints := make([]string, 0, len(characterLabels)+3)
+	if len(characterLabels) > 0 {
+		constraints = append(constraints, fmt.Sprintf("exactly %d people/main characters visible in one coherent scene", len(characterLabels)))
+		for index, label := range characterLabels {
+			if !isSemanticCharacterLabel(label) {
+				label = characterSemanticLabel(label, "")
+			}
+			constraints = append(constraints, fmt.Sprintf("%s on the %s", label, characterRegionLabel(index, len(characterLabels))))
 		}
 	}
 	lower := strings.ToLower(visualPrompt)
@@ -714,6 +764,15 @@ func mandatoryStoryboardConstraints(characterNames []string, visualPrompt string
 		constraints = append(constraints, "unobstructed view, no foreground object crossing any face")
 	}
 	return strings.Join(constraints, ", ")
+}
+
+func isSemanticCharacterLabel(label string) bool {
+	switch strings.TrimSpace(strings.ToLower(label)) {
+	case "character", "adult woman", "adult man", "elderly woman", "elderly man", "girl", "boy", "dog", "cat", "robot character":
+		return true
+	default:
+		return false
+	}
 }
 
 func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStoryboardSegment) []model.DramaAsset {
@@ -1274,7 +1333,7 @@ func compactText(value string, limit int) string {
 	return value
 }
 
-func buildAssetReferencePrompt(asset *model.DramaAsset, raw string) string {
+func buildAssetReferencePrompt(asset *model.DramaAsset, raw, styleHint string) string {
 	if strings.TrimSpace(asset.ReferencePrompt) != "" {
 		raw = asset.ReferencePrompt
 	}
@@ -1283,11 +1342,21 @@ func buildAssetReferencePrompt(asset *model.DramaAsset, raw string) string {
 		referencePrompt = cleanPromptText(raw)
 	}
 	englishHints := inferAssetEnglishHints(asset, raw+" "+asset.Description+" "+referencePrompt)
-	prefix := "realistic cinematic reference photo, clear subject, complete composition, high detail, natural skin texture, not concept art"
+	prefix := "high-quality reference image matching the requested visual style, clear subject, complete composition, consistent design"
+	style := detectDramaVisualStyle(styleHint + " " + referencePrompt)
+	if style == "realistic" {
+		prefix = "photorealistic cinematic reference photo, clear subject, complete composition, high detail, natural materials"
+	} else if style == "anime" {
+		prefix = "high-quality anime character design reference, polished linework and coloring, consistent design"
+	} else if style == "3d" {
+		prefix = "high-quality stylized 3D character model reference, consistent materials and proportions"
+	} else if style == "illustration" {
+		prefix = "high-quality illustrated character reference, consistent art direction and proportions"
+	}
 	if asset.Type == "character" {
-		prefix = "realistic cinematic character reference photo, single real person, full body or medium full shot, clear face, natural skin texture, modern realistic clothing, not fantasy, not armor"
+		prefix += ", single character, full body or medium full shot, unobstructed face and costume"
 	} else if asset.Type == "scene" {
-		prefix = "realistic cinematic environment reference photo, wide establishing shot, clear spatial layout, coherent lighting, high detail"
+		prefix += ", environment only, wide establishing view, clear spatial layout, coherent lighting, no foreground character"
 	}
 	parts := []string{prefix, englishHints, referencePrompt, "no text, no watermark, no logo, no UI, no extra people unless requested"}
 	kept := make([]string, 0, len(parts))
@@ -1300,11 +1369,17 @@ func buildAssetReferencePrompt(asset *model.DramaAsset, raw string) string {
 	return strings.Join(kept, ", ")
 }
 
-func assetReferenceSettings(settings ImageGenerationSettings) ImageGenerationSettings {
-	settings.NegativePrompt = strings.TrimSpace(strings.Join([]string{
-		settings.NegativePrompt,
-		"armor, cuirass, breastplate, knight, medieval, fantasy costume, robe, cloak, cape, game character, concept art, illustration, anime, painting, sketch, plastic skin, doll",
-	}, ", "))
+func assetReferenceSettings(settings ImageGenerationSettings, styleHint string) ImageGenerationSettings {
+	styleNegative := "text, watermark, logo, UI, duplicate subject, cropped subject"
+	switch detectDramaVisualStyle(styleHint) {
+	case "realistic":
+		styleNegative += ", anime, illustration, painting, sketch, plastic skin, doll"
+	case "anime":
+		styleNegative += ", photorealistic, live action, 3d render"
+	case "3d":
+		styleNegative += ", flat 2d drawing, photorealistic live action"
+	}
+	settings.NegativePrompt = strings.TrimSpace(strings.Join([]string{settings.NegativePrompt, styleNegative}, ", "))
 	return settings
 }
 
@@ -1414,7 +1489,6 @@ func inferAssetEnglishHints(asset *model.DramaAsset, text string) string {
 	if len(hints) == 0 {
 		return ""
 	}
-	hints = append([]string{"modern realistic photo of"}, hints...)
 	return strings.Join(hints, ", ")
 }
 

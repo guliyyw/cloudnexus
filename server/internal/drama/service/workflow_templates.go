@@ -208,7 +208,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 				characterPrompt = characterName
 			}
 			workflow[characterPromptID] = workflowNode("CLIPTextEncode", map[string]interface{}{
-				"text": fmt.Sprintf("one visible %s, %s, located on the %s, medium shot, complete upper body, clear face", characterSemanticLabel(characterName), characterPrompt, regionLabel),
+				"text": fmt.Sprintf("one visible %s, %s, located on the %s, medium shot, complete upper body, clear face", characterSemanticLabel(characterName, reference.Prompt), characterPrompt, regionLabel),
 				"clip": []interface{}{"1", 1},
 			}, "Character regional prompt")
 			workflow[characterConditionID] = workflowNode("ConditioningSetMask", map[string]interface{}{
@@ -261,19 +261,42 @@ func characterRegionBounds(index, count, width int) (int, int) {
 	return start, end - start
 }
 
-func characterSemanticLabel(name string) string {
-	lower := strings.ToLower(name)
+func characterSemanticLabel(name, prompt string) string {
+	lower := " " + strings.ToLower(name+" "+prompt) + " "
+	if containsAny(lower, []string{"dog", "puppy", "犬", "狗"}) {
+		return "dog"
+	}
+	if containsAny(lower, []string{"cat", "kitten", "猫"}) {
+		return "cat"
+	}
+	if containsAny(lower, []string{"robot", "android", "机器人", "机械人"}) {
+		return "robot character"
+	}
+	isChild := containsAny(lower, []string{"child", "kid", "young boy", "young girl", "儿童", "小孩", "男孩", "女孩", "少年", "少女"})
+	isOlder := containsAny(lower, []string{"elderly", "older man", "older woman", "senior", "老人", "老年", "爷爷", "奶奶"})
+	isFemale := containsAny(lower, []string{
+		" woman", " female", " girl", " she ", " her ", "wife", "mother", "girlfriend",
+		"女性", "女人", "女孩", "妻子", "母亲", "妈妈", "奶奶", "姐姐", "妹妹", "女友",
+	})
+	isMale := containsAny(lower, []string{
+		" man", " male", " boy", " he ", " his ", "husband", "father", "boyfriend",
+		"男性", "男人", "男孩", "丈夫", "父亲", "爸爸", "爷爷", "哥哥", "弟弟", "男友",
+	})
 	switch {
-	case strings.Contains(lower, "丈夫"), strings.Contains(lower, "父亲"), strings.Contains(lower, "爷爷"),
-		strings.Contains(lower, "哥哥"), strings.Contains(lower, "弟弟"), strings.Contains(lower, "男友"),
-		strings.Contains(lower, "husband"), strings.Contains(lower, "father"), strings.Contains(lower, "boyfriend"):
-		return "adult man"
-	case strings.Contains(lower, "妻子"), strings.Contains(lower, "母亲"), strings.Contains(lower, "奶奶"),
-		strings.Contains(lower, "姐姐"), strings.Contains(lower, "妹妹"), strings.Contains(lower, "女友"),
-		strings.Contains(lower, "wife"), strings.Contains(lower, "mother"), strings.Contains(lower, "girlfriend"):
+	case isChild && isFemale:
+		return "girl"
+	case isChild && isMale:
+		return "boy"
+	case isOlder && isFemale:
+		return "elderly woman"
+	case isOlder && isMale:
+		return "elderly man"
+	case isFemale:
 		return "adult woman"
+	case isMale:
+		return "adult man"
 	default:
-		return "person"
+		return "character"
 	}
 }
 

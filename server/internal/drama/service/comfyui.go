@@ -689,15 +689,29 @@ func defaultImageGenerationSettings(raw string) ImageGenerationSettings {
 	return settings
 }
 
-func selectImageCheckpoint(current string, available []string) string {
+func selectImageCheckpoint(current string, available []string, styleHints ...string) string {
 	current = strings.TrimSpace(current)
 	lowerCurrent := strings.ToLower(current)
 	if current != "" && !strings.Contains(lowerCurrent, "sd_xl_base") {
 		return current
 	}
-	for _, pattern := range []string{"realvisxl", "juggernaut"} {
+	style := detectDramaVisualStyle(strings.Join(styleHints, " "))
+	patterns := []string{"realvisxl", "juggernaut"}
+	if style == "anime" {
+		patterns = []string{"animagine", "anime", "pony"}
+	} else if style == "3d" || style == "illustration" {
+		patterns = []string{"dreamshaper", "art", "illustration"}
+	}
+	for _, pattern := range patterns {
 		for _, checkpoint := range available {
 			if strings.Contains(strings.ToLower(checkpoint), pattern) {
+				return checkpoint
+			}
+		}
+	}
+	if style == "anime" || style == "3d" || style == "illustration" {
+		for _, checkpoint := range available {
+			if strings.Contains(strings.ToLower(checkpoint), "sd_xl_base") {
 				return checkpoint
 			}
 		}
