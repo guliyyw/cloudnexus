@@ -75,6 +75,9 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 	if classCounts["SolidMask"] != 4 || classCounts["FeatherMask"] != 2 {
 		t.Fatalf("unexpected regional mask nodes: %#v", classCounts)
 	}
+	if classCounts["ConditioningSetMask"] != 2 || classCounts["ConditioningCombine"] != 2 {
+		t.Fatalf("regional character prompts were not applied: %#v", classCounts)
+	}
 	if !loaderPresets["PLUS (high strength)"] || !loaderPresets["PLUS FACE (portraits)"] {
 		t.Fatalf("scene and face loaders were not separated: %#v", loaderPresets)
 	}
@@ -84,6 +87,9 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 	samplerInputs := workflow["5"].(map[string]interface{})["inputs"].(map[string]interface{})
 	if reflect.DeepEqual(samplerInputs["model"], []interface{}{"1", 0}) {
 		t.Fatal("sampler still uses the unconditioned checkpoint model")
+	}
+	if reflect.DeepEqual(samplerInputs["positive"], []interface{}{"2", 0}) {
+		t.Fatal("sampler does not use regional character conditioning")
 	}
 }
 
@@ -154,5 +160,19 @@ func TestFilterAssetsForSegmentPrefersExplicitSpatialOrder(t *testing.T) {
 	want := []string{"wife", "husband", "living room"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("spatial asset order = %#v, want %#v", got, want)
+	}
+}
+
+func TestSelectImageCheckpointUpgradesBaseModel(t *testing.T) {
+	available := []string{
+		"sd_xl_base_1.0.safetensors",
+		"RealVisXL_V5.0_fp16.safetensors",
+	}
+	got := selectImageCheckpoint("sd_xl_base_1.0.safetensors", available)
+	if got != "RealVisXL_V5.0_fp16.safetensors" {
+		t.Fatalf("checkpoint = %q, want RealVisXL", got)
+	}
+	if got := selectImageCheckpoint("custom.safetensors", available); got != "custom.safetensors" {
+		t.Fatalf("explicit custom checkpoint was replaced: %q", got)
 	}
 }

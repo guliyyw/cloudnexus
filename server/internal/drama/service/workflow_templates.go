@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -114,6 +115,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 
 	nextID := 20
 	modelRef := []interface{}{"1", 0}
+	positiveRef := []interface{}{"2", 0}
 	for index, reference := range references {
 		if reference.Kind != "scene" {
 			continue
@@ -135,7 +137,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 		}, "Load scene IPAdapter")
 		workflow[applyID] = workflowNode("IPAdapterAdvanced", map[string]interface{}{
 			"model": modelRef, "ipadapter": []interface{}{loaderID, 1}, "image": []interface{}{prepID, 0},
-			"weight": 0.5, "weight_type": "composition precise", "combine_embeds": "average",
+			"weight": 0.35, "weight_type": "composition precise", "combine_embeds": "average",
 			"start_at": 0.0, "end_at": 0.68, "embeds_scaling": "V only", "clip_vision": []interface{}{"8", 0},
 		}, "Apply scene globally")
 		modelRef = []interface{}{applyID, 0}
@@ -173,6 +175,12 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 			nextID++
 			featherMaskID := strconv.Itoa(nextID)
 			nextID++
+			characterPromptID := strconv.Itoa(nextID)
+			nextID++
+			characterConditionID := strconv.Itoa(nextID)
+			nextID++
+			combinedConditionID := strconv.Itoa(nextID)
+			nextID++
 			applyID := strconv.Itoa(nextID)
 			nextID++
 			x, regionWidth := characterRegionBounds(characterIndex, characterCount, settings.Width)
@@ -193,6 +201,20 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 			workflow[featherMaskID] = workflowNode("FeatherMask", map[string]interface{}{
 				"mask": []interface{}{compositeMaskID, 0}, "left": 64, "top": 16, "right": 64, "bottom": 16,
 			}, "Feather character region")
+			regionLabel := characterRegionLabel(characterIndex, characterCount)
+			characterName := strings.TrimSuffix(reference.Name, filepath.Ext(reference.Name))
+			workflow[characterPromptID] = workflowNode("CLIPTextEncode", map[string]interface{}{
+				"text": fmt.Sprintf("one visible person, %s, located on the %s, medium shot, complete upper body, clear face", characterName, regionLabel),
+				"clip": []interface{}{"1", 1},
+			}, "Character regional prompt")
+			workflow[characterConditionID] = workflowNode("ConditioningSetMask", map[string]interface{}{
+				"conditioning": []interface{}{characterPromptID, 0}, "mask": []interface{}{featherMaskID, 0},
+				"strength": 1.25, "set_cond_area": "mask bounds",
+			}, "Bind character prompt to region")
+			workflow[combinedConditionID] = workflowNode("ConditioningCombine", map[string]interface{}{
+				"conditioning_1": positiveRef, "conditioning_2": []interface{}{characterConditionID, 0},
+			}, "Combine regional character prompt")
+			positiveRef = []interface{}{combinedConditionID, 0}
 			applyType := "IPAdapterAdvanced"
 			applyInputs := map[string]interface{}{
 				"model": modelRef, "ipadapter": []interface{}{characterLoaderID, 1}, "image": []interface{}{prepID, 0},
@@ -214,6 +236,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 	sampler := workflow["5"].(map[string]interface{})
 	samplerInputs := sampler["inputs"].(map[string]interface{})
 	samplerInputs["model"] = modelRef
+	samplerInputs["positive"] = positiveRef
 	return workflow, nil
 }
 

@@ -93,6 +93,7 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		return status
 	}
 	status.Checkpoints = extractCheckpoints(objectInfo)
+	status.Models["photorealistic_sdxl"] = checkpointNameContains(status.Checkpoints, "realvisxl", "juggernaut")
 	status.Models["clip_vision_sdxl"] = objectOptionContains(objectInfo, "CLIPVisionLoader", "clip_name", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors")
 	status.Models["ipadapter_plus_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus_sdxl_vit-h.safetensors")
 	status.Models["ipadapter_plus_face_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus-face_sdxl_vit-h.safetensors")
@@ -685,6 +686,40 @@ func defaultImageGenerationSettings(raw string) ImageGenerationSettings {
 		settings.Scheduler = "normal"
 	}
 	return settings
+}
+
+func selectImageCheckpoint(current string, available []string) string {
+	current = strings.TrimSpace(current)
+	lowerCurrent := strings.ToLower(current)
+	if current != "" && !strings.Contains(lowerCurrent, "sd_xl_base") {
+		return current
+	}
+	for _, pattern := range []string{"realvisxl", "juggernaut"} {
+		for _, checkpoint := range available {
+			if strings.Contains(strings.ToLower(checkpoint), pattern) {
+				return checkpoint
+			}
+		}
+	}
+	if current != "" {
+		return current
+	}
+	if len(available) > 0 {
+		return available[0]
+	}
+	return ""
+}
+
+func checkpointNameContains(checkpoints []string, patterns ...string) bool {
+	for _, checkpoint := range checkpoints {
+		lower := strings.ToLower(checkpoint)
+		for _, pattern := range patterns {
+			if strings.Contains(lower, strings.ToLower(pattern)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func extractCheckpoints(info map[string]interface{}) []string {

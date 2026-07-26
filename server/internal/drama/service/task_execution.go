@@ -154,9 +154,7 @@ func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTa
 		return fmt.Errorf("ComfyUI is not reachable: %s", status.Error)
 	}
 	imageSettings := defaultImageGenerationSettings(setting.ImageSettings)
-	if imageSettings.Checkpoint == "" && len(status.Checkpoints) > 0 {
-		imageSettings.Checkpoint = status.Checkpoints[0]
-	}
+	imageSettings.Checkpoint = selectImageCheckpoint(imageSettings.Checkpoint, status.Checkpoints)
 	if imageSettings.Checkpoint == "" {
 		return fmt.Errorf("ComfyUI is connected, but no checkpoint model was detected")
 	}

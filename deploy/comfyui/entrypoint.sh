@@ -34,4 +34,10 @@ if [ "${COMFYUI_DOWNLOAD_FACEID_MODELS:-true}" = "true" ]; then
   fi
 fi
 
+if [ "${COMFYUI_DOWNLOAD_REALVISXL:-true}" = "true" ]; then
+  download_file \
+    "https://huggingface.co/SG161222/RealVisXL_V5.0/resolve/main/RealVisXL_V5.0_fp16.safetensors" \
+    "/app/ComfyUI/models/checkpoints/RealVisXL_V5.0_fp16.safetensors"
+fi
+
 exec python main.py "$@"
