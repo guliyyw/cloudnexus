@@ -9,27 +9,34 @@ import (
 	"time"
 
 	"github.com/cloudnexus/server/internal/camera/repository"
-	"github.com/cloudnexus/server/pkg/model"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
+	"github.com/cloudnexus/server/pkg/model"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // MediaMTX path config request.
 type pathConfig struct {
-	Name         string `json:"name"`
-	Source       string `json:"source"`
-	SourceOnDemand bool `json:"sourceOnDemand"`
+	Name           string `json:"name"`
+	Source         string `json:"source"`
+	SourceOnDemand bool   `json:"sourceOnDemand"`
 }
 
 // CameraService manages cameras and the MediaMTX proxy.
 type CameraService struct {
-	repo        *repository.CameraRepository
-	mediamtxURL string // e.g. http://mediamtx:8889
+	repo             *repository.CameraRepository
+	mediamtxURL      string // e.g. http://mediamtx:8889
+	mediamtxUser     string
+	mediamtxPassword string
 }
 
-func NewCameraService(repo *repository.CameraRepository, mediamtxURL string) *CameraService {
-	return &CameraService{repo: repo, mediamtxURL: mediamtxURL}
+func NewCameraService(repo *repository.CameraRepository, mediamtxURL, mediamtxUser, mediamtxPassword string) *CameraService {
+	return &CameraService{
+		repo:             repo,
+		mediamtxURL:      mediamtxURL,
+		mediamtxUser:     mediamtxUser,
+		mediamtxPassword: mediamtxPassword,
+	}
 }
 
 func (s *CameraService) ListCameras(ownerID uint64, offset, limit int) ([]model.Camera, int64, error) {
@@ -87,17 +94,18 @@ func (s *CameraService) StartStream(cameraID uint64, ownerID uint64) (hlsURL, we
 
 	pathName := fmt.Sprintf("cam_%d", cameraID)
 	cfg := pathConfig{
-		Name:         pathName,
-		Source:       c.StreamURL,
+		Name:           pathName,
+		Source:         c.StreamURL,
 		SourceOnDemand: true,
 	}
 
 	body, _ := json.Marshal(cfg)
-	resp, err := http.Post(
+	req, _ := http.NewRequest("POST",
 		fmt.Sprintf("%s/v3/config/paths/add/%s", s.mediamtxURL, pathName),
-		"application/json",
-		bytes.NewReader(body),
-	)
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	s.setMediaMTXAuth(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("mediamtx API 失败: %w", err)
 	}
@@ -142,6 +150,7 @@ func (s *CameraService) stopStream(c *model.Camera) error {
 	pathName := fmt.Sprintf("cam_%d", c.ID)
 	req, _ := http.NewRequest("DELETE",
 		fmt.Sprintf("%s/v3/config/paths/delete/%s", s.mediamtxURL, pathName), nil)
+	s.setMediaMTXAuth(req)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -151,6 +160,12 @@ func (s *CameraService) stopStream(c *model.Camera) error {
 	c.Status = "offline"
 	s.repo.UpdateCamera(c)
 	return nil
+}
+
+func (s *CameraService) setMediaMTXAuth(req *http.Request) {
+	if s.mediamtxUser != "" || s.mediamtxPassword != "" {
+		req.SetBasicAuth(s.mediamtxUser, s.mediamtxPassword)
+	}
 }
 
 // ListEvents returns recognition events for a camera.

@@ -247,6 +247,8 @@ services:
       NODE_NAME: camera-svc
       NODE_HOST: camera-svc
       MEDIAMTX_API_URL: http://mediamtx:8889
+      MEDIAMTX_API_USER: ${MEDIAMTX_API_USER:-cloudnexus}
+      MEDIAMTX_API_PASSWORD: ${MEDIAMTX_API_PASSWORD:-cloudnexus123}
       AI_INFERENCE_URL: http://ai-inference:8000
       AI_INFERENCE_TOKEN: ${AI_INFERENCE_TOKEN}
       CAMERA_RECORDING_DIR: /app/recordings

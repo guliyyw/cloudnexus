@@ -17,6 +17,9 @@ webrtcAddress: :8890
 # HLS settings
 hlsAddress: :8888
 hlsAlwaysRemux: yes
+# Nginx is the only public HLS entry point. This secret lets the proxy fetch
+# every playlist and segment without relying on MediaMTX browser session cookies.
+hlsCDNSecret: cloudnexus-hls-proxy-2026
 
 # Path defaults (paths are created dynamically by camera-svc)
 paths:

@@ -84,6 +84,14 @@ func main() {
 	if mediamtxURL == "" {
 		mediamtxURL = "http://mediamtx:8889"
 	}
+	mediamtxUser := os.Getenv("MEDIAMTX_API_USER")
+	if mediamtxUser == "" {
+		mediamtxUser = "cloudnexus"
+	}
+	mediamtxPassword := os.Getenv("MEDIAMTX_API_PASSWORD")
+	if mediamtxPassword == "" {
+		mediamtxPassword = "cloudnexus123"
+	}
 	inferenceURL := os.Getenv("AI_INFERENCE_URL")
 	if inferenceURL == "" {
 		inferenceURL = "http://ai-inference:8000"
@@ -102,7 +110,7 @@ func main() {
 
 	inferenceToken := os.Getenv("AI_INFERENCE_TOKEN")
 
-	camSvc := service.NewCameraService(repo, mediamtxURL)
+	camSvc := service.NewCameraService(repo, mediamtxURL, mediamtxUser, mediamtxPassword)
 	recordingDir := os.Getenv("CAMERA_RECORDING_DIR")
 	if recordingDir == "" {
 		recordingDir = "/app/recordings"

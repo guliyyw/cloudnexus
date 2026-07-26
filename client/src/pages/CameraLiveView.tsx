@@ -45,15 +45,15 @@ function buildMjpegUrl(streamUrl: string): string | null {
     const base = streamUrl.replace(/\/[^/]*$/, '') // strip last path segment
     return `${base}/video`
   }
-  // RTSP camera — derive HTTP URL from host
-  try {
-    const u = new URL(streamUrl)
-    return `http://${u.hostname}:8080/video` // IP Webcam default
-  } catch {
-    const m = streamUrl.match(/:\/\/([^/:]+)/)
-    if (m) return `http://${m[1]}:8080/video`
-  }
   return null
+}
+
+function shouldUseDirectMjpeg(camera: Camera): boolean {
+  const protocol = camera.protocol?.toLowerCase()
+  const url = camera.stream_url.toLowerCase()
+  if (protocol === 'rtsp' || protocol === 'rtmp' || protocol === 'onvif') return false
+  if (url.startsWith('rtsp://') || url.startsWith('rtmp://')) return false
+  return isPrivateNetwork() && (url.startsWith('http://') || url.startsWith('https://'))
 }
 
 export default function CameraLiveView() {
@@ -278,7 +278,7 @@ export default function CameraLiveView() {
     } catch {
       // MJPEG direct failed — fall back to HLS
       message.info('直连失败，尝试服务器中转...')
-      handlePlayHls()
+      await handlePlayHls()
     } finally {
       setLoading(false)
     }
@@ -286,12 +286,9 @@ export default function CameraLiveView() {
 
   const handlePlay = () => {
     if (!camera) return
-    if (isPrivateNetwork()) {
-      // Private/local network — MJPEG direct works, zero server bandwidth
+    if (shouldUseDirectMjpeg(camera)) {
       handlePlayMjpeg()
     } else {
-      // Public network — browser PNA policy blocks cross-network requests,
-      // must use server-relayed HLS
       handlePlayHls()
     }
   }
