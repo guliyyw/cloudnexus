@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, InputNumber } from 'antd'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm } from 'antd'
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
@@ -93,9 +93,7 @@ export default function CameraLiveView() {
   const [recordings, setRecordings] = useState<CameraRecording[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
   const [playbackUrl, setPlaybackUrl] = useState('')
-  const [retentionDays, setRetentionDays] = useState(7)
-  const [maxStorageMB, setMaxStorageMB] = useState(1024)
-  const [segmentSeconds, setSegmentSeconds] = useState(60)
+  const segmentSeconds = 300
   const [historyPlaying, setHistoryPlaying] = useState(false)
 
   // Canvas dimensions for face detection input + display size for overlay scaling
@@ -135,9 +133,6 @@ export default function CameraLiveView() {
         getCameraRecordings(id, 1, 20),
       ])
       setRecording(status.recording)
-      if (status.segment_seconds) setSegmentSeconds(status.segment_seconds)
-      if (status.retention_days) setRetentionDays(status.retention_days)
-      if (status.max_storage_mb) setMaxStorageMB(status.max_storage_mb)
       setRecordings(list.items)
     } catch { /* ignore */ }
   }, [id])
@@ -412,8 +407,8 @@ export default function CameraLiveView() {
       if (checked) {
         const status = await startCameraRecording(id, {
           segment_seconds: segmentSeconds,
-          retention_days: retentionDays,
-          max_storage_mb: maxStorageMB,
+          retention_days: 0,
+          max_storage_mb: 0,
         })
         setRecording(status.recording)
         message.success('Recording started')
@@ -683,14 +678,10 @@ export default function CameraLiveView() {
             >
               <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 12 }}>
                 <Space wrap size="small">
-                  <span>片段</span>
-                  <InputNumber min={10} max={3600} size="small" value={segmentSeconds} onChange={(v) => setSegmentSeconds(Number(v || 60))} addonAfter="秒" disabled={recording} style={{ width: 120 }} />
-                  <span>保留</span>
-                  <InputNumber min={1} max={365} size="small" value={retentionDays} onChange={(v) => setRetentionDays(Number(v || 7))} addonAfter="天" disabled={recording} style={{ width: 120 }} />
-                  <span>空间</span>
-                  <InputNumber min={128} size="small" value={maxStorageMB} onChange={(v) => setMaxStorageMB(Number(v || 1024))} addonAfter="MB" disabled={recording} style={{ width: 140 }} />
+                  <Tag color="blue">每 5 分钟保存一个片段</Tag>
+                  <Tag color="green">永久保留</Tag>
                 </Space>
-                {recording && <Tag color="red">正在录像，达到保留策略后会自动循环删除旧片段</Tag>}
+                {recording && <Tag color="red">正在录像，停止后仍会保留，需手动删除</Tag>}
               </Space>
               <Table
                 dataSource={recordings}

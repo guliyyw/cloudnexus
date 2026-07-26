@@ -232,6 +232,15 @@ services:
 
   # Camera service: camera CRUD, stream lifecycle, face library/attendance,
   # video/image detection, and integration with MediaMTX plus AI inference.
+  camera-recordings-init:
+    profiles: ["camera"]
+    image: alpine:3.21
+    user: "0:0"
+    command: ["sh", "-c", "chown ${HOST_UID:-1000}:${HOST_GID:-1000} /recordings"]
+    volumes:
+      - camera_recordings:/recordings
+    restart: "no"
+
   camera-svc:
     profiles: ["camera"]
     build:
@@ -275,6 +284,8 @@ services:
         condition: service_started
       ai-inference:
         condition: service_started
+      camera-recordings-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     deploy:
       resources:

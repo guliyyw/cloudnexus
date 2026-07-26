@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cloudnexus/server/internal/camera/repository"
@@ -208,12 +209,18 @@ func (s *RecordingService) runFFmpeg(ctx context.Context, streamURL string, job 
 	}()
 
 	args := buildFFmpegArgs(streamURL, job.pattern, job.opts.SegmentSeconds)
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd := exec.Command("ffmpeg", args...)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
+	if err := cmd.Start(); err != nil {
+		job.lastErr = err.Error()
+		zap.L().Warn("camera recording failed to start", zap.Uint64("camera_id", job.cameraID), zap.Error(err))
+		return
+	}
+
 	errCh := make(chan error, 1)
-	go func() { errCh <- cmd.Run() }()
+	go func() { errCh <- cmd.Wait() }()
 
 	for {
 		select {
@@ -227,7 +234,18 @@ func (s *RecordingService) runFFmpeg(ctx context.Context, streamURL string, job 
 			}
 			return
 		case <-ctx.Done():
-			<-errCh
+			// Let FFmpeg finalize the current MP4 segment before forcing exit.
+			if cmd.Process != nil {
+				_ = cmd.Process.Signal(syscall.SIGINT)
+			}
+			select {
+			case <-errCh:
+			case <-time.After(10 * time.Second):
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+				<-errCh
+			}
 			return
 		}
 	}
@@ -273,7 +291,8 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 		}
 
 		started := parseSegmentStart(job.cameraID, filepath.Base(path), info.ModTime())
-		ended := started.Add(time.Duration(job.opts.SegmentSeconds) * time.Second)
+		durationSeconds := probeDurationSeconds(path, job.opts.SegmentSeconds)
+		ended := started.Add(time.Duration(durationSeconds) * time.Second)
 		rec := &model.CameraRecording{
 			BaseModel:       model.BaseModel{ID: snowflake.Uint64()},
 			CameraID:        job.cameraID,
@@ -283,13 +302,35 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 			Status:          "ready",
 			StartedAt:       started,
 			EndedAt:         &ended,
-			DurationSeconds: job.opts.SegmentSeconds,
+			DurationSeconds: durationSeconds,
 			SizeBytes:       info.Size(),
 		}
 		if err := s.repo.CreateRecording(rec); err != nil {
 			job.lastErr = err.Error()
 		}
 	}
+}
+
+func probeDurationSeconds(path string, fallback int) int {
+	output, err := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		path,
+	).Output()
+	if err != nil {
+		return fallback
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+	if err != nil || duration <= 0 {
+		return fallback
+	}
+	seconds := int(duration + 0.5)
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
 }
 
 func (s *RecordingService) cleanup(job *recordingJob) {
@@ -343,19 +384,19 @@ func parseSegmentStart(cameraID uint64, name string, fallback time.Time) time.Ti
 
 func normalizeRecordingOptions(opts RecordingOptions) RecordingOptions {
 	if opts.SegmentSeconds < 10 {
-		opts.SegmentSeconds = 60
+		opts.SegmentSeconds = 300
 	}
 	if opts.SegmentSeconds > 3600 {
 		opts.SegmentSeconds = 3600
 	}
-	if opts.RetentionDays < 1 {
-		opts.RetentionDays = 7
+	if opts.RetentionDays < 0 {
+		opts.RetentionDays = 0
 	}
 	if opts.RetentionDays > 365 {
 		opts.RetentionDays = 365
 	}
-	if opts.MaxStorageMB < 128 {
-		opts.MaxStorageMB = 1024
+	if opts.MaxStorageMB < 0 {
+		opts.MaxStorageMB = 0
 	}
 	return opts
 }
