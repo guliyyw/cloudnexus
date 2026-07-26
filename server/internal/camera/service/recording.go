@@ -413,6 +413,7 @@ func buildFFmpegArgs(streamURL, pattern string, segmentSeconds int) []string {
 		"-b:a", "128k",
 		"-f", "segment",
 		"-segment_time", strconv.Itoa(segmentSeconds),
+		"-segment_format_options", "movflags=+faststart",
 		"-reset_timestamps", "1",
 		"-strftime", "1",
 		pattern,
@@ -426,7 +427,7 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 		job.lastErr = err.Error()
 		return
 	}
-	for _, path := range files {
+	for _, path := range completedSegmentPaths(files, includeRecent) {
 		info, err := os.Stat(path)
 		if err != nil || info.Size() == 0 {
 			continue
@@ -442,7 +443,18 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 		}
 
 		started := parseSegmentStart(job.cameraID, filepath.Base(path), info.ModTime())
-		durationSeconds := probeDurationSeconds(path, job.opts.SegmentSeconds)
+		durationSeconds, err := probeDurationSeconds(path)
+		if err != nil {
+			if includeRecent {
+				job.lastErr = err.Error()
+				zap.L().Warn("camera recording segment is not finalized",
+					zap.Uint64("camera_id", job.cameraID),
+					zap.String("file", filepath.Base(path)),
+					zap.Error(err),
+				)
+			}
+			continue
+		}
 		ended := started.Add(time.Duration(durationSeconds) * time.Second)
 		cloudFile, err := s.uploadSegmentToCloudDrive(job, path, info, started)
 		if err != nil {
@@ -476,6 +488,15 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 			job.lastErr = err.Error()
 		}
 	}
+}
+
+func completedSegmentPaths(files []string, includeActive bool) []string {
+	paths := append([]string(nil), files...)
+	sort.Strings(paths)
+	if !includeActive && len(paths) > 0 {
+		paths = paths[:len(paths)-1]
+	}
+	return paths
 }
 
 func (s *RecordingService) uploadSegmentToCloudDrive(
@@ -603,26 +624,29 @@ func (s *RecordingService) rollbackCloudFile(file *model.File, adjustQuota bool)
 	}
 }
 
-func probeDurationSeconds(path string, fallback int) int {
+func probeDurationSeconds(path string) (int, error) {
 	output, err := exec.Command(
 		"ffprobe",
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",
 		path,
-	).Output()
+	).CombinedOutput()
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("ffprobe %s: %w: %s", filepath.Base(path), err, strings.TrimSpace(string(output)))
 	}
 	duration, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
-	if err != nil || duration <= 0 {
-		return fallback
+	if err != nil {
+		return 0, fmt.Errorf("parse duration for %s: %w", filepath.Base(path), err)
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("invalid duration for %s", filepath.Base(path))
 	}
 	seconds := int(duration + 0.5)
 	if seconds < 1 {
-		return 1
+		seconds = 1
 	}
-	return seconds
+	return seconds, nil
 }
 
 func (s *RecordingService) cleanup(job *recordingJob) {
