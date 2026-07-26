@@ -71,7 +71,7 @@ func (h *RecordingHandler) HandleList(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 500 {
 		pageSize = 20
 	}
 	var from, to *time.Time

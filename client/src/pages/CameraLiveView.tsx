@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline, Select } from 'antd'
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined, FolderOpenOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined, FolderOpenOutlined, ClockCircleOutlined, StepForwardOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
 import { detectFaces, embeddingToArray, loadModels } from '../utils/faceDetection'
@@ -100,6 +100,7 @@ export default function CameraLiveView() {
   const [historyPlaying, setHistoryPlaying] = useState(false)
   const [recordingDate, setRecordingDate] = useState(dayjs())
   const [selectedRecordingId, setSelectedRecordingId] = useState('')
+  const [continuousPlayback, setContinuousPlayback] = useState(true)
   const recordingDateKey = recordingDate.format('YYYY-MM-DD')
 
   // Canvas dimensions for face detection input + display size for overlay scaling
@@ -136,7 +137,7 @@ export default function CameraLiveView() {
     try {
       const [status, list] = await Promise.all([
         getCameraRecordingStatus(id),
-        getCameraRecordings(id, 1, 100, recordingDateKey),
+        getCameraRecordings(id, 1, 500, recordingDateKey),
       ])
       setRecording(status.recording)
       setRecordingEndsAt(status.ends_at)
@@ -461,6 +462,26 @@ export default function CameraLiveView() {
     setPlaying(true)
   }
 
+  const handleRecordingEnded = () => {
+    if (!continuousPlayback || !selectedRecordingId) return
+    const sequence = [...recordings].sort(
+      (a, b) => dayjs(a.started_at).valueOf() - dayjs(b.started_at).valueOf(),
+    )
+    const currentIndex = sequence.findIndex((rec) => rec.id === selectedRecordingId)
+    if (currentIndex >= 0 && currentIndex < sequence.length - 1) {
+      handlePlayRecording(sequence[currentIndex + 1])
+      return
+    }
+    message.info('已播放到当天最后一个录像片段')
+  }
+
+  const handlePlayFromEarliest = () => {
+    const earliest = [...recordings].sort(
+      (a, b) => dayjs(a.started_at).valueOf() - dayjs(b.started_at).valueOf(),
+    )[0]
+    if (earliest) handlePlayRecording(earliest)
+  }
+
   const handleReturnLive = async () => {
     setPlaybackUrl('')
     setSelectedRecordingId('')
@@ -674,7 +695,13 @@ export default function CameraLiveView() {
                   />
                   <div style={{ position: 'relative', lineHeight: 0 }}>
                     {historyPlaying && (
-                      <video src={playbackUrl} controls autoPlay style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
+                      <video
+                        src={playbackUrl}
+                        controls
+                        autoPlay
+                        onEnded={handleRecordingEnded}
+                        style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }}
+                      />
                     )}
                     {mjpegMode && !historyPlaying && (
                       <canvas
@@ -753,6 +780,24 @@ export default function CameraLiveView() {
                   ]}
                   onChange={setRecordingDurationSeconds}
                 />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <Space size="small">
+                    <span>连续回放</span>
+                    <Switch
+                      size="small"
+                      checked={continuousPlayback}
+                      onChange={setContinuousPlayback}
+                    />
+                  </Space>
+                  <Button
+                    size="small"
+                    icon={<StepForwardOutlined />}
+                    disabled={recordings.length === 0}
+                    onClick={handlePlayFromEarliest}
+                  >
+                    从最早开始
+                  </Button>
+                </div>
                 {recording && (
                   <Tag color="red">
                     {recordingEndsAt
