@@ -234,16 +234,24 @@ export default function CameraLiveView() {
       if (!video) return
 
       const directUrl = `${window.location.protocol}//${window.location.host}${hls_url}`
+      video.muted = false
+      video.volume = 1
 
       if (Hls.isSupported()) {
         const hls = new Hls()
         hls.loadSource(directUrl)
         hls.attachMedia(video)
-        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play())
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {
+            message.info('浏览器已阻止带声音自动播放，请点击视频中的播放按钮')
+          })
+        })
         hlsRef.current = hls
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = directUrl
-        video.play()
+        video.play().catch(() => {
+          message.info('浏览器已阻止带声音自动播放，请点击视频中的播放按钮')
+        })
       }
       message.success('视频流已开启（服务器中转）')
       fetchCamera()
@@ -715,7 +723,7 @@ export default function CameraLiveView() {
                       />
                     )}
                     {!mjpegMode && !historyPlaying && (
-                      <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
+                      <video ref={videoRef} controls playsInline style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
                     )}
                     {faceRecognizing && !historyPlaying && (
                       <FaceOverlay

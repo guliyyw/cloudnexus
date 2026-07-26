@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,13 @@ type CameraService struct {
 	mediamtxURL      string // e.g. http://mediamtx:8889
 	mediamtxUser     string
 	mediamtxPassword string
+	liveMu           sync.Mutex
+	liveStreams      map[uint64]*liveStream
+}
+
+type liveStream struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func NewCameraService(repo *repository.CameraRepository, mediamtxURL, mediamtxUser, mediamtxPassword string) *CameraService {
@@ -41,6 +49,7 @@ func NewCameraService(repo *repository.CameraRepository, mediamtxURL, mediamtxUs
 		mediamtxURL:      mediamtxURL,
 		mediamtxUser:     mediamtxUser,
 		mediamtxPassword: mediamtxPassword,
+		liveStreams:      make(map[uint64]*liveStream),
 	}
 }
 
@@ -173,10 +182,13 @@ func (s *CameraService) StartStream(cameraID uint64, ownerID uint64) (hlsURL, we
 	}
 
 	pathName := fmt.Sprintf("cam_%d", cameraID)
+	s.stopLiveStream(cameraID)
+	_ = s.deleteMediaMTXPath(pathName)
+
 	cfg := pathConfig{
 		Name:           pathName,
-		Source:         c.StreamURL,
-		SourceOnDemand: true,
+		Source:         "publisher",
+		SourceOnDemand: false,
 	}
 
 	body, _ := json.Marshal(cfg)
@@ -193,12 +205,12 @@ func (s *CameraService) StartStream(cameraID uint64, ownerID uint64) (hlsURL, we
 
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		// Path already exists — stream is already configured, just return URLs.
-		if resp.StatusCode == 400 && bytes.Contains(respBody, []byte("path already exists")) {
-			zap.L().Info("mediamtx path already exists, reusing", zap.String("path", pathName))
-		} else {
-			return "", "", fmt.Errorf("mediamtx 返回 %d: %s", resp.StatusCode, string(respBody))
-		}
+		return "", "", fmt.Errorf("mediamtx 返回 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	if err := s.startLiveStream(cameraID, pathName, c.StreamURL); err != nil {
+		_ = s.deleteMediaMTXPath(pathName)
+		return "", "", err
 	}
 
 	// Update camera status
@@ -228,6 +240,11 @@ func (s *CameraService) StopStream(cameraID uint64, ownerID uint64) error {
 
 func (s *CameraService) stopStream(c *model.Camera) error {
 	pathName := fmt.Sprintf("cam_%d", c.ID)
+	s.stopLiveStream(c.ID)
+	return s.deleteMediaMTXPath(pathName)
+}
+
+func (s *CameraService) deleteMediaMTXPath(pathName string) error {
 	req, _ := http.NewRequest("DELETE",
 		fmt.Sprintf("%s/v3/config/paths/delete/%s", s.mediamtxURL, pathName), nil)
 	s.setMediaMTXAuth(req)
@@ -238,6 +255,178 @@ func (s *CameraService) stopStream(c *model.Camera) error {
 	defer resp.Body.Close()
 
 	return nil
+}
+
+func (s *CameraService) startLiveStream(cameraID uint64, pathName, streamURL string) error {
+	publishURL, err := s.mediaMTXPublishURL(pathName)
+	if err != nil {
+		return fmt.Errorf("build mediamtx publish URL: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "ffmpeg", buildLiveFFmpegArgs(streamURL, publishURL)...)
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return fmt.Errorf("start live audio transcoder: %w", err)
+	}
+
+	stream := &liveStream{cancel: cancel, done: make(chan struct{})}
+	s.liveMu.Lock()
+	s.liveStreams[cameraID] = stream
+	s.liveMu.Unlock()
+
+	go func() {
+		err := cmd.Wait()
+		close(stream.done)
+
+		s.liveMu.Lock()
+		if s.liveStreams[cameraID] == stream {
+			delete(s.liveStreams, cameraID)
+		}
+		s.liveMu.Unlock()
+
+		if err != nil && ctx.Err() == nil {
+			zap.L().Warn("live camera transcoder stopped",
+				zap.Uint64("camera_id", cameraID),
+				zap.Error(err))
+		}
+	}()
+
+	if err := s.waitForPublishedPath(ctx, pathName, 12*time.Second); err != nil {
+		s.stopLiveStream(cameraID)
+		return err
+	}
+	if err := s.waitForHLSManifest(ctx, pathName, 12*time.Second); err != nil {
+		s.stopLiveStream(cameraID)
+		return err
+	}
+	return nil
+}
+
+func (s *CameraService) stopLiveStream(cameraID uint64) {
+	s.liveMu.Lock()
+	stream := s.liveStreams[cameraID]
+	if stream != nil {
+		delete(s.liveStreams, cameraID)
+	}
+	s.liveMu.Unlock()
+	if stream == nil {
+		return
+	}
+
+	stream.cancel()
+	select {
+	case <-stream.done:
+	case <-time.After(3 * time.Second):
+		zap.L().Warn("timed out stopping live camera transcoder", zap.Uint64("camera_id", cameraID))
+	}
+}
+
+func (s *CameraService) waitForPublishedPath(ctx context.Context, pathName string, timeout time.Duration) error {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+			fmt.Sprintf("%s/v3/paths/get/%s", s.mediamtxURL, pathName), nil)
+		s.setMediaMTXAuth(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("live camera transcoder stopped before publishing")
+		case <-deadline.C:
+			return fmt.Errorf("timed out waiting for live camera stream")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *CameraService) waitForHLSManifest(ctx context.Context, pathName string, timeout time.Duration) error {
+	apiURL, err := url.Parse(s.mediamtxURL)
+	if err != nil {
+		return err
+	}
+	host := apiURL.Hostname()
+	if host == "" {
+		return fmt.Errorf("mediamtx API URL has no hostname")
+	}
+
+	manifestURL := &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(host, "8888"),
+		Path:   "/" + pathName + "/index.m3u8",
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		req, _ := http.NewRequestWithContext(waitCtx, http.MethodGet, manifestURL.String(), nil)
+		s.setMediaMTXAuth(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out waiting for HLS manifest")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *CameraService) mediaMTXPublishURL(pathName string) (string, error) {
+	apiURL, err := url.Parse(s.mediamtxURL)
+	if err != nil {
+		return "", err
+	}
+	host := apiURL.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("mediamtx API URL has no hostname")
+	}
+
+	publishURL := &url.URL{
+		Scheme: "rtsp",
+		Host:   net.JoinHostPort(host, "8554"),
+		Path:   "/" + pathName,
+	}
+	if s.mediamtxUser != "" || s.mediamtxPassword != "" {
+		publishURL.User = url.UserPassword(s.mediamtxUser, s.mediamtxPassword)
+	}
+	return publishURL.String(), nil
+}
+
+func buildLiveFFmpegArgs(streamURL, publishURL string) []string {
+	return []string{
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-rtsp_transport", "tcp",
+		"-i", streamURL,
+		"-map", "0:v:0",
+		"-map", "0:a:0?",
+		"-c:v", "copy",
+		"-c:a", "aac",
+		"-ar", "48000",
+		"-ac", "1",
+		"-b:a", "64k",
+		"-f", "rtsp",
+		"-rtsp_transport", "tcp",
+		publishURL,
+	}
 }
 
 func (s *CameraService) setMediaMTXAuth(req *http.Request) {
