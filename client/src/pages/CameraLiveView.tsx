@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm } from 'antd'
-import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline } from 'antd'
+import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined, FolderOpenOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
 import { detectFaces, embeddingToArray, loadModels } from '../utils/faceDetection'
@@ -9,6 +9,7 @@ import { FaceTracker } from '../utils/faceTracker'
 import FaceOverlay, { type FaceBox } from '../components/FaceOverlay'
 import FaceRegisterModal from '../components/FaceRegisterModal'
 import Hls from 'hls.js'
+import dayjs from 'dayjs'
 
 // Check if current page is loaded from a private/local network.
 // Private Network Access (PNA) in browsers blocks public→private requests,
@@ -95,6 +96,9 @@ export default function CameraLiveView() {
   const [playbackUrl, setPlaybackUrl] = useState('')
   const segmentSeconds = 300
   const [historyPlaying, setHistoryPlaying] = useState(false)
+  const [recordingDate, setRecordingDate] = useState(dayjs())
+  const [selectedRecordingId, setSelectedRecordingId] = useState('')
+  const recordingDateKey = recordingDate.format('YYYY-MM-DD')
 
   // Canvas dimensions for face detection input + display size for overlay scaling
   const canvasSizeRef = useRef({ w: 640, h: 360 })
@@ -130,12 +134,12 @@ export default function CameraLiveView() {
     try {
       const [status, list] = await Promise.all([
         getCameraRecordingStatus(id),
-        getCameraRecordings(id, 1, 20),
+        getCameraRecordings(id, 1, 100, recordingDateKey),
       ])
       setRecording(status.recording)
       setRecordings(list.items)
     } catch { /* ignore */ }
-  }, [id])
+  }, [id, recordingDateKey])
 
   const handleClearFaceEvents = async () => {
     if (!id) return
@@ -409,6 +413,7 @@ export default function CameraLiveView() {
           segment_seconds: segmentSeconds,
           retention_days: 0,
           max_storage_mb: 0,
+          timezone_offset_minutes: new Date().getTimezoneOffset(),
         })
         setRecording(status.recording)
         message.success('Recording started')
@@ -431,12 +436,14 @@ export default function CameraLiveView() {
       hlsRef.current.detachMedia()
     }
     setPlaybackUrl(getCameraRecordingPlaybackUrl(id, rec.id))
+    setSelectedRecordingId(rec.id)
     setHistoryPlaying(true)
     setPlaying(true)
   }
 
   const handleReturnLive = async () => {
     setPlaybackUrl('')
+    setSelectedRecordingId('')
     setHistoryPlaying(false)
     if (!playing) return
     if (mjpegMode) return
@@ -457,10 +464,16 @@ export default function CameraLiveView() {
     if (!id) return
     try {
       await deleteCameraRecording(id, rec.id)
-      message.success('Recording deleted')
+      if (selectedRecordingId === rec.id) {
+        setPlaybackUrl('')
+        setSelectedRecordingId('')
+        setHistoryPlaying(false)
+        setPlaying(false)
+      }
+      message.success('录像及云盘文件已删除')
       await fetchRecordingState()
     } catch (e: any) {
-      message.error(e?.response?.data?.message || 'Delete failed')
+      message.error(e?.response?.data?.message || '删除录像失败')
     }
   }
   const statusColor = camera?.status === 'online' ? 'green' : 'default'
@@ -530,42 +543,59 @@ export default function CameraLiveView() {
     },
   ]
 
-  const recordingColumns = [
-    {
-      title: 'Start',
-      dataIndex: 'started_at',
-      key: 'started_at',
-      width: 160,
-      render: (t: string) => new Date(t).toLocaleString(),
-    },
-    {
-      title: 'Duration',
-      dataIndex: 'duration_seconds',
-      key: 'duration_seconds',
-      width: 90,
-      render: (v: number) => `${v}s`,
-    },
-    {
-      title: 'Size',
-      dataIndex: 'size_bytes',
-      key: 'size_bytes',
-      width: 90,
-      render: (v: number) => `${(v / 1024 / 1024).toFixed(1)} MB`,
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      width: 120,
-      render: (_: unknown, rec: CameraRecording) => (
-        <Space size="small">
-          <Button type="link" size="small" onClick={() => handlePlayRecording(rec)}>Play</Button>
-          <Popconfirm title="Delete this recording?" onConfirm={() => handleDeleteRecording(rec)}>
-            <Button type="link" size="small" danger>Delete</Button>
-          </Popconfirm>
-        </Space>
+  const formatRecordingDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60)
+    const remaining = seconds % 60
+    return minutes > 0 ? `${minutes} 分 ${remaining} 秒` : `${remaining} 秒`
+  }
+
+  const recordingTimelineItems = recordings.map((rec) => {
+    const start = dayjs(rec.started_at)
+    const end = rec.ended_at ? dayjs(rec.ended_at) : start.add(rec.duration_seconds, 'second')
+    const selected = selectedRecordingId === rec.id
+    return {
+      color: selected ? 'blue' : 'gray',
+      dot: selected ? <PlayCircleOutlined /> : <ClockCircleOutlined />,
+      children: (
+        <div style={{
+          padding: '0 0 14px',
+          borderBottom: '1px solid #f0f0f0',
+        }}>
+          <Space wrap size={6}>
+            <strong>{start.format('HH:mm:ss')}</strong>
+            <span style={{ color: '#8c8c8c' }}>至 {end.format('HH:mm:ss')}</span>
+            {rec.file_id !== '0' && <Tag color="green">云盘</Tag>}
+            {selected && <Tag color="blue">正在回放</Tag>}
+          </Space>
+          <div style={{ color: '#8c8c8c', fontSize: 12, margin: '5px 0 8px' }}>
+            {formatRecordingDuration(rec.duration_seconds)} · {(rec.size_bytes / 1024 / 1024).toFixed(1)} MB
+          </div>
+          <Space size="small" wrap>
+            <Button
+              type={selected ? 'primary' : 'default'}
+              size="small"
+              icon={<PlayCircleOutlined />}
+              onClick={() => handlePlayRecording(rec)}
+            >
+              回放
+            </Button>
+            {rec.file_id !== '0' && (
+              <Button size="small" icon={<FolderOpenOutlined />} onClick={() => navigate('/files')}>
+                云盘
+              </Button>
+            )}
+            <Popconfirm
+              title="删除录像"
+              description="将同时删除时间线记录和云盘中的视频文件。"
+              onConfirm={() => handleDeleteRecording(rec)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          </Space>
+        </div>
       ),
-    },
-  ]
+    }
+  })
 
   return (
     <div>
@@ -650,13 +680,18 @@ export default function CameraLiveView() {
                 <Empty description="点击「播放」开始实时画面" image={Empty.PRESENTED_IMAGE_SIMPLE} />
               )}
             </div>
+            {historyPlaying && selectedRecordingId && (
+              <div style={{ marginTop: 8, color: '#666', textAlign: 'center' }}>
+                正在按时间线回放 {recordingDate.format('YYYY年MM月DD日')} 的录像
+              </div>
+            )}
             {mjpegMode && (
               <div style={{ marginTop: 8, fontSize: 12, color: '#888', textAlign: 'center' }}>
                 直连摄像头 MJPEG 流，视频数据不经过服务器
               </div>
             )}
           </div>
-          <div style={{ flex: '0 0 280px', minWidth: 240 }}>
+          <div style={{ flex: '0 0 360px', minWidth: 280 }}>
             {camera && (() => {
               let host = extractHost(camera.stream_url)
               return (
@@ -679,18 +714,30 @@ export default function CameraLiveView() {
               <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 12 }}>
                 <Space wrap size="small">
                   <Tag color="blue">每 5 分钟保存一个片段</Tag>
-                  <Tag color="green">永久保留</Tag>
+                  <Tag color="green">保存到云盘</Tag>
+                  <Tag>手动删除前永久保留</Tag>
                 </Space>
                 {recording && <Tag color="red">正在录像，停止后仍会保留，需手动删除</Tag>}
+                <DatePicker
+                  value={recordingDate}
+                  allowClear={false}
+                  style={{ width: '100%' }}
+                  disabledDate={(date) => date.isAfter(dayjs(), 'day')}
+                  onChange={(date) => {
+                    if (date) {
+                      setRecordingDate(date)
+                      setSelectedRecordingId('')
+                    }
+                  }}
+                />
               </Space>
-              <Table
-                dataSource={recordings}
-                columns={recordingColumns}
-                rowKey="id"
-                size="small"
-                pagination={{ pageSize: 5, size: 'small' }}
-                locale={{ emptyText: '暂无录像' }}
-              />
+              {recordingTimelineItems.length > 0 ? (
+                <div style={{ maxHeight: 480, overflowY: 'auto', padding: '8px 4px 0' }}>
+                  <Timeline items={recordingTimelineItems} />
+                </div>
+              ) : (
+                <Empty description="当天暂无录像" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </Card>
             <Card title="识别记录" size="small" extra={<Button size="small" onClick={() => { fetchEvents(); fetchFaceEvents() }}>刷新</Button>}>
               <Tabs defaultActiveKey="object" size="small" items={tabs} />

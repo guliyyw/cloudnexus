@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/cloudnexus/server/internal/camera/service"
 	"github.com/cloudnexus/server/pkg/httputil"
@@ -73,7 +74,30 @@ func (h *RecordingHandler) HandleList(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	recordings, total, err := h.svc.List(cameraID, httputil.GetUserID(c), (page-1)*pageSize, pageSize)
+	var from, to *time.Time
+	if date := c.Query("date"); date != "" {
+		offsetMinute, err := strconv.Atoi(c.DefaultQuery("timezone_offset_minutes", "0"))
+		if err != nil || offsetMinute < -840 || offsetMinute > 840 {
+			c.JSON(400, response.Error(400, "invalid timezone offset"))
+			return
+		}
+		location := time.FixedZone("recording-client", -offsetMinute*60)
+		day, err := time.ParseInLocation("2006-01-02", date, location)
+		if err != nil {
+			c.JSON(400, response.Error(400, "invalid date, expected YYYY-MM-DD"))
+			return
+		}
+		nextDay := day.AddDate(0, 0, 1)
+		from, to = &day, &nextDay
+	}
+	recordings, total, err := h.svc.List(
+		cameraID,
+		httputil.GetUserID(c),
+		from,
+		to,
+		(page-1)*pageSize,
+		pageSize,
+	)
 	if err != nil {
 		httputil.HandleError(c, err)
 		return
@@ -106,14 +130,15 @@ func (h *RecordingHandler) HandlePlayback(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rec, err := h.svc.Get(recordingID, httputil.GetUserID(c))
+	stream, rec, err := h.svc.OpenPlayback(recordingID, httputil.GetUserID(c))
 	if err != nil {
 		httputil.HandleError(c, err)
 		return
 	}
+	defer stream.Close()
 	c.Header("Content-Type", "video/mp4")
 	c.Header("Content-Disposition", `inline; filename="`+filepath.Base(rec.FileName)+`"`)
-	http.ServeFile(c.Writer, c.Request, rec.FilePath)
+	http.ServeContent(c.Writer, c.Request, rec.FileName, rec.StartedAt, stream)
 }
 
 func parseUintParam(c *gin.Context, name string) (uint64, bool) {

@@ -29,6 +29,7 @@ type CameraRecording struct {
 	BaseModel
 	CameraID        uint64     `json:"camera_id,string" gorm:"not null;index"`
 	OwnerID         uint64     `json:"owner_id,string" gorm:"not null;index"`
+	FileID          uint64     `json:"file_id,string" gorm:"default:0;index"`
 	FileName        string     `json:"file_name" gorm:"not null;size:255"`
 	FilePath        string     `json:"-" gorm:"not null;size:1024"`
 	Status          string     `json:"status" gorm:"not null;default:ready;size:16"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,14 +19,16 @@ import (
 	apperrors "github.com/cloudnexus/server/pkg/errors"
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/cloudnexus/server/pkg/snowflake"
+	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type RecordingOptions struct {
-	SegmentSeconds int `json:"segment_seconds"`
-	RetentionDays  int `json:"retention_days"`
-	MaxStorageMB   int `json:"max_storage_mb"`
+	SegmentSeconds       int `json:"segment_seconds"`
+	RetentionDays        int `json:"retention_days"`
+	MaxStorageMB         int `json:"max_storage_mb"`
+	TimezoneOffsetMinute int `json:"timezone_offset_minutes"`
 }
 
 type RecordingStatus struct {
@@ -46,33 +49,99 @@ type RecordingJobUI struct {
 }
 
 type recordingJob struct {
-	cameraID uint64
-	ownerID  uint64
-	dir      string
-	pattern  string
-	opts     RecordingOptions
-	started  time.Time
-	cancel   context.CancelFunc
-	done     chan struct{}
-	lastErr  string
+	cameraID   uint64
+	cameraName string
+	ownerID    uint64
+	dir        string
+	pattern    string
+	opts       RecordingOptions
+	started    time.Time
+	cancel     context.CancelFunc
+	done       chan struct{}
+	lastErr    string
 }
 
 type RecordingService struct {
-	repo    *repository.CameraRepository
-	baseDir string
-	mu      sync.Mutex
-	jobs    map[uint64]*recordingJob
+	repo       *repository.CameraRepository
+	baseDir    string
+	minio      *minio.Client
+	bucket     string
+	mu         sync.Mutex
+	cloudDirMu sync.Mutex
+	jobs       map[uint64]*recordingJob
 }
 
-func NewRecordingService(repo *repository.CameraRepository, baseDir string) *RecordingService {
+func NewRecordingService(
+	repo *repository.CameraRepository,
+	baseDir string,
+	minioClient *minio.Client,
+	bucket string,
+) *RecordingService {
 	if baseDir == "" {
 		baseDir = "/app/recordings"
 	}
 	return &RecordingService{
 		repo:    repo,
 		baseDir: baseDir,
+		minio:   minioClient,
+		bucket:  bucket,
 		jobs:    make(map[uint64]*recordingJob),
 	}
+}
+
+func (s *RecordingService) StartLegacyMigration() {
+	go func() {
+		for {
+			recordings, err := s.repo.ListLegacyRecordings(20)
+			if err != nil {
+				zap.L().Warn("legacy camera recording migration failed", zap.Error(err))
+				return
+			}
+			if len(recordings) == 0 {
+				return
+			}
+
+			migrated := 0
+			for i := range recordings {
+				rec := &recordings[i]
+				info, err := os.Stat(rec.FilePath)
+				if err != nil || info.Size() == 0 {
+					continue
+				}
+				camera, err := s.repo.FindCameraByID(rec.CameraID)
+				if err != nil {
+					continue
+				}
+				job := &recordingJob{
+					cameraID:   rec.CameraID,
+					cameraName: camera.Name,
+					ownerID:    rec.OwnerID,
+				}
+				cloudFile, err := s.uploadSegmentToCloudDrive(job, rec.FilePath, info, rec.StartedAt)
+				if err != nil {
+					zap.L().Warn("legacy camera recording cloud upload failed",
+						zap.Uint64("recording_id", rec.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+				if err := s.repo.SetRecordingCloudFile(rec.ID, cloudFile.ID); err != nil {
+					s.rollbackCloudFile(cloudFile, true)
+					continue
+				}
+				if err := os.Remove(rec.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+					zap.L().Warn("legacy camera recording local cleanup failed",
+						zap.Uint64("recording_id", rec.ID),
+						zap.Error(err),
+					)
+				}
+				migrated++
+			}
+			if migrated == 0 {
+				return
+			}
+		}
+	}()
 }
 
 func (s *RecordingService) Start(cameraID, ownerID uint64, opts RecordingOptions) (*RecordingStatus, error) {
@@ -101,14 +170,15 @@ func (s *RecordingService) Start(cameraID, ownerID uint64, opts RecordingOptions
 	ctx, cancel := context.WithCancel(context.Background())
 	started := time.Now()
 	job := &recordingJob{
-		cameraID: cameraID,
-		ownerID:  ownerID,
-		dir:      cameraDir,
-		pattern:  filepath.Join(cameraDir, fmt.Sprintf("cam_%d_%%Y%%m%%d_%%H%%M%%S.mp4", cameraID)),
-		opts:     opts,
-		started:  started,
-		cancel:   cancel,
-		done:     make(chan struct{}),
+		cameraID:   cameraID,
+		cameraName: c.Name,
+		ownerID:    ownerID,
+		dir:        cameraDir,
+		pattern:    filepath.Join(cameraDir, fmt.Sprintf("cam_%d_%%Y%%m%%d_%%H%%M%%S.mp4", cameraID)),
+		opts:       opts,
+		started:    started,
+		cancel:     cancel,
+		done:       make(chan struct{}),
 	}
 
 	s.mu.Lock()
@@ -163,7 +233,11 @@ func (s *RecordingService) Status(cameraID, ownerID uint64) (*RecordingStatus, e
 	return job.status(), nil
 }
 
-func (s *RecordingService) List(cameraID, ownerID uint64, offset, limit int) ([]model.CameraRecording, int64, error) {
+func (s *RecordingService) List(
+	cameraID, ownerID uint64,
+	from, to *time.Time,
+	offset, limit int,
+) ([]model.CameraRecording, int64, error) {
 	c, err := s.repo.FindCameraByID(cameraID)
 	if err != nil {
 		return nil, 0, apperrors.NewAppError(404, "camera not found", apperrors.ErrNotFound)
@@ -171,7 +245,7 @@ func (s *RecordingService) List(cameraID, ownerID uint64, offset, limit int) ([]
 	if c.OwnerID != ownerID {
 		return nil, 0, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
 	}
-	return s.repo.ListRecordings(cameraID, ownerID, offset, limit)
+	return s.repo.ListRecordingsInRange(cameraID, ownerID, from, to, offset, limit)
 }
 
 func (s *RecordingService) Get(recordingID, ownerID uint64) (*model.CameraRecording, error) {
@@ -190,10 +264,72 @@ func (s *RecordingService) Delete(recordingID, ownerID uint64) error {
 	if err != nil {
 		return err
 	}
+	return s.deleteRecordingAssets(rec)
+}
+
+type readSeekCloser interface {
+	io.Reader
+	io.Seeker
+	io.Closer
+}
+
+func (s *RecordingService) OpenPlayback(recordingID, ownerID uint64) (readSeekCloser, *model.CameraRecording, error) {
+	rec, err := s.Get(recordingID, ownerID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if rec.FileID == 0 {
+		file, err := os.Open(rec.FilePath)
+		if err != nil {
+			return nil, nil, err
+		}
+		return file, rec, nil
+	}
+
+	cloudFile, err := s.repo.FindCloudFileByID(rec.FileID)
+	if err != nil {
+		return nil, nil, apperrors.NewAppError(404, "recording file not found in cloud drive", err)
+	}
+	if cloudFile.UserID != ownerID {
+		return nil, nil, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
+	}
+	object, err := s.minio.GetObject(context.Background(), s.bucket, cloudFile.StorageKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := object.Stat(); err != nil {
+		object.Close()
+		return nil, nil, err
+	}
+	return object, rec, nil
+}
+
+func (s *RecordingService) deleteRecordingAssets(rec *model.CameraRecording) error {
 	if err := os.Remove(rec.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return s.repo.DeleteRecording(recordingID)
+	if rec.FileID != 0 {
+		cloudFile, err := s.repo.FindCloudFileByID(rec.FileID)
+		if err == nil {
+			if err := s.minio.RemoveObject(
+				context.Background(),
+				s.bucket,
+				cloudFile.StorageKey,
+				minio.RemoveObjectOptions{},
+			); err != nil {
+				return err
+			}
+			if err := s.repo.SoftDeleteCloudFile(cloudFile.ID, rec.OwnerID); err != nil {
+				return err
+			}
+			if err := s.repo.AddCloudStorageUsed(rec.OwnerID, -cloudFile.Size); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+	return s.repo.DeleteRecording(rec.ID)
 }
 
 func (s *RecordingService) runFFmpeg(ctx context.Context, streamURL string, job *recordingJob) {
@@ -293,10 +429,21 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 		started := parseSegmentStart(job.cameraID, filepath.Base(path), info.ModTime())
 		durationSeconds := probeDurationSeconds(path, job.opts.SegmentSeconds)
 		ended := started.Add(time.Duration(durationSeconds) * time.Second)
+		cloudFile, err := s.uploadSegmentToCloudDrive(job, path, info, started)
+		if err != nil {
+			job.lastErr = err.Error()
+			zap.L().Warn("camera recording cloud upload failed",
+				zap.Uint64("camera_id", job.cameraID),
+				zap.String("file", filepath.Base(path)),
+				zap.Error(err),
+			)
+			continue
+		}
 		rec := &model.CameraRecording{
 			BaseModel:       model.BaseModel{ID: snowflake.Uint64()},
 			CameraID:        job.cameraID,
 			OwnerID:         job.ownerID,
+			FileID:          cloudFile.ID,
 			FileName:        filepath.Base(path),
 			FilePath:        path,
 			Status:          "ready",
@@ -306,8 +453,138 @@ func (s *RecordingService) scanSegments(job *recordingJob, includeRecent bool) {
 			SizeBytes:       info.Size(),
 		}
 		if err := s.repo.CreateRecording(rec); err != nil {
+			s.rollbackCloudFile(cloudFile, true)
+			job.lastErr = err.Error()
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			job.lastErr = err.Error()
 		}
+	}
+}
+
+func (s *RecordingService) uploadSegmentToCloudDrive(
+	job *recordingJob,
+	path string,
+	info os.FileInfo,
+	started time.Time,
+) (*model.File, error) {
+	localStarted := started.In(recordingLocation(job.opts.TimezoneOffsetMinute))
+	s.cloudDirMu.Lock()
+	parentID, err := s.ensureRecordingCloudDirectory(job, localStarted)
+	s.cloudDirMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
+	fileID := snowflake.Uint64()
+	displayName := localStarted.Format("15-04-05") + ".mp4"
+	storageKey := fmt.Sprintf(
+		"%d/%d/camera-recordings/%d.mp4",
+		job.ownerID,
+		parentID,
+		fileID,
+	)
+	input, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer input.Close()
+
+	if _, err := s.minio.PutObject(
+		context.Background(),
+		s.bucket,
+		storageKey,
+		input,
+		info.Size(),
+		minio.PutObjectOptions{ContentType: "video/mp4"},
+	); err != nil {
+		return nil, err
+	}
+
+	cloudFile := &model.File{
+		BaseModel:  model.BaseModel{ID: fileID},
+		UserID:     job.ownerID,
+		Name:       displayName,
+		ParentID:   parentID,
+		Size:       info.Size(),
+		MimeType:   "video/mp4",
+		StorageKey: storageKey,
+	}
+	if err := s.repo.CreateCloudFile(cloudFile); err != nil {
+		_ = s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+		return nil, err
+	}
+	if err := s.repo.AddCloudStorageUsed(job.ownerID, info.Size()); err != nil {
+		s.rollbackCloudFile(cloudFile, false)
+		return nil, err
+	}
+	return cloudFile, nil
+}
+
+func (s *RecordingService) ensureRecordingCloudDirectory(job *recordingJob, started time.Time) (uint64, error) {
+	root, err := s.ensureCloudDirectory(job.ownerID, 0, "监控录像")
+	if err != nil {
+		return 0, err
+	}
+	cameraDir, err := s.ensureCloudDirectory(
+		job.ownerID,
+		root.ID,
+		recordingCameraFolderName(job.cameraName, job.cameraID),
+	)
+	if err != nil {
+		return 0, err
+	}
+	dateDir, err := s.ensureCloudDirectory(job.ownerID, cameraDir.ID, started.Format("2006-01-02"))
+	if err != nil {
+		return 0, err
+	}
+	return dateDir.ID, nil
+}
+
+func (s *RecordingService) ensureCloudDirectory(ownerID, parentID uint64, name string) (*model.File, error) {
+	existing, err := s.repo.FindCloudFileByName(ownerID, parentID, name)
+	if err == nil {
+		if !existing.IsDir {
+			return nil, fmt.Errorf("cloud drive path %q is not a directory", name)
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	dir := &model.File{
+		BaseModel: model.BaseModel{ID: snowflake.Uint64()},
+		UserID:    ownerID,
+		Name:      name,
+		IsDir:     true,
+		ParentID:  parentID,
+	}
+	if err := s.repo.CreateCloudFile(dir); err != nil {
+		return nil, err
+	}
+	return dir, nil
+}
+
+func recordingCameraFolderName(name string, cameraID uint64) string {
+	name = strings.TrimSpace(name)
+	name = strings.NewReplacer("/", "_", "\\", "_").Replace(name)
+	if name == "" {
+		name = "摄像头"
+	}
+	id := strconv.FormatUint(cameraID, 10)
+	if len(id) > 6 {
+		id = id[len(id)-6:]
+	}
+	return fmt.Sprintf("%s-%s", name, id)
+}
+
+func (s *RecordingService) rollbackCloudFile(file *model.File, adjustQuota bool) {
+	_ = s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
+	_ = s.repo.SoftDeleteCloudFile(file.ID, file.UserID)
+	if adjustQuota {
+		_ = s.repo.AddCloudStorageUsed(file.UserID, -file.Size)
 	}
 }
 
@@ -339,8 +616,7 @@ func (s *RecordingService) cleanup(job *recordingJob) {
 		old, err := s.repo.ListRecordingsBefore(job.cameraID, before)
 		if err == nil {
 			for _, rec := range old {
-				_ = os.Remove(rec.FilePath)
-				_ = s.repo.DeleteRecording(rec.ID)
+				_ = s.deleteRecordingAssets(&rec)
 			}
 		}
 	}
@@ -367,8 +643,7 @@ func (s *RecordingService) cleanup(job *recordingJob) {
 		if total <= limit {
 			break
 		}
-		_ = os.Remove(rec.FilePath)
-		_ = s.repo.DeleteRecording(rec.ID)
+		_ = s.deleteRecordingAssets(&rec)
 		total -= rec.SizeBytes
 	}
 }
@@ -398,7 +673,14 @@ func normalizeRecordingOptions(opts RecordingOptions) RecordingOptions {
 	if opts.MaxStorageMB < 0 {
 		opts.MaxStorageMB = 0
 	}
+	if opts.TimezoneOffsetMinute < -840 || opts.TimezoneOffsetMinute > 840 {
+		opts.TimezoneOffsetMinute = 0
+	}
 	return opts
+}
+
+func recordingLocation(offsetMinute int) *time.Location {
+	return time.FixedZone("recording-client", -offsetMinute*60)
 }
 
 func (j *recordingJob) status() *RecordingStatus {

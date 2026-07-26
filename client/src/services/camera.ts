@@ -82,6 +82,7 @@ export interface CameraRecording {
   id: string
   camera_id: string
   owner_id: string
+  file_id: string
   file_name: string
   status: string
   started_at: string
@@ -96,6 +97,7 @@ export interface RecordingOptions {
   segment_seconds?: number
   retention_days?: number
   max_storage_mb?: number
+  timezone_offset_minutes?: number
 }
 
 export interface RecordingStatus {
@@ -122,8 +124,20 @@ export async function getCameraRecordingStatus(id: string): Promise<RecordingSta
   return data.data
 }
 
-export async function getCameraRecordings(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<CameraRecording>> {
-  const { data } = await api.get(`/cameras/${id}/recordings`, { params: { page, page_size: pageSize } })
+export async function getCameraRecordings(
+  id: string,
+  page = 1,
+  pageSize = 20,
+  date?: string,
+): Promise<PaginatedResponse<CameraRecording>> {
+  const { data } = await api.get(`/cameras/${id}/recordings`, {
+    params: {
+      page,
+      page_size: pageSize,
+      date,
+      timezone_offset_minutes: new Date().getTimezoneOffset(),
+    },
+  })
   return data.data
 }
 

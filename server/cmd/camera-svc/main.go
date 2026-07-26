@@ -115,7 +115,8 @@ func main() {
 	if recordingDir == "" {
 		recordingDir = "/app/recordings"
 	}
-	recordingSvc := service.NewRecordingService(repo, recordingDir)
+	recordingSvc := service.NewRecordingService(repo, recordingDir, minioClient, cfg.MinIO.Bucket)
+	recordingSvc.StartLegacyMigration()
 	recSvc := service.NewRecognitionService(repo, inferenceURL, inferenceToken)
 	faceSvc := service.NewFaceService(repo, minioClient, cfg.MinIO.Bucket)
 	camH := handler.NewCameraHandler(camSvc, recSvc)

@@ -96,9 +96,29 @@ func (r *CameraRepository) FindRecordingByPath(path string) (*model.CameraRecord
 }
 
 func (r *CameraRepository) ListRecordings(cameraID, ownerID uint64, offset, limit int) ([]model.CameraRecording, int64, error) {
+	return r.ListRecordingsInRange(cameraID, ownerID, nil, nil, offset, limit)
+}
+
+func (r *CameraRepository) ListRecordingsInRange(
+	cameraID, ownerID uint64,
+	from, to *time.Time,
+	offset, limit int,
+) ([]model.CameraRecording, int64, error) {
 	var total int64
 	var recordings []model.CameraRecording
-	q := r.db.Model(&model.CameraRecording{}).Where("camera_id = ? AND owner_id = ?", cameraID, ownerID)
+	q := r.db.Model(&model.CameraRecording{}).
+		Where("camera_id = ? AND owner_id = ?", cameraID, ownerID).
+		Where(`file_id = 0 OR EXISTS (
+			SELECT 1 FROM files
+			WHERE files.id = camera_recordings.file_id
+			  AND files.deleted_at IS NULL
+		)`)
+	if from != nil {
+		q = q.Where("started_at >= ?", *from)
+	}
+	if to != nil {
+		q = q.Where("started_at < ?", *to)
+	}
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -126,6 +146,68 @@ func (r *CameraRepository) ListRecordingsByCamera(cameraID uint64) ([]model.Came
 
 func (r *CameraRepository) DeleteRecording(id uint64) error {
 	return r.db.Delete(&model.CameraRecording{}, "id = ?", id).Error
+}
+
+func (r *CameraRepository) ListLegacyRecordings(limit int) ([]model.CameraRecording, error) {
+	var recordings []model.CameraRecording
+	err := r.db.Where("file_id = 0").
+		Order("started_at ASC").
+		Limit(limit).
+		Find(&recordings).Error
+	return recordings, err
+}
+
+func (r *CameraRepository) SetRecordingCloudFile(id, fileID uint64) error {
+	return r.db.Model(&model.CameraRecording{}).
+		Where("id = ? AND file_id = 0", id).
+		Update("file_id", fileID).Error
+}
+
+func (r *CameraRepository) FindCloudFileByID(id uint64) (*model.File, error) {
+	var file model.File
+	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&file).Error; err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+func (r *CameraRepository) FindCloudFileByName(ownerID, parentID uint64, name string) (*model.File, error) {
+	var file model.File
+	err := r.db.Where(
+		"user_id = ? AND parent_id = ? AND name = ? AND deleted_at IS NULL",
+		ownerID, parentID, name,
+	).First(&file).Error
+	if err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+func (r *CameraRepository) CreateCloudFile(file *model.File) error {
+	return r.db.Create(file).Error
+}
+
+func (r *CameraRepository) SoftDeleteCloudFile(id, ownerID uint64) error {
+	return r.db.Model(&model.File{}).
+		Where("id = ? AND user_id = ? AND deleted_at IS NULL", id, ownerID).
+		Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+func (r *CameraRepository) AddCloudStorageUsed(ownerID uint64, delta int64) error {
+	if err := r.db.Exec(
+		`INSERT INTO user_quota (user_id, storage_used, created_at, updated_at)
+		 VALUES (?, 0, NOW(), NOW())
+		 ON CONFLICT (user_id) DO NOTHING`,
+		ownerID,
+	).Error; err != nil {
+		return err
+	}
+	return r.db.Exec(
+		`UPDATE user_quota
+		 SET storage_used = GREATEST(storage_used + ?, 0), updated_at = NOW()
+		 WHERE user_id = ?`,
+		delta, ownerID,
+	).Error
 }
 
 // --- FaceProfile ---
