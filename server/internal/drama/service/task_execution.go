@@ -663,7 +663,8 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		}
 	}
 	parts := []string{
-		"Composition priority: " + compactText(compositionPrompt, 420),
+		"Mandatory frame constraints: " + mandatoryStoryboardConstraints(characterNames, basePrompt+" "+scene),
+		"Composition priority: " + compactText(compositionPrompt, 260),
 		"Realistic cinematic still frame, wide horizontal 16:9, coherent natural lighting, clear faces and hands.",
 		"Visible action and dialogue state: " + compactText(plot, 360),
 		"Scene: " + compactText(scene, 180),
@@ -691,6 +692,28 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		}
 	}
 	return strings.Join(kept, "\n")
+}
+
+func mandatoryStoryboardConstraints(characterNames []string, visualPrompt string) string {
+	constraints := make([]string, 0, len(characterNames)+3)
+	if len(characterNames) > 0 {
+		constraints = append(constraints, fmt.Sprintf("exactly %d people visible in one coherent scene", len(characterNames)))
+		for index, name := range characterNames {
+			constraints = append(constraints, fmt.Sprintf("%s on the %s", characterSemanticLabel(name), characterRegionLabel(index, len(characterNames))))
+		}
+	}
+	lower := strings.ToLower(visualPrompt)
+	if strings.Contains(lower, "暖") || strings.Contains(lower, "warm") {
+		constraints = append(constraints, "warm natural interior lighting")
+	}
+	if strings.Contains(lower, "明亮") || strings.Contains(lower, "充足") || strings.Contains(lower, "bright") {
+		constraints = append(constraints, "bright high-key evenly lit image, faces clearly illuminated")
+	}
+	if strings.Contains(lower, "无遮挡") || strings.Contains(lower, "无前景") ||
+		strings.Contains(lower, "unobstructed") || strings.Contains(lower, "no foreground") {
+		constraints = append(constraints, "unobstructed view, no foreground object crossing any face")
+	}
+	return strings.Join(constraints, ", ")
 }
 
 func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStoryboardSegment) []model.DramaAsset {

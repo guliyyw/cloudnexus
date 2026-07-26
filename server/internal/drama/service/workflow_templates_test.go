@@ -187,3 +187,21 @@ func TestSelectImageCheckpointUpgradesBaseModel(t *testing.T) {
 		t.Fatalf("explicit custom checkpoint was replaced: %q", got)
 	}
 }
+
+func TestMandatoryStoryboardConstraintsLeadWithCountAndLighting(t *testing.T) {
+	got := mandatoryStoryboardConstraints(
+		[]string{"妻子", "丈夫"},
+		"暖黄灯光，光线明亮，无前景遮挡",
+	)
+	for _, expected := range []string{
+		"exactly 2 people",
+		"adult woman on the left side",
+		"adult man on the right side",
+		"bright high-key",
+		"no foreground object",
+	} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("mandatory constraints %q do not contain %q", got, expected)
+		}
+	}
+}

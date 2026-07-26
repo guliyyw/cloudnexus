@@ -137,8 +137,8 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 		}, "Load scene IPAdapter")
 		workflow[applyID] = workflowNode("IPAdapterAdvanced", map[string]interface{}{
 			"model": modelRef, "ipadapter": []interface{}{loaderID, 1}, "image": []interface{}{prepID, 0},
-			"weight": 0.45, "weight_type": "composition precise", "combine_embeds": "average",
-			"start_at": 0.0, "end_at": 0.68, "embeds_scaling": "V only", "clip_vision": []interface{}{"8", 0},
+			"weight": 0.3, "weight_type": "style transfer precise", "combine_embeds": "average",
+			"start_at": 0.0, "end_at": 0.55, "embeds_scaling": "V only", "clip_vision": []interface{}{"8", 0},
 		}, "Apply scene globally")
 		modelRef = []interface{}{applyID, 0}
 	}
