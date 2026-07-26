@@ -34,6 +34,15 @@ RUN pip install --index-url "${PYTORCH_CUDA_INDEX}" torch torchvision torchaudio
 
 RUN pip install comfyui-workflow-templates==0.11.9 comfyui-embedded-docs==0.5.8
 
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && pip install insightface==0.7.3 onnxruntime \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY entrypoint.sh /usr/local/bin/comfyui-entrypoint
+RUN chmod +x /usr/local/bin/comfyui-entrypoint
+
 EXPOSE 8188
 
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["/usr/local/bin/comfyui-entrypoint"]

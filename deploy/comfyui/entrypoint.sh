@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+download_file() {
+  url="$1"
+  target="$2"
+  if [ -s "$target" ]; then
+    return
+  fi
+  mkdir -p "$(dirname "$target")"
+  temp="${target}.part"
+  echo "Downloading $(basename "$target")..."
+  curl --fail --location --retry 5 --retry-delay 3 --continue-at - --output "$temp" "$url"
+  mv "$temp" "$target"
+}
+
+if [ "${COMFYUI_DOWNLOAD_FACEID_MODELS:-true}" = "true" ]; then
+  download_file \
+    "https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid-plusv2_sdxl.bin" \
+    "/app/ComfyUI/models/ipadapter/ip-adapter-faceid-plusv2_sdxl.bin"
+  download_file \
+    "https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid-plusv2_sdxl_lora.safetensors" \
+    "/app/ComfyUI/models/loras/ip-adapter-faceid-plusv2_sdxl_lora.safetensors"
+
+  insightface_dir="/root/.insightface/models/buffalo_l"
+  if [ ! -s "${insightface_dir}/w600k_r50.onnx" ]; then
+    archive="/tmp/buffalo_l.zip"
+    download_file \
+      "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" \
+      "$archive"
+    mkdir -p "$insightface_dir"
+    python -c 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$insightface_dir"
+    rm -f "$archive"
+  fi
+fi
+
+exec python main.py "$@"

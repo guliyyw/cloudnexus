@@ -36,6 +36,7 @@ type ImageGenerationSettings struct {
 	Sampler        string  `json:"sampler"`
 	Scheduler      string  `json:"scheduler"`
 	NegativePrompt string  `json:"negative_prompt"`
+	UseFaceID      bool    `json:"-"`
 }
 
 type ComfyImage struct {
@@ -95,6 +96,11 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 	status.Models["clip_vision_sdxl"] = objectOptionContains(objectInfo, "CLIPVisionLoader", "clip_name", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors")
 	status.Models["ipadapter_plus_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus_sdxl_vit-h.safetensors")
 	status.Models["ipadapter_plus_face_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-plus-face_sdxl_vit-h.safetensors")
+	status.Models["ipadapter_faceid_plusv2_sdxl"] = objectOptionContains(objectInfo, "IPAdapterModelLoader", "ipadapter_file", "ip-adapter-faceid-plusv2_sdxl.bin")
+	status.Models["ipadapter_faceid_lora_sdxl"] = objectOptionContains(objectInfo, "LoraLoader", "lora_name", "ip-adapter-faceid-plusv2_sdxl_lora.safetensors")
+	status.Models["faceid_nodes"] = objectInfoHasNodes(objectInfo, "IPAdapterUnifiedLoaderFaceID", "IPAdapterFaceID")
+	status.Models["regional_ipadapter_nodes"] = objectInfoHasNodes(objectInfo,
+		"IPAdapterAdvanced", "IPAdapterUnifiedLoader", "SolidMask", "MaskComposite", "FeatherMask")
 	status.Models["wan22_high_noise"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors")
 	status.Models["wan22_low_noise"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors")
 	status.Models["wan22_text_encoder"] = objectOptionContains(objectInfo, "CLIPLoader", "clip_name", "umt5_xxl_fp8_e4m3fn_scaled.safetensors")
@@ -115,12 +121,14 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		status.Missing = append(status.Missing, "IP-Adapter 节点（角色一致性阶段使用）")
 	}
 	requiredModels := map[string]string{
-		"clip_vision_sdxl":    "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
-		"ipadapter_plus_sdxl": "ip-adapter-plus_sdxl_vit-h.safetensors",
-		"wan22_high_noise":    "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
-		"wan22_low_noise":     "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
-		"wan22_text_encoder":  "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-		"wan_vae":             "wan_2.1_vae.safetensors",
+		"clip_vision_sdxl":         "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+		"ipadapter_plus_sdxl":      "ip-adapter-plus_sdxl_vit-h.safetensors",
+		"ipadapter_plus_face_sdxl": "ip-adapter-plus-face_sdxl_vit-h.safetensors",
+		"regional_ipadapter_nodes": "IPAdapter regional mask nodes",
+		"wan22_high_noise":         "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+		"wan22_low_noise":          "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+		"wan22_text_encoder":       "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+		"wan_vae":                  "wan_2.1_vae.safetensors",
 	}
 	for key, label := range requiredModels {
 		if !status.Models[key] {
@@ -128,6 +136,15 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		}
 	}
 	return status
+}
+
+func objectInfoHasNodes(objectInfo map[string]interface{}, names ...string) bool {
+	for _, name := range names {
+		if _, ok := objectInfo[name]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *ComfyClient) Generate(ctx context.Context, prompt string, settings ImageGenerationSettings, progress func(int, string)) ([]byte, string, error) {
@@ -435,6 +452,9 @@ func systemTextToImageWorkflow(prompt string, settings ImageGenerationSettings) 
 }
 
 func systemTextToImageIPAdapterWorkflow(prompt string, settings ImageGenerationSettings, uploaded []string, references []ComfyReferenceImage) map[string]interface{} {
+	if workflow, err := systemRegionalStoryboardWorkflow(prompt, settings, uploaded, references); err == nil {
+		return workflow
+	}
 	seed := time.Now().UnixNano() & 0x7fffffffffffffff
 	workflow := map[string]interface{}{
 		"1": map[string]interface{}{"class_type": "CheckpointLoaderSimple", "inputs": map[string]interface{}{"ckpt_name": settings.Checkpoint}},

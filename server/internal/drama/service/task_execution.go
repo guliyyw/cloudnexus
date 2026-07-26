@@ -160,6 +160,9 @@ func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTa
 	if imageSettings.Checkpoint == "" {
 		return fmt.Errorf("ComfyUI is connected, but no checkpoint model was detected")
 	}
+	imageSettings.UseFaceID = status.Models["ipadapter_faceid_plusv2_sdxl"] &&
+		status.Models["ipadapter_faceid_lora_sdxl"] &&
+		status.Models["faceid_nodes"]
 
 	var payload generationTaskPayload
 	_ = json.Unmarshal([]byte(task.Payload), &payload)
@@ -642,6 +645,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		relevantAssets = filterAssetsForSegment(assets, segment)
 	}
 	characters := make([]string, 0)
+	characterNames := make([]string, 0)
 	scenes := make([]string, 0)
 	for _, asset := range relevantAssets {
 		name := strings.TrimSpace(asset.Name)
@@ -655,6 +659,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		}
 		if asset.Type == "character" {
 			characters = append(characters, line)
+			characterNames = append(characterNames, name)
 		} else if asset.Type == "scene" {
 			scenes = append(scenes, line)
 		}
@@ -670,6 +675,11 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	}
 	if len(characters) > 0 {
 		parts = append(parts, "Characters: "+compactText(strings.Join(characters, "; "), 420))
+		bindings := make([]string, 0, len(characterNames))
+		for index, name := range characterNames {
+			bindings = append(bindings, name+"="+characterRegionLabel(index, len(characterNames)))
+		}
+		parts = append(parts, "Character reference binding: "+strings.Join(bindings, ", ")+". Keep each identity inside its assigned region; never blend or swap faces between regions.")
 	}
 	if len(scenes) > 0 {
 		parts = append(parts, "Environment reference: "+compactText(strings.Join(scenes, "; "), 280))
@@ -709,6 +719,23 @@ func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStory
 		}
 	}
 	if len(matched) > 0 {
+		sort.SliceStable(matched, func(i, j int) bool {
+			if matched[i].Type != matched[j].Type {
+				return matched[i].Type == "character"
+			}
+			if matched[i].Type != "character" {
+				return false
+			}
+			left := strings.Index(characters, matched[i].Name)
+			right := strings.Index(characters, matched[j].Name)
+			if left < 0 {
+				left = len(characters)
+			}
+			if right < 0 {
+				right = len(characters)
+			}
+			return left < right
+		})
 		return matched
 	}
 	return assets
@@ -742,7 +769,7 @@ func filterAssetsForSegments(assets []model.DramaAsset, segments []model.DramaSt
 func (s *DramaService) buildComfyReferenceImages(ctx context.Context, ownerID uint64, assets []model.DramaAsset) ([]ComfyReferenceImage, error) {
 	sort.SliceStable(assets, func(i, j int) bool {
 		if assets[i].Type == assets[j].Type {
-			return assets[i].ID < assets[j].ID
+			return false
 		}
 		return assets[i].Type != "scene" && assets[j].Type == "scene"
 	})
@@ -818,6 +845,29 @@ func referenceAssetWeight(asset model.DramaAsset) float64 {
 		return 0.55
 	}
 	return 0.62
+}
+
+func characterRegionLabel(index, count int) string {
+	if count <= 1 {
+		return "full frame"
+	}
+	if count == 2 {
+		if index == 0 {
+			return "left side"
+		}
+		return "right side"
+	}
+	if count == 3 {
+		switch index {
+		case 0:
+			return "left side"
+		case 1:
+			return "center"
+		default:
+			return "right side"
+		}
+	}
+	return fmt.Sprintf("horizontal region %d of %d", index+1, count)
 }
 
 func storyboardImageTargetTitle(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment) string {
