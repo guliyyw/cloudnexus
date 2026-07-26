@@ -72,7 +72,7 @@ func main() {
 		logger.Log.Warn("连接 Redis 失败，验证码不可用", zap.Error(err))
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}, &model.Album{}, &model.AlbumFile{}, &model.ExifMetadata{}, &model.PublicTrack{}, &model.Playlist{}, &model.PlaylistTrack{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.RefreshToken{}, &model.File{}, &model.FileShare{}, &model.FileVersion{}, &model.DockerNode{}, &model.AlertRule{}, &model.AlertHistory{}, &model.EmailVerification{}, &model.PhoneVerification{}, &model.PasswordResetToken{}, &model.UserSession{}, &model.OAuthBinding{}, &model.Permission{}, &model.Role{}, &model.RolePermission{}, &model.UserRole{}, &model.UserPermission{}, &model.ChunkUpload{}, &model.QuotaTier{}, &model.UserQuota{}, &model.SystemConfig{}, &model.DashboardHealthSnapshot{}, &model.ResourceMetric{}, &model.Album{}, &model.AlbumFile{}, &model.ExifMetadata{}, &model.PublicTrack{}, &model.Playlist{}, &model.PlaylistTrack{}); err != nil {
 		logger.Log.Fatal("数据库AutoMigrate失败", zap.Error(err))
 	}
 
@@ -164,13 +164,11 @@ func main() {
 	cleanupScheduler := service.NewCleanupScheduler(trashSvc, quotaSvc, chunkRepo)
 	cleanupScheduler.Start()
 	systemH := handler.NewSystemHandler(db, minioClient)
+	serviceControlH := handler.NewServiceControlHandler()
 	go systemH.StartMetricsCollector()
 
 	healthHistorySvc := service.NewHealthHistoryService(db)
 	healthHistoryH := handler.NewHealthHistoryHandler(healthHistorySvc)
-
-	// Start resource metrics collection every minute
-	go service.CollectResourceMetrics(healthHistorySvc)
 
 	nodeH := handler.NewNodeHandler(db)
 	alertH := handler.NewAlertHandler(db)
@@ -196,6 +194,9 @@ func main() {
 	})
 	aggregator.SetSnapshotSaver(func(statusData string) {
 		healthHistorySvc.SaveSnapshot(statusData)
+	})
+	aggregator.SetResourceMetricSaver(func(serviceName string, cpuPercent float64, memoryUsed, memoryTotal int64) {
+		healthHistorySvc.SaveResourceMetric(serviceName, cpuPercent, memoryUsed, memoryTotal)
 	})
 	aggregator.Start()
 	defer aggregator.Stop()
@@ -250,10 +251,17 @@ func main() {
 
 		file := api.Group("/file")
 		file.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		file.Use(middleware.LoadPermissions(db))
+		file.Use(middleware.RequireAnyPermission("module:files", "module:trash", "module:documents", "module:shares", "module:album", "module:music"))
 		{
 			file.POST("/upload", middleware.RequirePermission("file:write"), fileH.HandleUpload)
 			file.GET("/list", middleware.RequirePermission("file:read"), fileH.HandleList)
 			file.GET("/download/:id", middleware.RequirePermission("file:read"), fileH.HandleDownload)
+			file.PUT("/:id/text", middleware.RequirePermission("file:write"), fileH.HandleSaveText)
+			file.PUT("/:id/content", middleware.RequirePermission("file:write"), fileH.HandleSaveContent)
+			file.PUT("/:id/word", middleware.RequirePermission("file:write"), fileH.HandleSaveWord)
+			file.POST("/:id/convert/docx", middleware.RequirePermission("file:read"), fileH.HandleExportWord)
+			file.GET("/:id/convert/pdf", middleware.RequirePermission("file:read"), fileH.HandleConvertWordToPDF)
 			file.DELETE("/:id", middleware.RequirePermission("file:delete"), fileH.HandleDelete)
 			file.POST("/mkdir", middleware.RequirePermission("file:write"), fileH.HandleMkdir)
 			file.GET("/search", middleware.RequirePermission("file:read"), fileH.HandleSearch)
@@ -262,6 +270,7 @@ func main() {
 			file.POST("/move", middleware.RequirePermission("file:write"), fileH.HandleMove)
 			file.POST("/copy", middleware.RequirePermission("file:write"), fileH.HandleCopy)
 			file.POST("/collab", middleware.RequirePermission("file:write"), fileH.HandleCreateCollab)
+			file.POST("/office", middleware.RequirePermission("file:write"), fileH.HandleCreateOfficeDoc)
 			// 文件版本
 			file.GET("/:id/versions", middleware.RequirePermission("file:read"), fileH.HandleListVersions)
 			file.POST("/:id/versions/:versionId/restore", middleware.RequirePermission("file:write"), fileH.HandleRestoreVersion)
@@ -270,39 +279,44 @@ func main() {
 			file.POST("/:id/share", middleware.RequirePermission("file:share"), shareH.HandleCreateShare)
 			file.GET("/:id/shares", middleware.RequirePermission("file:read"), shareH.HandleListSharesByFile)
 
-		// 分块上传
-		chunk := file.Group("/chunk")
-		{
-			chunk.POST("/init", middleware.RequirePermission("file:write"), chunkH.HandleInitUpload)
-			chunk.POST("/upload", middleware.RequirePermission("file:write"), chunkH.HandleUploadChunk)
-			chunk.GET("/status/:uploadId", middleware.RequirePermission("file:read"), chunkH.HandleGetStatus)
-			chunk.POST("/complete", middleware.RequirePermission("file:write"), chunkH.HandleComplete)
-			chunk.DELETE("/cancel/:uploadId", middleware.RequirePermission("file:delete"), chunkH.HandleCancel)
-			chunk.GET("/incomplete", middleware.RequirePermission("file:read"), chunkH.HandleListIncomplete)
-		}
-
-		// 回收站
-		trash := file.Group("/trash")
-		{
-			trash.GET("/", middleware.RequirePermission("file:read"), trashH.HandleListTrash)
-			trash.POST("/:id/restore", middleware.RequirePermission("file:write"), trashH.HandleRestore)
-			trash.DELETE("/:id", middleware.RequirePermission("file:delete"), trashH.HandlePermanentDelete)
-			trash.DELETE("/", middleware.RequirePermission("file:delete"), trashH.HandleEmptyTrash)
-		}
-	}
-
-		collab := api.Group("/collab")
-			collab.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+			// 分块上传
+			chunk := file.Group("/chunk")
 			{
-				collab.GET("", middleware.RequirePermission("file:read"), fileH.HandleListCollabDocs)
-				collab.POST("", middleware.RequirePermission("file:write"), fileH.HandleCreateCollab)
-				collab.GET("/:id", middleware.RequirePermission("file:read"), fileH.HandleGetFileMeta)
-				collab.PUT("/:id", middleware.RequirePermission("file:write"), fileH.HandleMove)
-				collab.DELETE("/:id", middleware.RequirePermission("file:delete"), fileH.HandleDelete)
+				chunk.POST("/init", middleware.RequirePermission("file:write"), chunkH.HandleInitUpload)
+				chunk.POST("/upload", middleware.RequirePermission("file:write"), chunkH.HandleUploadChunk)
+				chunk.GET("/status/:uploadId", middleware.RequirePermission("file:read"), chunkH.HandleGetStatus)
+				chunk.POST("/complete", middleware.RequirePermission("file:write"), chunkH.HandleComplete)
+				chunk.DELETE("/cancel/:uploadId", middleware.RequirePermission("file:delete"), chunkH.HandleCancel)
+				chunk.GET("/incomplete", middleware.RequirePermission("file:read"), chunkH.HandleListIncomplete)
 			}
 
-			shares := api.Group("/shares")
+			// 回收站
+			trash := file.Group("/trash")
+			trash.Use(middleware.RequirePermission("module:trash"))
+			{
+				trash.GET("/", middleware.RequirePermission("file:read"), trashH.HandleListTrash)
+				trash.POST("/:id/restore", middleware.RequirePermission("file:write"), trashH.HandleRestore)
+				trash.DELETE("/:id", middleware.RequirePermission("file:delete"), trashH.HandlePermanentDelete)
+				trash.DELETE("/", middleware.RequirePermission("file:delete"), trashH.HandleEmptyTrash)
+			}
+		}
+
+		collab := api.Group("/collab")
+		collab.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		collab.Use(middleware.LoadPermissions(db))
+		collab.Use(middleware.RequirePermission("module:documents"))
+		{
+			collab.GET("", middleware.RequirePermission("file:read"), fileH.HandleListCollabDocs)
+			collab.POST("", middleware.RequirePermission("file:write"), fileH.HandleCreateCollab)
+			collab.GET("/:id", middleware.RequirePermission("file:read"), fileH.HandleGetFileMeta)
+			collab.PUT("/:id", middleware.RequirePermission("file:write"), fileH.HandleMove)
+			collab.DELETE("/:id", middleware.RequirePermission("file:delete"), fileH.HandleDelete)
+		}
+
+		shares := api.Group("/shares")
 		shares.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		shares.Use(middleware.LoadPermissions(db))
+		shares.Use(middleware.RequirePermission("module:shares"))
 		{
 			shares.GET("/my", shareH.HandleListMyShares)
 			shares.DELETE("/:id", shareH.HandleDeleteShare)
@@ -317,6 +331,8 @@ func main() {
 
 		albums := api.Group("/albums")
 		albums.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		albums.Use(middleware.LoadPermissions(db))
+		albums.Use(middleware.RequirePermission("module:album"))
 		{
 			albums.POST("", middleware.RequirePermission("file:write"), albumH.HandleCreate)
 			albums.GET("", middleware.RequirePermission("file:read"), albumH.HandleList)
@@ -331,11 +347,18 @@ func main() {
 
 		music := api.Group("/music")
 		music.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+		music.Use(middleware.LoadPermissions(db))
+		music.Use(middleware.RequirePermission("module:music"))
 		{
 			music.GET("/library", musicH.HandleGetLibrary)
 			music.POST("/library/upload", middleware.AdminRequired(), musicH.HandleUploadTrack)
 			music.DELETE("/library/:id", middleware.AdminRequired(), musicH.HandleDeleteTrack)
 			music.GET("/tracks/:id/stream", musicH.HandleStream)
+			music.GET("/likes", musicH.HandleListLikes)
+			music.PUT("/likes", musicH.HandleAddLike)
+			music.DELETE("/likes/:id", musicH.HandleRemoveLike)
+			music.GET("/recent", musicH.HandleListRecent)
+			music.POST("/recent", musicH.HandleRecordRecent)
 			music.GET("/playlists", musicH.HandleListPlaylists)
 			music.POST("/playlists", musicH.HandleCreatePlaylist)
 			music.GET("/playlists/:id", musicH.HandleGetPlaylist)
@@ -369,6 +392,8 @@ func main() {
 			admin.GET("/logs/download", systemH.HandleLogDownload)
 			admin.GET("/metrics/resources", systemH.HandleResourceMetrics)
 			admin.GET("/metrics/history", systemH.HandleMetricsHistory)
+			admin.GET("/services", serviceControlH.HandleListServices)
+			admin.POST("/services/:service/start", serviceControlH.HandleStartService)
 			admin.GET("/nodes", nodeH.HandleListNodes)
 			// 服务状态历史
 			status := admin.Group("/status")
@@ -381,45 +406,46 @@ func main() {
 			admin.POST("/nodes", nodeH.HandleAddNode)
 			admin.DELETE("/nodes/:name", nodeH.HandleDeleteNode)
 
-				alerts := admin.Group("/alerts")
-				{
-					alerts.GET("/rules", alertH.HandleListRules)
-					alerts.POST("/rules", alertH.HandleCreateRule)
-					alerts.PUT("/rules/:id", alertH.HandleUpdateRule)
-					alerts.DELETE("/rules/:id", alertH.HandleDeleteRule)
-					alerts.GET("/history", alertH.HandleListHistory)
-				}
+			alerts := admin.Group("/alerts")
+			{
+				alerts.GET("/rules", alertH.HandleListRules)
+				alerts.POST("/rules", alertH.HandleCreateRule)
+				alerts.PUT("/rules/:id", alertH.HandleUpdateRule)
+				alerts.DELETE("/rules/:id", alertH.HandleDeleteRule)
+				alerts.GET("/history", alertH.HandleListHistory)
+			}
 
-				roles := admin.Group("/roles")
-				{
-					roles.GET("", roleH.HandleListRoles)
-					roles.POST("", roleH.HandleCreateRole)
-					roles.PUT("/:id", roleH.HandleUpdateRole)
-					roles.DELETE("/:id", roleH.HandleDeleteRole)
-					roles.GET("/permissions", roleH.HandleListPermissions)
-					roles.POST("/:id/permissions", roleH.HandleAssignPermissions)
-				}
+			roles := admin.Group("/roles")
+			{
+				roles.GET("", roleH.HandleListRoles)
+				roles.POST("", roleH.HandleCreateRole)
+				roles.PUT("/:id", roleH.HandleUpdateRole)
+				roles.DELETE("/:id", roleH.HandleDeleteRole)
+				roles.GET("/permissions", roleH.HandleListPermissions)
+				roles.POST("/:id/permissions", roleH.HandleAssignPermissions)
+			}
 
-				admin.GET("/users/:id/roles", roleH.HandleGetUserRoles)
-				admin.POST("/users/:id/roles", roleH.HandleAssignUserRole)
-				admin.DELETE("/users/:id/roles/:roleId", roleH.HandleRemoveUserRole)
+			admin.GET("/users/:id/roles", roleH.HandleGetUserRoles)
+			admin.POST("/users/:id/roles", roleH.HandleAssignUserRole)
+			admin.DELETE("/users/:id/roles/:roleId", roleH.HandleRemoveUserRole)
+			admin.GET("/users/:id/permissions", roleH.HandleGetUserPermissions)
+			admin.PUT("/users/:id/permissions", roleH.HandleReplaceUserPermissions)
 
-
-				// 配额管理
-				quota := admin.Group("/quota")
-				{
-					quota.GET("/tiers", quotaH.HandleListTiers)
-					quota.POST("/tiers", quotaH.HandleCreateTier)
-					quota.PUT("/tiers/:id", quotaH.HandleUpdateTier)
-					quota.DELETE("/tiers/:id", quotaH.HandleDeleteTier)
-				}
-				admin.GET("/users/:id/quota", quotaH.HandleGetUserQuota)
+			// 配额管理
+			quota := admin.Group("/quota")
+			{
+				quota.GET("/tiers", quotaH.HandleListTiers)
+				quota.POST("/tiers", quotaH.HandleCreateTier)
+				quota.PUT("/tiers/:id", quotaH.HandleUpdateTier)
+				quota.DELETE("/tiers/:id", quotaH.HandleDeleteTier)
+			}
+			admin.GET("/users/:id/quota", quotaH.HandleGetUserQuota)
 			admin.PUT("/users/:id/quota", quotaH.HandleSetUserQuota)
 
-				// 系统配置
-				admin.GET("/config", systemH.HandleGetConfig)
-				admin.PUT("/config", systemH.HandleUpdateConfig)
-			}
+			// 系统配置
+			admin.GET("/config", systemH.HandleGetConfig)
+			admin.PUT("/config", systemH.HandleUpdateConfig)
+		}
 	}
 
 	r.GET("/healthz", systemH.HandleHealthz)

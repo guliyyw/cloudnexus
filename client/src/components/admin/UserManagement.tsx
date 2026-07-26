@@ -1,11 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Table, Button, Tag, Space, message, Popconfirm, Card, Statistic, Row, Col, Typography, Progress, Select, Modal, Form, InputNumber, Spin } from 'antd'
-import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined } from '@ant-design/icons'
+import { UserOutlined, CheckCircleOutlined, StopOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import * as adminApi from '../../services/admin'
 import type { AdminUser, QuotaTier, UserQuotaInfo } from '../../services/admin'
 import { formatFileSize } from '../../utils/format'
 import { colors } from '../../theme/tokens'
+import UserAccessModal from './UserAccessModal'
+import RoleManagementModal from './RoleManagementModal'
 
 const { Text } = Typography
 
@@ -23,6 +25,8 @@ export default function UserManagement() {
   const [quotaInfoLoading, setQuotaInfoLoading] = useState(false)
   const [currentQuotaInfo, setCurrentQuotaInfo] = useState<UserQuotaInfo | null>(null)
   const [quotaTiers, setQuotaTiers] = useState<QuotaTier[]>([])
+  const [accessUser, setAccessUser] = useState<AdminUser | null>(null)
+  const [roleModalOpen, setRoleModalOpen] = useState(false)
   const tierSizeMap = useMemo(() => {
     const map: Record<string, number> = {}
     quotaTiers.forEach((t) => { map[t.id] = t.storage_limit })
@@ -48,12 +52,6 @@ export default function UserManagement() {
       setQuotaTiers(tiers)
     }).catch(() => {})
   }, [])
-
-  const handleToggleAdmin = async (id: string) => {
-    const updated = await adminApi.toggleAdmin(id)
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, is_admin: updated.is_admin } : u)))
-    message.success(`已${updated.is_admin ? '设为' : '取消'}管理员`)
-  }
 
   const handleToggleStatus = async (id: string) => {
     const updated = await adminApi.toggleStatus(id)
@@ -155,12 +153,10 @@ export default function UserManagement() {
       ),
     },
     {
-      title: '操作', key: 'actions', width: 200,
+      title: '操作', key: 'actions', width: 220,
       render: (_: any, record: AdminUser) => (
         <Space>
-          <Popconfirm title={record.is_admin ? '取消管理员？' : '设为管理员？'} onConfirm={() => handleToggleAdmin(record.id)}>
-            <Button size="small">{record.is_admin ? '取消管理员' : '设为管理员'}</Button>
-          </Popconfirm>
+          <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => setAccessUser(record)}>访问权限</Button>
           <Popconfirm
             title={record.status === 1 ? '禁用此用户？' : '启用此用户？'}
             onConfirm={() => handleToggleStatus(record.id)}
@@ -188,7 +184,10 @@ export default function UserManagement() {
 
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <Text strong style={{ fontSize: 16 }}>用户管理</Text>
-        <Button icon={<ReloadOutlined />} onClick={fetchUsers}>刷新</Button>
+        <Space>
+          <Button icon={<SafetyCertificateOutlined />} onClick={() => setRoleModalOpen(true)}>权限组</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchUsers}>刷新</Button>
+        </Space>
       </div>
 
       <Table
@@ -275,6 +274,17 @@ export default function UserManagement() {
           </div>
         )}
       </Modal>
+      {accessUser && (
+        <UserAccessModal
+          userId={accessUser.id}
+          username={accessUser.username}
+          isAdmin={accessUser.is_admin}
+          open
+          onClose={() => setAccessUser(null)}
+          onSaved={fetchUsers}
+        />
+      )}
+      <RoleManagementModal open={roleModalOpen} onClose={() => setRoleModalOpen(false)} />
     </div>
   )
 }

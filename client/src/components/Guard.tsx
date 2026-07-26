@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { Spin } from 'antd'
 import { useAuthStore } from '../stores/authStore'
@@ -26,10 +27,19 @@ export function AuthGuard() {
 }
 
 export function AdminGuard() {
-  const { hasRole, loading } = useAccess()
+  const { isAdmin, loading } = useAccess()
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>
   }
-  if (!hasRole('admin') && !hasRole('super_admin')) return <Navigate to="/forbidden" replace />
+  if (!isAdmin) return <Navigate to="/forbidden" replace />
   return <Outlet />
+}
+
+export function ModuleGuard({ permission, children }: { permission: string; children: ReactNode }) {
+  const { hasPermission, loading } = useAccess()
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 320 }}><Spin size="large" /></div>
+  }
+  if (!hasPermission(permission)) return <Navigate to="/forbidden" replace />
+  return <>{children}</>
 }

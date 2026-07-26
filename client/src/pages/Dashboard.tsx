@@ -1,53 +1,60 @@
 import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Col, Progress, Row, Skeleton, Statistic, Typography } from 'antd'
+import { Col, Progress, Row, Statistic, Typography } from 'antd'
 import {
+  BgColorsOutlined,
   CloudOutlined,
-  ClusterOutlined,
-  ContainerOutlined,
   CustomerServiceOutlined,
   DeleteOutlined,
   FileTextOutlined,
   MessageOutlined,
   PictureOutlined,
   PlaySquareOutlined,
+  SettingOutlined,
   ShareAltOutlined,
   TeamOutlined,
-  UnorderedListOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons'
 import ModuleCard from '../components/dashboard/ModuleCard'
+import { useAccess } from '../hooks/useAccess'
 import { useDashboardStore } from '../stores/dashboardStore'
 import { colors, radius, shadow, spacing } from '../theme/tokens'
 
-const { Paragraph, Text, Title } = Typography
-
-const serviceIconMap: Record<string, React.ReactNode> = {
-  files: <CloudOutlined />,
-  im: <MessageOutlined />,
-  docker: <ContainerOutlined />,
-  camera: <VideoCameraOutlined />,
-  collab: <FileTextOutlined />,
-  drama: <PlaySquareOutlined />,
-  infra: <ClusterOutlined />,
-}
+const { Text, Title } = Typography
 
 const featureModules = [
-  { key: 'files', name: '文件工作台', icon: <CloudOutlined />, path: '/files', detail: '统一处理目录、上传、共享、协作与版本操作。', eyebrow: 'Workspace' },
-  { key: 'drama', name: '短剧工坊', icon: <PlaySquareOutlined />, path: '/drama', detail: '管理剧本、分镜、角色场景资产和生成任务。', eyebrow: 'AI Video' },
-  { key: 'documents', name: '在线文档', icon: <FileTextOutlined />, path: '/documents', detail: '查看文档列表并进入实时协作编辑。', eyebrow: 'Docs' },
-  { key: 'chat', name: '即时通讯', icon: <MessageOutlined />, path: '/chat', detail: '围绕当前会话进行消息、文件与成员协作。', eyebrow: 'Realtime' },
-  { key: 'album', name: '相册', icon: <PictureOutlined />, path: '/album', detail: '按媒体视图、时间线与目录维度浏览内容。', eyebrow: 'Media' },
-  { key: 'music', name: '音乐', icon: <CustomerServiceOutlined />, path: '/music', detail: '浏览曲库、管理播放状态并配合全局播放器。', eyebrow: 'Audio' },
-  { key: 'playlist', name: '播放列表', icon: <UnorderedListOutlined />, path: '/playlist', detail: '组织歌单、排序条目并执行导入导出。', eyebrow: 'Queue' },
-  { key: 'friends', name: '好友', icon: <TeamOutlined />, path: '/friends', detail: '维护联系人网络并快速打开私聊入口。', eyebrow: 'Network' },
-  { key: 'shares', name: '我的分享', icon: <ShareAltOutlined />, path: '/shares', detail: '查看分享记录、访问策略和有效期。', eyebrow: 'Public Links' },
-  { key: 'trash', name: '回收站', icon: <DeleteOutlined />, path: '/trash', detail: '检查误删内容并执行恢复或清理。', eyebrow: 'Recovery' },
+  { key: 'files', name: '文件', icon: <CloudOutlined />, path: '/files', detail: '上传、预览、分享和管理云盘文件。', eyebrow: 'Workspace' },
+  { key: 'drama', name: '短剧', icon: <PlaySquareOutlined />, path: '/drama', detail: '管理剧本、分镜、角色资产和生成任务。', eyebrow: 'AI Video' },
+  { key: 'image_generation', name: '图片生成', icon: <BgColorsOutlined />, path: '/image-generation', detail: '使用提示词和参考图片创作图片。', eyebrow: 'AI Image' },
+  { key: 'documents', name: '文档', icon: <FileTextOutlined />, path: '/documents', detail: '创建和编辑在线协作文档。', eyebrow: 'Docs' },
+  { key: 'chat', name: '聊天', icon: <MessageOutlined />, path: '/chat', detail: '发送消息、文件和实时会话。', eyebrow: 'Realtime' },
+  { key: 'cameras', name: '视频监控', icon: <VideoCameraOutlined />, path: '/cameras', detail: '查看摄像头、人脸库和考勤签到。', eyebrow: 'Monitoring' },
+  { key: 'album', name: '相册', icon: <PictureOutlined />, path: '/album', detail: '整理图片和视频内容。', eyebrow: 'Media' },
+  { key: 'music', name: '音乐', icon: <CustomerServiceOutlined />, path: '/music', detail: '播放公共音乐和云盘音频。', eyebrow: 'Audio' },
+  { key: 'friends', name: '好友', icon: <TeamOutlined />, path: '/friends', detail: '管理联系人和私聊入口。', eyebrow: 'Network' },
+  { key: 'shares', name: '分享', icon: <ShareAltOutlined />, path: '/shares', detail: '查看和管理对外分享链接。', eyebrow: 'Links' },
+  { key: 'trash', name: '回收站', icon: <DeleteOutlined />, path: '/trash', detail: '恢复或清理已删除文件。', eyebrow: 'Recovery' },
 ]
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { modules, summary, loading, fetchStatus } = useDashboardStore()
+  const { isAdmin, hasPermission } = useAccess()
+  const { modules, summary, fetchStatus } = useDashboardStore()
+
+  const permittedFeatureModules = featureModules.filter((mod) => hasPermission(`module:${mod.key}`))
+  const visibleFeatureModules = isAdmin
+    ? [
+        ...permittedFeatureModules,
+        {
+          key: 'admin',
+          name: '管理后台',
+          icon: <SettingOutlined />,
+          path: '/admin',
+          detail: '管理用户、权限、配额、日志和系统配置。',
+          eyebrow: 'Administration',
+        },
+      ]
+    : permittedFeatureModules
 
   useEffect(() => {
     fetchStatus()
@@ -62,42 +69,31 @@ export default function Dashboard() {
     if (!summary) return []
     return [
       { label: '在线服务', value: summary.healthy, suffix: ` / ${summary.total}` },
-      { label: '关注中', value: summary.warning, suffix: ' 个' },
-      { label: '异常项', value: summary.error, suffix: ' 个' },
+      { label: '告警', value: summary.warning, suffix: ' 个' },
+      { label: '异常', value: summary.error, suffix: ' 个' },
     ]
   }, [summary])
 
-  const handleServiceCardClick = (key: string) => {
-    const routes: Record<string, string> = {
-      files: '/files',
-      im: '/chat',
-      docker: '/docker',
-      camera: '/cameras',
-      collab: '/documents',
-      drama: '/drama',
-      infra: '/admin',
-    }
-    navigate(routes[key] || '/files')
-  }
+  const moduleStatusMap = useMemo(() => {
+    const map = new Map<string, { status: 'green' | 'yellow' | 'red'; detail: string }>()
+    modules.forEach((mod) => map.set(mod.key, { status: mod.status, detail: mod.detail }))
+    return map
+  }, [modules])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
       <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 1fr)', gap: spacing.lg }}>
         <div style={{ borderRadius: radius.lg, padding: '28px 28px 24px', background: colors.surfaceRaised, border: `1px solid ${colors.borderSubtle}`, boxShadow: shadow.card }}>
           <Text style={{ color: colors.primary, fontWeight: 700, letterSpacing: 0.5 }}>DASHBOARD</Text>
-          <Title level={2} style={{ marginTop: 10, marginBottom: 12, color: colors.text }}>
-            统一入口，先看系统状态，再进入工作流。
+          <Title level={2} style={{ marginTop: 10, marginBottom: 0, color: colors.text }}>
+            工作台
           </Title>
-          <Paragraph style={{ marginBottom: 0, fontSize: 15, lineHeight: 1.8, color: colors.textSecondary }}>
-            这里集中承接 CloudNexus 的核心入口：文件、文档、聊天、媒体和系统模块都通过统一卡片进入，
-            同时把当前服务健康概览放在首屏，避免用户在高频协作场景里来回切页面查状态。
-          </Paragraph>
         </div>
 
         <div style={{ borderRadius: radius.lg, padding: '24px 24px 20px', background: colors.surface, border: `1px solid ${colors.borderSubtle}`, boxShadow: shadow.card }}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>当前健康摘要</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>健康摘要</Text>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 16 }}>
-            <Title level={3} style={{ margin: 0, color: colors.text }}>系统健康度</Title>
+            <Title level={3} style={{ margin: 0, color: colors.text }}>系统状态</Title>
             <Text style={{ color: colors.primary, fontWeight: 700 }}>{healthRate}%</Text>
           </div>
           <Progress percent={healthRate} showInfo={false} strokeColor={colors.primary} trailColor={colors.surfaceMuted} strokeLinecap="round" />
@@ -116,75 +112,27 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 首页把“我要做什么”和“系统现在怎么样”拆成两个区域，避免模块入口和健康状态互相抢注意力。 */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
         <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: spacing.md, flexWrap: 'wrap' }}>
           <div>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>优先入口</Text>
-            <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>常用工作流</Title>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>常用入口</Text>
+            <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>功能模块</Title>
           </div>
-          <Text style={{ color: colors.textSecondary }}>从这里进入文件、文档、短剧、聊天和媒体模块。</Text>
         </div>
         <Row gutter={[18, 18]}>
-          {featureModules.map((mod) => (
+          {visibleFeatureModules.map((mod) => (
             <Col xs={24} md={12} xl={8} key={mod.key}>
               <ModuleCard
                 icon={mod.icon}
                 name={mod.name}
-                status="green"
-                detail={mod.detail}
+                status={moduleStatusMap.get(mod.key)?.status || 'green'}
+                detail={moduleStatusMap.get(mod.key)?.detail || mod.detail}
                 eyebrow={mod.eyebrow}
                 onClick={() => navigate(mod.path)}
               />
             </Col>
           ))}
         </Row>
-      </section>
-
-      <section style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-        <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: spacing.md, flexWrap: 'wrap' }}>
-          <div>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: 600 }}>服务总览</Text>
-            <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>健康状态与入口联动</Title>
-          </div>
-          {summary && (
-            <Text style={{ color: colors.textSecondary }}>
-              共 {summary.total} 个服务，{summary.healthy} 个正常
-              {summary.warning > 0 && `，${summary.warning} 个警告`}
-              {summary.error > 0 && `，${summary.error} 个异常`}
-            </Text>
-          )}
-        </div>
-
-        {loading ? (
-          <div style={{ padding: '24px 0 0', borderRadius: radius.lg, background: colors.surface, border: `1px solid ${colors.borderSubtle}` }}>
-            <Row gutter={[18, 18]}>
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <Col xs={24} md={12} xl={8} key={idx}>
-                  <div style={{ padding: 24, borderRadius: radius.lg, background: colors.surfaceMuted, border: `1px solid ${colors.borderSubtle}` }}>
-                    <Skeleton active paragraph={{ rows: 2 }} title={{ width: '55%' }} />
-                  </div>
-                </Col>
-              ))}
-            </Row>
-          </div>
-        ) : (
-          <Row gutter={[18, 18]}>
-            {modules.map((mod) => (
-              <Col xs={24} md={12} xl={8} key={mod.key}>
-                <ModuleCard
-                  icon={serviceIconMap[mod.key]}
-                  name={mod.name}
-                  status={mod.status}
-                  detail={mod.detail}
-                  metric={mod.status === 'green' ? '状态稳定' : '需要关注'}
-                  eyebrow="Service"
-                  onClick={() => handleServiceCardClick(mod.key)}
-                />
-              </Col>
-            ))}
-          </Row>
-        )}
       </section>
     </div>
   )

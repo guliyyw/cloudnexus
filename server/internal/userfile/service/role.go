@@ -95,6 +95,14 @@ func (s *RoleService) GetUserRoles(userID uint64) ([]model.Role, error) {
 	return s.repo.FindUserRoles(userID)
 }
 
+func (s *RoleService) GetUserPermissions(userID uint64) ([]model.Permission, error) {
+	return s.repo.FindDirectUserPermissions(userID)
+}
+
+func (s *RoleService) ReplaceUserPermissions(operatorID, userID uint64, permissionIDs []uint64) error {
+	return s.repo.ReplaceUserPermissions(userID, operatorID, permissionIDs)
+}
+
 // SeedRBAC inserts default permissions and roles if the system is empty.
 func (s *RoleService) SeedRBAC() error {
 	count, _ := s.repo.CountRoles()

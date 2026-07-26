@@ -113,8 +113,19 @@ func main() {
 
 	api := r.Group("/api/v1")
 	api.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+	api.Use(middleware.LoadPermissions(db))
 	{
+		imageGeneration := api.Group("/image-generation")
+		imageGeneration.Use(middleware.RequirePermission("module:image_generation"))
+		{
+			imageGeneration.GET("", dramaH.HandleListImageGenerations)
+			imageGeneration.POST("", dramaH.HandleCreateImageGeneration)
+			imageGeneration.POST("/:taskId/cancel", dramaH.HandleCancelImageGeneration)
+			imageGeneration.POST("/:taskId/retry", dramaH.HandleRetryImageGeneration)
+		}
+
 		drama := api.Group("/drama")
+		drama.Use(middleware.RequirePermission("module:drama"))
 		{
 			drama.GET("/projects", middleware.RequirePermission("drama:read"), dramaH.HandleListProjects)
 			drama.POST("/projects", middleware.RequirePermission("drama:write"), dramaH.HandleCreateProject)
@@ -143,7 +154,7 @@ func main() {
 			drama.PUT("/settings", middleware.RequirePermission("drama:admin"), dramaH.HandleSaveSetting)
 		}
 	}
-	r.GET("/ws/drama/tasks", middleware.AuthRequired(jwtCfg.AccessSecret), middleware.RequirePermission("drama:read"), dramaH.HandleTaskWebSocket)
+	r.GET("/ws/drama/tasks", middleware.AuthRequired(jwtCfg.AccessSecret), middleware.LoadPermissions(db), middleware.RequirePermission("module:drama"), middleware.RequirePermission("drama:read"), dramaH.HandleTaskWebSocket)
 
 	r.GET("/healthz", system.HealthzHandler("drama-svc",
 		func() (string, string) {

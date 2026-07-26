@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
@@ -45,7 +46,7 @@ var moduleDefs = []struct {
 	{Key: "files", Name: "云存储", Icon: "CloudOutlined", Service: "user-file-svc"},
 	{Key: "im", Name: "即时通讯", Icon: "MessageOutlined", Service: "im-svc"},
 	{Key: "docker", Name: "Docker 管理", Icon: "ContainerOutlined", Service: "docker-svc"},
-	{Key: "camera", Name: "视频监控", Icon: "VideoCameraOutlined", Service: "camera-svc"},
+	{Key: "cameras", Name: "视频监控", Icon: "VideoCameraOutlined", Service: "camera-svc"},
 	{Key: "collab", Name: "在线文档", Icon: "FileTextOutlined", Service: "collab-svc"},
 	{Key: "drama", Name: "短剧工坊", Icon: "PlaySquareOutlined", Service: "drama-svc"},
 	{Key: "infra", Name: "基础设施", Icon: "ClusterOutlined", Service: ""},
@@ -106,7 +107,7 @@ func (s *DashboardService) buildModule(def struct {
 
 	healthyCount, unresponsiveCount, offlineCount := 0, 0, 0
 	for _, n := range nodes {
-		switch n.Status {
+		switch effectiveNodeStatus(n) {
 		case "healthy":
 			healthyCount++
 		case "unresponsive":
@@ -118,14 +119,25 @@ func (s *DashboardService) buildModule(def struct {
 		}
 	}
 
-	if offlineCount > 0 {
-		mod.Status = "red"
+	// A module stays available while at least one current instance is healthy.
+	// Replaced container records remain visible without failing the module.
+	if healthyCount > 0 {
+		mod.Status = "green"
 	} else if unresponsiveCount > 0 {
 		mod.Status = "yellow"
+	} else {
+		mod.Status = "red"
 	}
 
 	mod.Detail = formatNodeDetail(healthyCount, unresponsiveCount, offlineCount, len(nodes))
 	return mod
+}
+
+func effectiveNodeStatus(n model.DockerNode) string {
+	if n.LastHeartbeat != nil && time.Since(*n.LastHeartbeat) > 45*time.Second {
+		return "offline"
+	}
+	return n.Status
 }
 
 func formatNodeDetail(healthy, unresponsive, offline, total int) string {

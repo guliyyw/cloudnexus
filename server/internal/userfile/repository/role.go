@@ -24,13 +24,38 @@ func (r *RoleRepository) FindRolesByUserID(userID uint64) ([]model.Role, error) 
 
 func (r *RoleRepository) FindPermissionsByUserID(userID uint64) ([]model.Permission, error) {
 	var perms []model.Permission
-	err := r.db.Table("permissions").
-		Joins("JOIN role_permissions rp ON rp.permission_id = permissions.id").
-		Joins("JOIN user_roles ur ON ur.role_id = rp.role_id").
-		Where("ur.user_id = ?", userID).
-		Distinct().
-		Find(&perms).Error
+	err := r.db.Raw(`
+		SELECT DISTINCT p.* FROM permissions p
+		LEFT JOIN role_permissions rp ON rp.permission_id = p.id
+		LEFT JOIN user_roles ur ON ur.role_id = rp.role_id AND ur.user_id = ?
+		LEFT JOIN user_permissions up ON up.permission_id = p.id AND up.user_id = ?
+		WHERE ur.user_id IS NOT NULL OR up.user_id IS NOT NULL
+	`, userID, userID).Scan(&perms).Error
 	return perms, err
+}
+
+func (r *RoleRepository) FindDirectUserPermissions(userID uint64) ([]model.Permission, error) {
+	var perms []model.Permission
+	err := r.db.Table("permissions").
+		Joins("JOIN user_permissions up ON up.permission_id = permissions.id").
+		Where("up.user_id = ?", userID).
+		Order("permissions.group_name, permissions.name").Find(&perms).Error
+	return perms, err
+}
+
+func (r *RoleRepository) ReplaceUserPermissions(userID, grantedBy uint64, permissionIDs []uint64) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.UserPermission{}).Error; err != nil {
+			return err
+		}
+		for _, permissionID := range permissionIDs {
+			grant := model.UserPermission{UserID: userID, PermissionID: permissionID, GrantedBy: grantedBy}
+			if err := tx.Create(&grant).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *RoleRepository) ListRoles() ([]model.Role, error) {

@@ -36,3 +36,11 @@ type UserRole struct {
 	GrantedBy uint64    `json:"granted_by,string"`
 	GrantedAt time.Time `json:"granted_at"`
 }
+
+// UserPermission grants a permission directly to one user, in addition to roles.
+type UserPermission struct {
+	UserID       uint64    `json:"user_id,string" gorm:"primaryKey"`
+	PermissionID uint64    `json:"permission_id,string" gorm:"primaryKey"`
+	GrantedBy    uint64    `json:"granted_by,string"`
+	GrantedAt    time.Time `json:"granted_at"`
+}

@@ -3,9 +3,11 @@ package repository
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MusicRepository struct {
@@ -121,4 +123,32 @@ func (r *MusicRepository) FindTracksByPlaylist(playlistID uint64) ([]model.Playl
 	var tracks []model.PlaylistTrack
 	err := r.db.Where("playlist_id = ?", playlistID).Order("sort_order ASC").Find(&tracks).Error
 	return tracks, err
+}
+
+func (r *MusicRepository) FindLikesByUser(userID uint64) ([]model.MusicLike, error) {
+	var likes []model.MusicLike
+	err := r.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&likes).Error
+	return likes, err
+}
+
+func (r *MusicRepository) AddLike(like *model.MusicLike) error {
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(like).Error
+}
+
+func (r *MusicRepository) RemoveLike(userID, trackID uint64, source string) error {
+	return r.db.Delete(&model.MusicLike{}, "user_id = ? AND track_id = ? AND source = ?", userID, trackID, source).Error
+}
+
+func (r *MusicRepository) UpsertRecentPlay(play *model.MusicRecentPlay) error {
+	play.PlayedAt = time.Now()
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "track_id"}, {Name: "source"}},
+		DoUpdates: clause.AssignmentColumns([]string{"played_at"}),
+	}).Create(play).Error
+}
+
+func (r *MusicRepository) FindRecentPlaysByUser(userID uint64, limit int) ([]model.MusicRecentPlay, error) {
+	var plays []model.MusicRecentPlay
+	err := r.db.Where("user_id = ?", userID).Order("played_at DESC").Limit(limit).Find(&plays).Error
+	return plays, err
 }

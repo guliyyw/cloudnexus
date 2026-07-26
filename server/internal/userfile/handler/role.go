@@ -94,7 +94,7 @@ func (h *RoleHandler) HandleListPermissions(c *gin.Context) {
 }
 
 type assignPermsReq struct {
-	PermissionIDs []uint64 `json:"permission_ids" binding:"required"`
+	PermissionIDs []string `json:"permission_ids" binding:"required"`
 }
 
 func (h *RoleHandler) HandleAssignPermissions(c *gin.Context) {
@@ -108,7 +108,16 @@ func (h *RoleHandler) HandleAssignPermissions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误"))
 		return
 	}
-	if err := h.svc.AssignRolePermissions(roleID, req.PermissionIDs); err != nil {
+	permissionIDs := make([]uint64, 0, len(req.PermissionIDs))
+	for _, rawID := range req.PermissionIDs {
+		permissionID, parseErr := strconv.ParseUint(rawID, 10, 64)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, response.Error(400, "Invalid permission ID"))
+			return
+		}
+		permissionIDs = append(permissionIDs, permissionID)
+	}
+	if err := h.svc.AssignRolePermissions(roleID, permissionIDs); err != nil {
 		httputil.HandleError(c, err)
 		return
 	}

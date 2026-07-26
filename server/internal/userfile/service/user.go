@@ -57,6 +57,10 @@ func (s *UserService) getUserRolesAndPermissions(userID uint64) ([]string, []str
 	return roleCodes, permCodes
 }
 
+func (s *UserService) GetUserRolesAndPermissions(userID uint64) ([]string, []string) {
+	return s.getUserRolesAndPermissions(userID)
+}
+
 func (s *UserService) GetJWTConfig() auth.Config {
 	return s.jwtConfig
 }

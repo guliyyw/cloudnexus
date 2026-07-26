@@ -52,6 +52,28 @@ export async function getLibrary(source = 'all', page = 1, pageSize = 50): Promi
   return res.data.data
 }
 
+export async function getLikedTracks(): Promise<LibraryResponse> {
+  const res = await api.get('/music/likes')
+  return res.data.data
+}
+
+export async function likeTrack(trackId: string, source: string): Promise<void> {
+  await api.put('/music/likes', { track_id: trackId, source })
+}
+
+export async function unlikeTrack(trackId: string, source: string): Promise<void> {
+  await api.delete(`/music/likes/${trackId}`, { params: { source } })
+}
+
+export async function getRecentTracks(limit = 50): Promise<LibraryResponse> {
+  const res = await api.get('/music/recent', { params: { limit } })
+  return res.data.data
+}
+
+export async function recordRecentTrack(trackId: string, source: string): Promise<void> {
+  await api.post('/music/recent', { track_id: trackId, source })
+}
+
 export async function uploadPublicTrack(file: File, metadata?: { title?: string; artist?: string; album?: string }) {
   const formData = new FormData()
   formData.append('file', file)

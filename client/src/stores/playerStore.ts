@@ -14,6 +14,7 @@ export interface PlayerState {
   mode: PlayMode
   isMiniVisible: boolean
   isFullScreen: boolean
+  errorMessage: string | null
 
   play: (track?: Track, queue?: Track[]) => void
   switchTrackSource: (trackId: string, source: 'public' | 'cloud') => void
@@ -28,6 +29,7 @@ export interface PlayerState {
   setPlaying: (playing: boolean) => void
   setTime: (time: number) => void
   setDuration: (d: number) => void
+  setError: (message: string | null) => void
   showMini: () => void
   hideMini: () => void
   toggleFullScreen: () => void
@@ -44,15 +46,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   mode: 'sequential',
   isMiniVisible: false,
   isFullScreen: false,
+  errorMessage: null,
 
   play: (track?: Track, queue?: Track[]) => {
     if (queue) {
       const idx = track ? queue.findIndex((t) => t.id === track.id && t.source === track.source) : 0
-      set({ queue, currentIndex: idx >= 0 ? idx : 0, isPlaying: true, isMiniVisible: true })
+      set({ queue, currentIndex: idx >= 0 ? idx : 0, isPlaying: true, isMiniVisible: true, errorMessage: null })
     } else if (track) {
-      set({ queue: [track], currentIndex: 0, isPlaying: true, isMiniVisible: true })
+      set({ queue: [track], currentIndex: 0, isPlaying: true, isMiniVisible: true, errorMessage: null })
     } else {
-      set({ isPlaying: true })
+      set({ isPlaying: true, errorMessage: null })
     }
   },
 
@@ -86,7 +89,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         alternatives: remainingAlternatives,
       }
     })
-    set({ queue: nextQueue, isPlaying: true, currentTime: 0 })
+    set({ queue: nextQueue, isPlaying: true, currentTime: 0, errorMessage: null })
   },
 
   pause: () => set({ isPlaying: false }),
@@ -102,14 +105,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (mode === 'shuffle') {
       next = Math.floor(Math.random() * get().queue.length)
     }
-    set({ currentIndex: next, isPlaying: true, currentTime: 0 })
+    set({ currentIndex: next, isPlaying: true, currentTime: 0, errorMessage: null })
   },
 
   prev: () => {
     const { queue, currentIndex } = get()
     if (queue.length === 0) return
     const prev = currentIndex > 0 ? currentIndex - 1 : queue.length - 1
-    set({ currentIndex: prev, isPlaying: true, currentTime: 0 })
+    set({ currentIndex: prev, isPlaying: true, currentTime: 0, errorMessage: null })
   },
 
   seek: (time: number) => set({ currentTime: time }),
@@ -119,6 +122,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setPlaying: (playing: boolean) => set({ isPlaying: playing }),
   setTime: (time: number) => set({ currentTime: time }),
   setDuration: (d: number) => set({ duration: d }),
+  setError: (message: string | null) => set({ errorMessage: message, isPlaying: message ? false : get().isPlaying }),
   showMini: () => set({ isMiniVisible: true }),
   hideMini: () => set({ isMiniVisible: false }),
   toggleFullScreen: () => set((s) => ({ isFullScreen: !s.isFullScreen })),

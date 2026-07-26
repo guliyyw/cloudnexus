@@ -101,7 +101,7 @@ func main() {
 	r.Use(middleware.CORS())
 
 	// WebSocket for Yjs (auth via query param)
-	r.GET("/ws/collab/:id", middleware.AuthRequired(jwtCfg.AccessSecret), collabH.HandleWebSocket)
+	r.GET("/ws/collab/:id", middleware.AuthRequired(jwtCfg.AccessSecret), middleware.LoadPermissions(db), middleware.RequirePermission("module:documents"), collabH.HandleWebSocket)
 
 	r.GET("/healthz", system.HealthzHandler("collab-svc",
 		func() (string, string) {

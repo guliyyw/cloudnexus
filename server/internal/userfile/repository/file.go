@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
@@ -96,10 +97,34 @@ func (r *FileRepository) FindAllByParent(userID, parentID uint64) ([]model.File,
 	return files, err
 }
 
-func (r *FileRepository) FindCollabDocs(userID uint64, page, pageSize int) ([]model.File, int64, error) {
+func (r *FileRepository) FindCollabDocs(userID uint64, page, pageSize int, keyword string) ([]model.File, int64, error) {
 	var files []model.File
 	var total int64
-	query := r.db.Model(&model.File{}).Where("user_id = ? AND collab_type = ? AND is_dir = false AND deleted_at IS NULL", userID, "doc")
+	query := r.db.Model(&model.File{}).Where(
+		`user_id = ? AND is_dir = false AND deleted_at IS NULL AND (
+			collab_type = ?
+			OR lower(name) LIKE '%.clouddoc'
+			OR lower(name) LIKE '%.md'
+			OR lower(name) LIKE '%.markdown'
+			OR lower(name) LIKE '%.doc'
+			OR lower(name) LIKE '%.docx'
+			OR lower(name) LIKE '%.xls'
+			OR lower(name) LIKE '%.xlsx'
+			OR lower(name) LIKE '%.csv'
+			OR lower(name) LIKE '%.pdf'
+			OR lower(mime_type) LIKE '%wordprocessingml%'
+			OR lower(mime_type) LIKE '%msword%'
+			OR lower(mime_type) LIKE '%spreadsheetml%'
+			OR lower(mime_type) LIKE '%excel%'
+			OR lower(mime_type) = 'application/pdf'
+			OR lower(mime_type) LIKE '%markdown%'
+		)`,
+		userID,
+		"doc",
+	)
+	if keyword != "" {
+		query = query.Where("lower(name) LIKE ?", "%"+strings.ToLower(keyword)+"%")
+	}
 	query.Count(&total)
 	offset := (page - 1) * pageSize
 	err := query.Order("updated_at DESC").Offset(offset).Limit(pageSize).Find(&files).Error

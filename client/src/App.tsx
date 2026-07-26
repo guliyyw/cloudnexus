@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ConfigProvider, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { useThemeStore } from './stores/themeStore'
-import { AuthGuard, AdminGuard } from './components/Guard'
+import { AuthGuard, AdminGuard, ModuleGuard } from './components/Guard'
 import AppLayout from './components/Layout'
 import PageTransition from './components/PageTransition'
 import LoginPage from './pages/LoginPage'
@@ -28,10 +28,8 @@ import RecycleBinPage from './pages/RecycleBinPage'
 import AlbumPage from './pages/AlbumPage'
 import AlbumDetailPage from './pages/AlbumDetailPage'
 import MusicPage from './pages/MusicPage'
-import PlaylistPage from './pages/PlaylistPage'
-import PlaylistDetailPage from './pages/PlaylistDetailPage'
 import DramaPage from './pages/DramaPage'
-import ServiceStatusPage from './pages/ServiceStatusPage'
+import ImageGenerationPage from './pages/ImageGenerationPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { colors, radius, shadow } from './theme/tokens'
 
@@ -163,23 +161,24 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<PageTransition><ErrorBoundary><Dashboard /></ErrorBoundary></PageTransition>} />
-              <Route path="/files" element={<PageTransition><ErrorBoundary><FileListPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/files/:id/edit" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/shares" element={<PageTransition><ErrorBoundary><MySharesPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/chat" element={<PageTransition><ErrorBoundary><ChatPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/friends" element={<PageTransition><ErrorBoundary><FriendPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/docker" element={<PageTransition><ErrorBoundary><DockerPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/cameras" element={<PageTransition><ErrorBoundary><CameraPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/cameras/:id" element={<PageTransition><ErrorBoundary><CameraLiveView /></ErrorBoundary></PageTransition>} />
-              <Route path="/documents" element={<PageTransition><ErrorBoundary><DocumentListPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/documents/:id" element={<PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/album" element={<PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/album/:id" element={<PageTransition><ErrorBoundary><AlbumDetailPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/music" element={<PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/playlist" element={<PageTransition><ErrorBoundary><PlaylistPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/playlist/:id" element={<PageTransition><ErrorBoundary><PlaylistDetailPage /></ErrorBoundary></PageTransition>} />
-              <Route path="/drama" element={<ErrorBoundary><DramaPage /></ErrorBoundary>} />
-              <Route path="/trash" element={<PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition>} />
+              <Route path="/files" element={<ModuleGuard permission="module:files"><PageTransition><ErrorBoundary><FileListPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/files/:id/edit" element={<ModuleGuard permission="module:documents"><PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/shares" element={<ModuleGuard permission="module:shares"><PageTransition><ErrorBoundary><MySharesPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/chat" element={<ModuleGuard permission="module:chat"><PageTransition><ErrorBoundary><ChatPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/friends" element={<ModuleGuard permission="module:friends"><PageTransition><ErrorBoundary><FriendPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/docker" element={<ModuleGuard permission="module:docker"><PageTransition><ErrorBoundary><DockerPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/cameras" element={<ModuleGuard permission="module:cameras"><PageTransition><ErrorBoundary><CameraPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/cameras/:id" element={<ModuleGuard permission="module:cameras"><PageTransition><ErrorBoundary><CameraLiveView /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/documents" element={<ModuleGuard permission="module:documents"><PageTransition><ErrorBoundary><DocumentListPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/documents/:id" element={<ModuleGuard permission="module:documents"><PageTransition><ErrorBoundary><DocumentEditorPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/album" element={<ModuleGuard permission="module:album"><PageTransition><ErrorBoundary><AlbumPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/album/:id" element={<ModuleGuard permission="module:album"><PageTransition><ErrorBoundary><AlbumDetailPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/music" element={<ModuleGuard permission="module:music"><PageTransition><ErrorBoundary><MusicPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/playlist" element={<Navigate to="/music" replace />} />
+              <Route path="/playlist/:id" element={<Navigate to="/music" replace />} />
+              <Route path="/drama" element={<ModuleGuard permission="module:drama"><ErrorBoundary><DramaPage /></ErrorBoundary></ModuleGuard>} />
+              <Route path="/image-generation" element={<ModuleGuard permission="module:image_generation"><PageTransition><ErrorBoundary><ImageGenerationPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
+              <Route path="/trash" element={<ModuleGuard permission="module:trash"><PageTransition><ErrorBoundary><RecycleBinPage /></ErrorBoundary></PageTransition></ModuleGuard>} />
               <Route path="/settings" element={<PageTransition><ErrorBoundary><UserSettingsPage /></ErrorBoundary></PageTransition>} />
             </Route>
           </Route>
@@ -189,7 +188,7 @@ export default function App() {
             <Route element={<AdminGuard />}>
               <Route element={<AppLayout />}>
                 <Route path="/admin" element={<PageTransition><ErrorBoundary><AdminPage /></ErrorBoundary></PageTransition>} />
-                <Route path="/status" element={<PageTransition><ErrorBoundary><ServiceStatusPage /></ErrorBoundary></PageTransition>} />
+                <Route path="/status" element={<Navigate to="/admin?tab=status" replace />} />
               </Route>
             </Route>
           </Route>

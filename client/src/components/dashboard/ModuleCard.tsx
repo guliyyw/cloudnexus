@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import { colors, motion, radius, shadow, spacing } from '../../theme/tokens'
@@ -6,11 +7,11 @@ import { colors, motion, radius, shadow, spacing } from '../../theme/tokens'
 const { Text } = Typography
 
 interface Props {
-  icon: React.ReactNode
+  icon: ReactNode
   name: string
   status: 'green' | 'yellow' | 'red'
   detail: string
-  onClick: () => void
+  onClick?: () => void
   eyebrow?: string
   metric?: string
 }
@@ -29,36 +30,11 @@ const statusLabel: Record<Props['status'], string> = {
 
 export default function ModuleCard({ icon, name, status, detail, onClick, eyebrow, metric }: Props) {
   const [hovered, setHovered] = useState(false)
+  const interactive = typeof onClick === 'function'
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: '100%',
-        padding: 0,
-        border: `1px solid ${hovered ? colors.borderStrong : colors.borderSubtle}`,
-        borderRadius: radius.lg,
-        background: hovered ? colors.surfaceRaised : colors.surface,
-        cursor: 'pointer',
-        transition: `transform ${motion.fast} ease, box-shadow ${motion.normal} ease, border-color ${motion.normal} ease`,
-        boxShadow: hovered ? shadow.hover : shadow.card,
-        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
-        userSelect: 'none',
-        textAlign: 'left',
-        color: colors.text,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          gap: spacing.md,
-          padding: '22px 24px',
-        }}
-      >
+  const content = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: spacing.md, padding: '22px 24px' }}>
         <div
           style={{
             width: 56,
@@ -125,29 +101,58 @@ export default function ModuleCard({ icon, name, status, detail, onClick, eyebro
                 />
                 {statusLabel[status]}
               </span>
-              {metric && (
-                <span style={{ fontSize: 12, color: colors.textSecondary }}>
-                  {metric}
-                </span>
-              )}
+              {metric && <span style={{ fontSize: 12, color: colors.textSecondary }}>{metric}</span>}
             </div>
           </div>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0 24px 18px',
-          color: colors.textSecondary,
-          fontSize: 12,
-        }}
-      >
-        <span>点击进入模块</span>
-        <ArrowRightOutlined style={{ color: colors.primary, transform: hovered ? 'translateX(2px)' : 'translateX(0)', transition: `transform ${motion.fast} ease` }} />
-      </div>
+      {interactive && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0 24px 18px',
+            color: colors.textSecondary,
+            fontSize: 12,
+          }}
+        >
+          <span>点击进入</span>
+          <ArrowRightOutlined style={{ color: colors.primary, transform: hovered ? 'translateX(2px)' : 'translateX(0)', transition: `transform ${motion.fast} ease` }} />
+        </div>
+      )}
+    </>
+  )
+
+  const commonStyle = {
+    width: '100%',
+    padding: 0,
+    border: `1px solid ${interactive && hovered ? colors.borderStrong : colors.borderSubtle}`,
+    borderRadius: radius.lg,
+    background: interactive && hovered ? colors.surfaceRaised : colors.surface,
+    cursor: interactive ? 'pointer' : 'default',
+    transition: `transform ${motion.fast} ease, box-shadow ${motion.normal} ease, border-color ${motion.normal} ease`,
+    boxShadow: interactive && hovered ? shadow.hover : shadow.card,
+    transform: interactive && hovered ? 'translateY(-3px)' : 'translateY(0)',
+    userSelect: 'none' as const,
+    textAlign: 'left' as const,
+    color: colors.text,
+  }
+
+  if (!interactive) {
+    return <div style={commonStyle}>{content}</div>
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={commonStyle}
+    >
+      {content}
     </button>
   )
 }

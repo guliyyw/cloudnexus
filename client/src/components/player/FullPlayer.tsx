@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Slider, Button, Typography, List } from 'antd'
 import {
   StepBackwardOutlined,
@@ -44,7 +44,7 @@ const modes: PlayMode[] = ['sequential', 'repeat-one', 'repeat-all', 'shuffle']
 
 export default function FullPlayer() {
   const {
-    queue, currentIndex, isPlaying, currentTime, duration,
+    queue, currentIndex, isPlaying, currentTime, duration, errorMessage,
     volume, isMuted, mode,
     pause, resume, next, prev, seek, setVolume, setMode,
     toggleFullScreen,
@@ -95,7 +95,7 @@ export default function FullPlayer() {
         animation: `${motion.normal} ease-out`,
       }}
     >
-      {/* 顶部工具栏 */}
+      {/* 椤堕儴宸ュ叿鏍?*/}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -125,7 +125,7 @@ export default function FullPlayer() {
         </div>
       </div>
 
-      {/* 主内容区 */}
+      {/* 涓诲唴瀹瑰尯 */}
       <div style={{
         flex: 1,
         display: 'flex',
@@ -183,7 +183,7 @@ export default function FullPlayer() {
           </div>
         ) : (
           <div style={{ textAlign: 'center' }}>
-            {/* 封面图 */}
+            {/* 灏侀潰鍥?*/}
             <div style={{
               width: 280,
               height: 280,
@@ -198,20 +198,25 @@ export default function FullPlayer() {
             }}>
               <CustomerServiceOutlined style={{ fontSize: 80, color: 'rgba(255,255,255,0.3)' }} />
             </div>
-            {/* 歌曲信息 */}
+            {/* 姝屾洸淇℃伅 */}
             <Text style={{ fontSize: 22, fontWeight: 600, color: '#fff', display: 'block' }}>
               {track.title}
             </Text>
             <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', display: 'block', marginTop: 4 }}>
               {track.artist || '未知艺术家'} {track.album ? `· ${track.album}` : ''}
             </Text>
+            {errorMessage && (
+              <Text style={{ fontSize: 13, color: colors.error, display: 'block', marginTop: 10 }}>
+                {errorMessage}
+              </Text>
+            )}
           </div>
         )}
       </div>
 
-      {/* 底部控制区 */}
+      {/* 搴曢儴鎺у埗鍖?*/}
       <div style={{ padding: '16px 32px 32px', flexShrink: 0 }}>
-        {/* 进度条 */}
+        {/* 杩涘害鏉?*/}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', width: 40, textAlign: 'right', flexShrink: 0 }}>
             {formatTime(currentTime)}
@@ -233,7 +238,7 @@ export default function FullPlayer() {
           </Text>
         </div>
 
-        {/* 控制按钮 */}
+        {/* 鎺у埗鎸夐挳 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
           <div style={{ position: 'relative' }}>
             <Button

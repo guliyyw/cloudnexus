@@ -530,6 +530,69 @@ func (h *DramaHandler) HandleSaveSetting(c *gin.Context) {
 	c.JSON(200, response.OKWithData(gin.H{"setting": setting}))
 }
 
+func (h *DramaHandler) HandleListImageGenerations(c *gin.Context) {
+	tasks, err := h.svc.ListImageGenerationTasks(httputil.GetUserID(c))
+	if err != nil {
+		c.JSON(500, response.Error(500, "读取图片生成记录失败"))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"items": tasks}))
+}
+
+func (h *DramaHandler) HandleCreateImageGeneration(c *gin.Context) {
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(400, response.Error(400, "生成参数格式错误"))
+		return
+	}
+	width, _ := strconv.Atoi(c.PostForm("width"))
+	height, _ := strconv.Atoi(c.PostForm("height"))
+	steps, _ := strconv.Atoi(c.PostForm("steps"))
+	imageCount, _ := strconv.Atoi(c.PostForm("image_count"))
+	cfg, _ := strconv.ParseFloat(c.PostForm("cfg"), 64)
+	referenceWeight, _ := strconv.ParseFloat(c.PostForm("reference_weight"), 64)
+	references := form.File["references"]
+	if len(references) == 0 {
+		references = form.File["reference"]
+	}
+	task, err := h.svc.CreateImageGenerationTask(httputil.GetUserID(c), service.ImageGenerationInput{
+		Prompt: c.PostForm("prompt"), NegativePrompt: c.PostForm("negative_prompt"),
+		Width: width, Height: height, Steps: steps, CFG: cfg, ImageCount: imageCount,
+		ReferenceWeight: referenceWeight, References: references,
+	})
+	if err != nil {
+		c.JSON(400, response.Error(400, err.Error()))
+		return
+	}
+	c.JSON(201, response.OKWithData(gin.H{"task": task}))
+}
+
+func (h *DramaHandler) HandleCancelImageGeneration(c *gin.Context) {
+	taskID, ok := parseID(c, "taskId")
+	if !ok {
+		return
+	}
+	task, err := h.svc.CancelImageGenerationTask(httputil.GetUserID(c), taskID)
+	if err != nil {
+		c.JSON(400, response.Error(400, err.Error()))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"task": task}))
+}
+
+func (h *DramaHandler) HandleRetryImageGeneration(c *gin.Context) {
+	taskID, ok := parseID(c, "taskId")
+	if !ok {
+		return
+	}
+	task, err := h.svc.RetryImageGenerationTask(httputil.GetUserID(c), taskID)
+	if err != nil {
+		c.JSON(400, response.Error(400, err.Error()))
+		return
+	}
+	c.JSON(200, response.OKWithData(gin.H{"task": task}))
+}
+
 func parseID(c *gin.Context, name string) (uint64, bool) {
 	id, err := strconv.ParseUint(c.Param(name), 10, 64)
 	if err != nil {

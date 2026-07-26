@@ -78,6 +78,65 @@ export async function getEvents(id: string, page = 1, pageSize = 20): Promise<Pa
   return data.data
 }
 
+export interface CameraRecording {
+  id: string
+  camera_id: string
+  owner_id: string
+  file_name: string
+  status: string
+  started_at: string
+  ended_at: string | null
+  duration_seconds: number
+  size_bytes: number
+  created_at: string
+  updated_at: string
+}
+
+export interface RecordingOptions {
+  segment_seconds?: number
+  retention_days?: number
+  max_storage_mb?: number
+}
+
+export interface RecordingStatus {
+  recording: boolean
+  camera_id: string
+  started_at: string | null
+  segment_seconds: number
+  retention_days: number
+  max_storage_mb: number
+  last_error: string
+}
+
+export async function startCameraRecording(id: string, options: RecordingOptions): Promise<RecordingStatus> {
+  const { data } = await api.post(`/cameras/${id}/recording/start`, options)
+  return data.data
+}
+
+export async function stopCameraRecording(id: string): Promise<void> {
+  await api.post(`/cameras/${id}/recording/stop`)
+}
+
+export async function getCameraRecordingStatus(id: string): Promise<RecordingStatus> {
+  const { data } = await api.get(`/cameras/${id}/recording/status`)
+  return data.data
+}
+
+export async function getCameraRecordings(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<CameraRecording>> {
+  const { data } = await api.get(`/cameras/${id}/recordings`, { params: { page, page_size: pageSize } })
+  return data.data
+}
+
+export async function deleteCameraRecording(cameraId: string, recordingId: string): Promise<void> {
+  await api.delete(`/cameras/${cameraId}/recordings/${recordingId}`)
+}
+
+export function getCameraRecordingPlaybackUrl(cameraId: string, recordingId: string): string {
+  const token = localStorage.getItem('access_token')
+  const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `/api/v1/cameras/${cameraId}/recordings/${recordingId}/play${qs}`
+}
+
 export interface DiscoverRequest {
   subnet: string
   ports?: number[]

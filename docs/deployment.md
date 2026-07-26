@@ -404,3 +404,63 @@ curl http://localhost/healthz/camera-svc        # 摄像头服务
 - [ ] 高危路径 `/api/v1/docker`、`/healthz`、`/metrics`、`/admin`、`/status`、`/cam_*` 的公网风险已知并接受
 - [ ] 定期更新依赖和镜像
 - [ ] 配置 AI 推理服务访问令牌 (`AI_INFERENCE_TOKEN`)
+---
+
+## 7. 在线文档部署补充
+
+多格式在线文档依赖前端静态构建和 `user-file-svc` 的文档转换能力。
+
+### 7.1 前端更新
+
+前端代码更新后，先重新生成静态文件：
+
+```bash
+cd client
+npm install
+npm run build
+```
+
+`nginx` 通过 bind mount 读取 `client/dist`，构建完成后重启 nginx 即可加载新版前端：
+
+```bash
+cd deploy
+docker compose -f docker-compose.single.yml restart nginx
+```
+
+### 7.2 Word 转 PDF
+
+Word 转 PDF 使用 `user-file-svc` 容器内的 LibreOffice/soffice。单机 Compose 已为 `user-file-svc` 打开构建参数：
+
+```yaml
+build:
+  context: ../server
+  args:
+    SERVICE: user-file-svc
+    INSTALL_LIBREOFFICE: "true"
+```
+
+服务镜像通过 `server/Dockerfile` 的 `INSTALL_LIBREOFFICE` 参数按需安装 LibreOffice。其他 Go 服务默认不安装，避免镜像体积整体增大。
+
+更新后重建并启动：
+
+```bash
+cd deploy
+docker compose -f docker-compose.single.yml build user-file-svc
+docker compose -f docker-compose.single.yml up -d user-file-svc
+docker compose -f docker-compose.single.yml restart nginx
+```
+
+验证：
+
+```bash
+docker compose -f docker-compose.single.yml exec -T user-file-svc sh -c "which libreoffice || which soffice"
+curl http://localhost/healthz
+curl -I http://localhost/
+```
+
+### 7.3 新增接口
+
+| Endpoint | Method | 说明 |
+|----------|--------|------|
+| `/api/v1/file/:id/text` | PUT | 保存文本类文档内容，当前用于 Markdown 在线保存 |
+| `/api/v1/file/:id/convert/pdf` | GET | 将 Word 文档转换为 PDF 并以内联 PDF 流返回 |

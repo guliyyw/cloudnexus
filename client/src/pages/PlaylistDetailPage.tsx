@@ -1,8 +1,19 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Typography, Table, Button, Space, Switch, Modal, Input, Spin, Empty,
-  Dropdown, Upload, message, Tag,
+  Table,
+  Button,
+  Space,
+  Switch,
+  Modal,
+  Input,
+  Spin,
+  Empty,
+  Dropdown,
+  Upload,
+  message,
+  Tag,
+  Typography,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -14,18 +25,26 @@ import {
   ImportOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
+import { PageHeader, MetricStrip } from '../components/common/PageHeader'
 import { usePlaylistStore } from '../stores/playlistStore'
 import { usePlayerStore } from '../stores/playerStore'
 import { getLibrary, exportPlaylist, importPlaylist, type Track } from '../services/music'
-import { colors } from '../theme/tokens'
+import { colors, radius, spacing } from '../theme/tokens'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
 function formatDuration(s: number): string {
   if (!s) return '-'
   const m = Math.floor(s / 60)
   const sec = s % 60
   return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
+function formatTotalDuration(seconds: number): string {
+  if (!seconds) return '0 分钟'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return hours > 0 ? `${hours} 小时 ${minutes} 分钟` : `${minutes} 分钟`
 }
 
 export default function PlaylistDetailPage() {
@@ -39,19 +58,14 @@ export default function PlaylistDetailPage() {
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [libraryLoading, setLibraryLoading] = useState(false)
   const [addingTrackId, setAddingTrackId] = useState<string | null>(null)
-
   const [importing, setImporting] = useState(false)
+  const [trackDetails, setTrackDetails] = useState<Track[]>([])
 
   const playlistId = id || ''
 
   useEffect(() => {
-    if (id) {
-      fetchPlaylist(id)
-    }
+    if (id) fetchPlaylist(id)
   }, [id, fetchPlaylist])
-
-  // Build full track info for the table by enriching playlist tracks with library data
-  const [trackDetails, setTrackDetails] = useState<Track[]>([])
 
   useEffect(() => {
     if (currentTracks.length === 0) {
@@ -62,17 +76,26 @@ export default function PlaylistDetailPage() {
       try {
         const res = await getLibrary('all', 1, 500)
         const libraryMap = new Map<string, Track>()
-        for (const t of res.tracks || []) {
-          libraryMap.set(`${t.source}:${t.id}`, t)
+        for (const track of res.tracks || []) {
+          libraryMap.set(`${track.source}:${track.id}`, track)
         }
         const details = currentTracks
-          .map((pt) => libraryMap.get(`${pt.source}:${pt.track_id}`))
+          .map((track) => libraryMap.get(`${track.source}:${track.track_id}`))
           .filter(Boolean) as Track[]
         setTrackDetails(details)
-      } catch { /* ignore */ }
+      } catch {
+        setTrackDetails([])
+      }
     }
     loadDetails()
   }, [currentTracks])
+
+  const stats = useMemo(() => {
+    const publicCount = trackDetails.filter((track) => track.source === 'public').length
+    const cloudCount = trackDetails.length - publicCount
+    const totalDuration = trackDetails.reduce((sum, track) => sum + (track.duration || 0), 0)
+    return { publicCount, cloudCount, totalDuration }
+  }, [trackDetails])
 
   const handlePlay = useCallback((track: Track, index: number) => {
     play(track, trackDetails.slice(index))
@@ -88,7 +111,6 @@ export default function PlaylistDetailPage() {
     await update(playlistId, { is_public: checked })
   }, [playlistId, update])
 
-  // --- Add track modal ---
   const openAddModal = async () => {
     setAddModalOpen(true)
     setLibrarySearch('')
@@ -96,8 +118,11 @@ export default function PlaylistDetailPage() {
     try {
       const res = await getLibrary('all', 1, 200)
       setLibraryTracks(res.tracks || [])
-    } catch { /* ignore */ }
-    setLibraryLoading(false)
+    } catch {
+      message.error('加载音乐库失败')
+    } finally {
+      setLibraryLoading(false)
+    }
   }
 
   const handleAddTrack = async (track: Track) => {
@@ -109,25 +134,25 @@ export default function PlaylistDetailPage() {
       fetchPlaylist(playlistId)
     } catch {
       message.error('添加失败')
+    } finally {
+      setAddingTrackId(null)
     }
-    setAddingTrackId(null)
   }
 
   const filteredLibrary = useMemo(() => {
     if (!librarySearch.trim()) return libraryTracks
     const q = librarySearch.toLowerCase()
-    return libraryTracks.filter((t) =>
-      t.title.toLowerCase().includes(q) ||
-      t.artist.toLowerCase().includes(q) ||
-      t.album.toLowerCase().includes(q)
+    return libraryTracks.filter((track) =>
+      track.title.toLowerCase().includes(q) ||
+      track.artist.toLowerCase().includes(q) ||
+      track.album.toLowerCase().includes(q)
     )
   }, [libraryTracks, librarySearch])
 
   const existingTrackIds = useMemo(() => {
-    return new Set(currentTracks.map((t) => `${t.source}:${t.track_id}`))
+    return new Set(currentTracks.map((track) => `${track.source}:${track.track_id}`))
   }, [currentTracks])
 
-  // --- Export ---
   const handleExport = async (format: 'json' | 'm3u') => {
     if (!playlistId) return
     try {
@@ -151,9 +176,8 @@ export default function PlaylistDetailPage() {
     { key: 'm3u', label: 'M3U', onClick: () => handleExport('m3u') },
   ]
 
-  // --- Import ---
   const handleImport = async (file: File) => {
-    if (!playlistId) return
+    if (!playlistId) return false
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (ext !== 'json' && ext !== 'm3u') {
       message.error('仅支持 .json 或 .m3u 文件')
@@ -166,12 +190,12 @@ export default function PlaylistDetailPage() {
       fetchPlaylist(playlistId)
     } catch {
       message.error('导入失败')
+    } finally {
+      setImporting(false)
     }
-    setImporting(false)
-    return false // prevent default upload
+    return false
   }
 
-  // --- Table columns ---
   const columns = [
     {
       title: '#',
@@ -186,19 +210,17 @@ export default function PlaylistDetailPage() {
       dataIndex: 'title',
       render: (text: string, record: Track) => (
         <div>
-          <div style={{ fontWeight: 500, fontSize: 13 }}>{text}</div>
-          <span style={{ fontSize: 11, color: colors.textSecondary }}>{record.artist || '未知艺术家'}</span>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{text}</div>
+          <span style={{ fontSize: 11, color: colors.textSecondary }}>{record.artist || '未知歌手'}</span>
         </div>
       ),
     },
     {
       title: '来源',
       dataIndex: 'source',
-      width: 80,
+      width: 92,
       render: (v: string) => (
-        <span style={{ fontSize: 11, color: v === 'public' ? colors.primary : '#52c41a' }}>
-          {v === 'public' ? '公共库' : '云盘'}
-        </span>
+        <Tag color={v === 'public' ? 'orange' : 'green'}>{v === 'public' ? '公共库' : '云盘'}</Tag>
       ),
     },
     {
@@ -210,23 +232,11 @@ export default function PlaylistDetailPage() {
     {
       title: '',
       key: 'actions',
-      width: 80,
+      width: 90,
       render: (_: unknown, record: Track, idx: number) => (
         <Space size={4}>
-          <Button
-            type="text"
-            size="small"
-            icon={<PlayCircleOutlined />}
-            onClick={() => handlePlay(record, idx)}
-            style={{ color: colors.primary }}
-          />
-          <Button
-            type="text"
-            size="small"
-            icon={<DeleteOutlined />}
-            onClick={() => handleRemoveTrack(record.id)}
-            style={{ color: colors.error }}
-          />
+          <Button type="text" size="small" icon={<PlayCircleOutlined />} onClick={() => handlePlay(record, idx)} style={{ color: colors.primary }} />
+          <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => handleRemoveTrack(record.id)} style={{ color: colors.error }} />
         </Space>
       ),
     },
@@ -234,47 +244,49 @@ export default function PlaylistDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Space>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/playlist')} />
-          <Title level={4} style={{ margin: 0 }}>{currentPlaylist?.name || '播放列表'}</Title>
-          {currentPlaylist && (
-            <Space size={4}>
-              <Text type="secondary" style={{ fontSize: 13 }}>公开</Text>
-              <Switch
-                size="small"
-                checked={currentPlaylist.is_public}
-                onChange={handleTogglePublic}
-              />
-            </Space>
-          )}
-        </Space>
-        <Space>
-          <Button icon={<PlusOutlined />} onClick={openAddModal}>
-            添加歌曲
-          </Button>
-          <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight">
-            <Button icon={<ExportOutlined />}>导出</Button>
-          </Dropdown>
-          <Upload
-            accept=".json,.m3u"
-            showUploadList={false}
-            beforeUpload={handleImport}
-          >
-            <Button icon={<ImportOutlined />} loading={importing}>导入</Button>
-          </Upload>
+      <PageHeader
+        eyebrow="Playlist"
+        title={currentPlaylist?.name || '播放列表'}
+        description="维护这个播放列表的歌曲顺序、公开状态，并可导入或导出为通用格式。"
+        actions={
+          <>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/playlist')}>返回列表</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>添加歌曲</Button>
+            <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight">
+              <Button icon={<ExportOutlined />}>导出</Button>
+            </Dropdown>
+            <Upload accept=".json,.m3u" showUploadList={false} beforeUpload={handleImport}>
+              <Button icon={<ImportOutlined />} loading={importing}>导入</Button>
+            </Upload>
+          </>
+        }
+      />
+
+      <div style={{ marginBottom: spacing.md }}>
+        <Space size={8}>
+          <Text type="secondary" style={{ fontSize: 13 }}>公开播放列表</Text>
+          <Switch size="small" checked={!!currentPlaylist?.is_public} onChange={handleTogglePublic} disabled={!currentPlaylist} />
         </Space>
       </div>
+
+      <MetricStrip
+        items={[
+          { label: '歌曲数量', value: trackDetails.length, tone: 'primary' },
+          { label: '公共库', value: stats.publicCount },
+          { label: '云盘', value: stats.cloudCount, tone: 'success' },
+          { label: '总时长', value: formatTotalDuration(stats.totalDuration), tone: 'warning' },
+        ]}
+      />
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>
       ) : trackDetails.length === 0 ? (
-        <Empty description="播放列表为空，点击「添加歌曲」开始" />
+        <Empty description="播放列表为空，点击“添加歌曲”开始整理" />
       ) : (
         <Table
           dataSource={trackDetails}
           columns={columns}
-          rowKey="id"
+          rowKey={(record) => `${record.source}:${record.id}`}
           size="small"
           pagination={{ pageSize: 50, size: 'small', showSizeChanger: false }}
           onRow={(record, idx) => ({
@@ -284,16 +296,15 @@ export default function PlaylistDetailPage() {
         />
       )}
 
-      {/* Add track modal */}
       <Modal
         title="添加歌曲"
         open={addModalOpen}
         onCancel={() => setAddModalOpen(false)}
         footer={null}
-        width={640}
+        width={680}
       >
         <Input
-          placeholder="搜索歌曲..."
+          placeholder="搜索歌曲、歌手、专辑..."
           prefix={<SearchOutlined />}
           value={librarySearch}
           onChange={(e) => setLibrarySearch(e.target.value)}
@@ -304,7 +315,7 @@ export default function PlaylistDetailPage() {
         ) : filteredLibrary.length === 0 ? (
           <Empty description="没有找到歌曲" />
         ) : (
-          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
             {filteredLibrary.map((track) => {
               const key = `${track.source}:${track.id}`
               const exists = existingTrackIds.has(key)
@@ -315,15 +326,18 @@ export default function PlaylistDetailPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '8px 4px',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    opacity: exists ? 0.5 : 1,
+                    gap: spacing.sm,
+                    padding: '10px 8px',
+                    borderBottom: `1px solid ${colors.borderSubtle}`,
+                    borderRadius: radius.sm,
+                    background: exists ? colors.surfaceMuted : 'transparent',
+                    opacity: exists ? 0.62 : 1,
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 13 }}>{track.title}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
                     <div style={{ fontSize: 11, color: colors.textSecondary }}>
-                      {track.artist} {track.album ? `· ${track.album}` : ''}
+                      {track.artist || '未知歌手'} {track.album ? `· ${track.album}` : ''}
                     </div>
                   </div>
                   <Space size={8}>
@@ -333,12 +347,7 @@ export default function PlaylistDetailPage() {
                     {exists ? (
                       <Text type="secondary" style={{ fontSize: 12 }}>已添加</Text>
                     ) : (
-                      <Button
-                        type="link"
-                        size="small"
-                        loading={addingTrackId === track.id}
-                        onClick={() => handleAddTrack(track)}
-                      >
+                      <Button type="link" size="small" loading={addingTrackId === track.id} onClick={() => handleAddTrack(track)}>
                         添加
                       </Button>
                     )}

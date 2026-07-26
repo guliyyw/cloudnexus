@@ -86,8 +86,10 @@ func main() {
 
 	api := r.Group("/api/v1")
 	api.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+	api.Use(middleware.LoadPermissions(db))
 	{
 		docker := api.Group("/docker")
+		docker.Use(middleware.RequirePermission("module:docker"))
 		{
 			docker.GET("/endpoints", dockerH.HandleListEndpoints)
 			docker.GET("/ping", dockerH.HandlePingEndpoint)

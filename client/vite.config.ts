@@ -22,6 +22,10 @@ export default defineConfig({
         target: 'http://localhost:8087',
         changeOrigin: true,
       },
+      '/api/v1/image-generation': {
+        target: 'http://localhost:8087',
+        changeOrigin: true,
+      },
       '/api/v1/cameras': {
         target: 'http://localhost:8085',
         changeOrigin: true,

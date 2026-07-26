@@ -28,7 +28,8 @@ type MusicService struct {
 	bucket    string
 }
 
-// extinfRe 用于解析 M3U 文件的 #EXTINF 行
+// extinfRe 鐢ㄤ簬瑙ｆ瀽 M3U 鏂囦欢鐨?#EXTINF 琛?var extinfRe = regexp.MustCompile(`#EXTINF:(\d+),(.+)`)
+
 var extinfRe = regexp.MustCompile(`#EXTINF:(\d+),(.+)`)
 
 func NewMusicService(musicRepo *repository.MusicRepository, fileRepo *repository.FileRepository, minioClient *minio.Client, bucket string) *MusicService {
@@ -63,6 +64,11 @@ type TrackInfo struct {
 type LibraryResponse struct {
 	Tracks []TrackInfo `json:"tracks"`
 	Total  int64       `json:"total"`
+}
+
+type TrackListResponse struct {
+	Tracks []TrackInfo `json:"tracks"`
+	Total  int         `json:"total"`
 }
 
 type PublicTrackUploadResult struct {
@@ -262,6 +268,108 @@ func (s *MusicService) GetLibrary(userID uint64, source string, page, pageSize i
 	return &LibraryResponse{Tracks: tracks[offset:end], Total: int64(len(tracks))}, nil
 }
 
+func (s *MusicService) trackInfoForRef(userID, trackID uint64, source string) (*TrackInfo, error) {
+	if source == "cloud" {
+		f, err := s.fileRepo.FindByID(trackID)
+		if err != nil {
+			return nil, err
+		}
+		if f.UserID != userID {
+			return nil, apperrors.ErrForbidden
+		}
+		metadata := s.loadCloudTrackMetadata(f.StorageKey)
+		track := TrackInfo{
+			ID:         strconv.FormatUint(f.ID, 10),
+			Title:      strings.TrimSuffix(f.Name, filepath.Ext(f.Name)),
+			Artist:     "",
+			Album:      "",
+			Duration:   0,
+			MimeType:   f.MimeType,
+			FileSize:   f.Size,
+			Source:     "cloud",
+			IsUploaded: true,
+		}
+		merged := mergeMetadata(track, metadata)
+		return &merged, nil
+	}
+	track, err := s.musicRepo.FindTrackByID(trackID)
+	if err != nil {
+		return nil, err
+	}
+	return &TrackInfo{
+		ID:       strconv.FormatUint(track.ID, 10),
+		Title:    track.Title,
+		Artist:   track.Artist,
+		Album:    track.Album,
+		Duration: track.Duration,
+		MimeType: track.MimeType,
+		FileSize: track.FileSize,
+		Source:   "public",
+	}, nil
+}
+
+type TrackRefReq struct {
+	TrackID uint64 `json:"track_id,string"`
+	Source  string `json:"source"`
+}
+
+func (s *MusicService) ListLikedTracks(userID uint64) (*TrackListResponse, error) {
+	likes, err := s.musicRepo.FindLikesByUser(userID)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "failed to list liked tracks", err)
+	}
+	tracks := make([]TrackInfo, 0, len(likes))
+	for _, like := range likes {
+		track, err := s.trackInfoForRef(userID, like.TrackID, like.Source)
+		if err == nil && track != nil {
+			tracks = append(tracks, *track)
+		}
+	}
+	return &TrackListResponse{Tracks: tracks, Total: len(tracks)}, nil
+}
+
+func (s *MusicService) SetTrackLike(userID uint64, req TrackRefReq) error {
+	if req.Source != "public" && req.Source != "cloud" {
+		return apperrors.NewAppError(400, "invalid track source", apperrors.ErrBadRequest)
+	}
+	if _, err := s.trackInfoForRef(userID, req.TrackID, req.Source); err != nil {
+		return apperrors.NewAppError(404, "track not found", apperrors.ErrNotFound)
+	}
+	return s.musicRepo.AddLike(&model.MusicLike{UserID: userID, TrackID: req.TrackID, Source: req.Source})
+}
+
+func (s *MusicService) RemoveTrackLike(userID, trackID uint64, source string) error {
+	return s.musicRepo.RemoveLike(userID, trackID, source)
+}
+
+func (s *MusicService) ListRecentTracks(userID uint64, limit int) (*TrackListResponse, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	plays, err := s.musicRepo.FindRecentPlaysByUser(userID, limit)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "failed to list recent tracks", err)
+	}
+	tracks := make([]TrackInfo, 0, len(plays))
+	for _, item := range plays {
+		track, err := s.trackInfoForRef(userID, item.TrackID, item.Source)
+		if err == nil && track != nil {
+			tracks = append(tracks, *track)
+		}
+	}
+	return &TrackListResponse{Tracks: tracks, Total: len(tracks)}, nil
+}
+
+func (s *MusicService) RecordRecentTrack(userID uint64, req TrackRefReq) error {
+	if req.Source != "public" && req.Source != "cloud" {
+		return apperrors.NewAppError(400, "invalid track source", apperrors.ErrBadRequest)
+	}
+	if _, err := s.trackInfoForRef(userID, req.TrackID, req.Source); err != nil {
+		return apperrors.NewAppError(404, "track not found", apperrors.ErrNotFound)
+	}
+	return s.musicRepo.UpsertRecentPlay(&model.MusicRecentPlay{UserID: userID, TrackID: req.TrackID, Source: req.Source})
+}
+
 func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHeader, title, artist, album string) (*PublicTrackUploadResult, error) {
 	if header == nil {
 		return nil, apperrors.NewAppError(400, "请上传音频文件", apperrors.ErrBadRequest)
@@ -273,23 +381,23 @@ func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHe
 
 	src, err := header.Open()
 	if err != nil {
-		return nil, apperrors.NewAppError(500, "打开音频文件失败", err)
+		return nil, apperrors.NewAppError(500, "鎵撳紑闊抽鏂囦欢澶辫触", err)
 	}
 	defer src.Close()
 
 	tmpFile, err := os.CreateTemp("", "music-upload-*")
 	if err != nil {
-		return nil, apperrors.NewAppError(500, "创建临时文件失败", err)
+		return nil, apperrors.NewAppError(500, "鍒涘缓涓存椂鏂囦欢澶辫触", err)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
 	if _, err := io.Copy(tmpFile, src); err != nil {
 		tmpFile.Close()
-		return nil, apperrors.NewAppError(500, "保存临时音频失败", err)
+		return nil, apperrors.NewAppError(500, "淇濆瓨涓存椂闊抽澶辫触", err)
 	}
 	if err := tmpFile.Close(); err != nil {
-		return nil, apperrors.NewAppError(500, "关闭临时音频失败", err)
+		return nil, apperrors.NewAppError(500, "鍏抽棴涓存椂闊抽澶辫触", err)
 	}
 
 	resolvedTitle := strings.TrimSpace(title)
@@ -326,7 +434,7 @@ func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHe
 
 	fileReader, err := os.Open(tmpPath)
 	if err != nil {
-		return nil, apperrors.NewAppError(500, "读取临时音频失败", err)
+		return nil, apperrors.NewAppError(500, "璇诲彇涓存椂闊抽澶辫触", err)
 	}
 	defer fileReader.Close()
 
@@ -334,7 +442,7 @@ func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHe
 		ContentType: contentType,
 	})
 	if err != nil {
-		return nil, apperrors.NewAppError(500, "上传公共歌曲失败", err)
+		return nil, apperrors.NewAppError(500, "涓婁紶鍏叡姝屾洸澶辫触", err)
 	}
 
 	track := &model.PublicTrack{
@@ -349,7 +457,7 @@ func (s *MusicService) UploadPublicTrack(userID uint64, header *multipart.FileHe
 	}
 	if err := s.musicRepo.CreateTrack(track); err != nil {
 		s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
-		return nil, apperrors.NewAppError(500, "保存公共歌曲失败", err)
+		return nil, apperrors.NewAppError(500, "淇濆瓨鍏叡姝屾洸澶辫触", err)
 	}
 	return &PublicTrackUploadResult{Track: track, Duplicated: false}, nil
 }
@@ -360,7 +468,7 @@ func (s *MusicService) DeletePublicTrack(id, userID uint64) error {
 		return apperrors.NewAppError(404, "曲目不存在", apperrors.ErrNotFound)
 	}
 	if track.UploadedBy != userID {
-		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 	return s.musicRepo.DeleteTrack(id)
 }
@@ -372,7 +480,7 @@ func (s *MusicService) getStorageKey(trackID uint64, source string, userID uint6
 			return "", "", 0, apperrors.NewAppError(404, "文件不存在", apperrors.ErrNotFound)
 		}
 		if f.UserID != userID {
-			return "", "", 0, apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+			return "", "", 0, apperrors.NewAppError(403, "鏃犳潈璁块棶", apperrors.ErrForbidden)
 		}
 		return f.StorageKey, f.MimeType, f.Size, nil
 	}
@@ -390,7 +498,7 @@ func (s *MusicService) StreamAudio(trackID uint64, source string, userID uint64)
 	}
 	obj, err := s.minio.GetObject(context.Background(), s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, "", 0, apperrors.NewAppError(500, "获取音频失败", apperrors.ErrInternalServer)
+		return nil, "", 0, apperrors.NewAppError(500, "鑾峰彇闊抽澶辫触", apperrors.ErrInternalServer)
 	}
 	return obj, mime, size, nil
 }
@@ -400,13 +508,22 @@ func (s *MusicService) StreamRange(trackID uint64, source string, userID uint64,
 	if err != nil {
 		return nil, "", 0, err
 	}
+	if start < 0 || start >= size {
+		return nil, "", 0, apperrors.NewAppError(416, "璇锋眰鑼冨洿瓒呭嚭鏂囦欢澶у皬", apperrors.ErrBadRequest)
+	}
+	if end < 0 || end >= size {
+		end = size - 1
+	}
+	if end < start {
+		return nil, "", 0, apperrors.NewAppError(416, "璇锋眰鑼冨洿鏃犳晥", apperrors.ErrBadRequest)
+	}
 	opts := minio.GetObjectOptions{}
 	if err := opts.SetRange(start, end); err != nil {
 		return nil, "", 0, err
 	}
 	obj, err := s.minio.GetObject(context.Background(), s.bucket, key, opts)
 	if err != nil {
-		return nil, "", 0, apperrors.NewAppError(500, "获取音频失败", apperrors.ErrInternalServer)
+		return nil, "", 0, apperrors.NewAppError(500, "鑾峰彇闊抽澶辫触", apperrors.ErrInternalServer)
 	}
 	return obj, mime, size, nil
 }
@@ -431,11 +548,11 @@ type AddTrackReq struct {
 
 func (s *MusicService) CreatePlaylist(ownerID uint64, req CreatePlaylistReq) (*model.Playlist, error) {
 	if req.Name == "" {
-		return nil, apperrors.NewAppError(400, "播放列表名称不能为空", apperrors.ErrBadRequest)
+		return nil, apperrors.NewAppError(400, "鎾斁鍒楄〃鍚嶇О涓嶈兘涓虹┖", apperrors.ErrBadRequest)
 	}
 	pl := &model.Playlist{OwnerID: ownerID, Name: req.Name, IsPublic: req.IsPublic}
 	if err := s.musicRepo.CreatePlaylist(pl); err != nil {
-		return nil, apperrors.NewAppError(500, "创建播放列表失败", apperrors.ErrInternalServer)
+		return nil, apperrors.NewAppError(500, "鍒涘缓鎾斁鍒楄〃澶辫触", apperrors.ErrInternalServer)
 	}
 	return pl, nil
 }
@@ -450,7 +567,7 @@ func (s *MusicService) GetPlaylist(id, userID uint64) (*model.Playlist, []model.
 		return nil, nil, apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if !pl.IsPublic && pl.OwnerID != userID {
-		return nil, nil, apperrors.NewAppError(403, "无权访问", apperrors.ErrForbidden)
+		return nil, nil, apperrors.NewAppError(403, "鏃犳潈璁块棶", apperrors.ErrForbidden)
 	}
 	tracks, err := s.musicRepo.FindTracksByPlaylist(id)
 	return pl, tracks, err
@@ -462,7 +579,7 @@ func (s *MusicService) UpdatePlaylist(id, userID uint64, req UpdatePlaylistReq) 
 		return nil, apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if pl.OwnerID != userID {
-		return nil, apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return nil, apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 	if req.Name != nil {
 		pl.Name = *req.Name
@@ -471,7 +588,7 @@ func (s *MusicService) UpdatePlaylist(id, userID uint64, req UpdatePlaylistReq) 
 		pl.IsPublic = *req.IsPublic
 	}
 	if err := s.musicRepo.UpdatePlaylist(pl); err != nil {
-		return nil, apperrors.NewAppError(500, "更新失败", apperrors.ErrInternalServer)
+		return nil, apperrors.NewAppError(500, "鏇存柊澶辫触", apperrors.ErrInternalServer)
 	}
 	return pl, nil
 }
@@ -482,7 +599,7 @@ func (s *MusicService) DeletePlaylist(id, userID uint64) error {
 		return apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if pl.OwnerID != userID {
-		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 	return s.musicRepo.DeletePlaylist(id)
 }
@@ -493,7 +610,7 @@ func (s *MusicService) AddTrackToPlaylist(playlistID, userID uint64, req AddTrac
 		return apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if pl.OwnerID != userID {
-		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 	sortOrder := 0
 	if req.SortOrder != nil {
@@ -514,7 +631,7 @@ func (s *MusicService) RemoveTrackFromPlaylist(playlistID, trackID, userID uint6
 		return apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if pl.OwnerID != userID {
-		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 	return s.musicRepo.RemoveTrackFromPlaylist(playlistID, trackID)
 }
@@ -527,26 +644,26 @@ func (s *MusicService) GetLyrics(trackID uint64, source string, userID uint64) (
 
 	obj, err := s.minio.GetObject(context.Background(), s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return "", apperrors.NewAppError(500, "获取音频失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "鑾峰彇闊抽澶辫触", apperrors.ErrInternalServer)
 	}
 	defer obj.Close()
 
 	tmpFile, err := os.CreateTemp("", "lyrics-*.mp3")
 	if err != nil {
-		return "", apperrors.NewAppError(500, "创建临时文件失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "鍒涘缓涓存椂鏂囦欢澶辫触", apperrors.ErrInternalServer)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
 	if _, err := io.Copy(tmpFile, obj); err != nil {
 		tmpFile.Close()
-		return "", apperrors.NewAppError(500, "下载音频失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "涓嬭浇闊抽澶辫触", apperrors.ErrInternalServer)
 	}
 	tmpFile.Close()
 
 	f, err := os.Open(tmpPath)
 	if err != nil {
-		return "", apperrors.NewAppError(500, "读取临时文件失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "璇诲彇涓存椂鏂囦欢澶辫触", apperrors.ErrInternalServer)
 	}
 	defer f.Close()
 
@@ -570,7 +687,7 @@ func (s *MusicService) ExportPlaylist(id, userID uint64, format string) (string,
 
 	tracks, err := s.musicRepo.FindTracksByPlaylist(id)
 	if err != nil {
-		return "", apperrors.NewAppError(500, "获取曲目列表失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "鑾峰彇鏇茬洰鍒楄〃澶辫触", apperrors.ErrInternalServer)
 	}
 
 	if format == "m3u" {
@@ -652,7 +769,7 @@ func (s *MusicService) ExportPlaylist(id, userID uint64, format string) (string,
 
 	data, err := json.MarshalIndent(ep, "", "  ")
 	if err != nil {
-		return "", apperrors.NewAppError(500, "生成 JSON 失败", apperrors.ErrInternalServer)
+		return "", apperrors.NewAppError(500, "鐢熸垚 JSON 澶辫触", apperrors.ErrInternalServer)
 	}
 	return string(data), nil
 }
@@ -663,7 +780,7 @@ func (s *MusicService) ImportPlaylist(id, userID uint64, data []byte, format str
 		return apperrors.NewAppError(404, "播放列表不存在", apperrors.ErrNotFound)
 	}
 	if pl.OwnerID != userID {
-		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
+		return apperrors.NewAppError(403, "鏃犳潈鎿嶄綔", apperrors.ErrForbidden)
 	}
 
 	if format == "m3u" {
@@ -679,7 +796,7 @@ func (s *MusicService) ImportPlaylist(id, userID uint64, data []byte, format str
 		Tracks []importTrack `json:"tracks"`
 	}
 	if err := json.Unmarshal(data, &playlist); err != nil {
-		return apperrors.NewAppError(400, "无效的 JSON 格式", apperrors.ErrBadRequest)
+		return apperrors.NewAppError(400, "鏃犳晥鐨?JSON 鏍煎紡", apperrors.ErrBadRequest)
 	}
 
 	added := 0

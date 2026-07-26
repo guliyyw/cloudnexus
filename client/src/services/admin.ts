@@ -14,6 +14,23 @@ export interface AdminUser {
   tier_name: string
 }
 
+export interface PermissionInfo {
+  id: string
+  name: string
+  code: string
+  description: string
+  group_name: string
+}
+
+export interface RoleInfo {
+  id: string
+  name: string
+  code: string
+  description: string
+  is_system: boolean
+  permissions: PermissionInfo[]
+}
+
 export interface AdminUserListResponse {
   items: AdminUser[]
   total: number
@@ -73,6 +90,51 @@ export async function toggleAdmin(id: string): Promise<AdminUser> {
 export async function toggleStatus(id: string): Promise<AdminUser> {
   const res = await api.put(`/admin/users/${id}/toggle-status`)
   return res.data.data
+}
+
+export async function getRoles(): Promise<RoleInfo[]> {
+  const res = await api.get('/admin/roles')
+  return res.data.data || []
+}
+
+export async function getPermissions(): Promise<PermissionInfo[]> {
+  const res = await api.get('/admin/roles/permissions')
+  return res.data.data || []
+}
+
+export async function createRole(req: { name: string; code: string; description?: string }): Promise<RoleInfo> {
+  const res = await api.post('/admin/roles', req)
+  return res.data.data
+}
+
+export async function deleteRole(roleId: string): Promise<void> {
+  await api.delete(`/admin/roles/${roleId}`)
+}
+
+export async function assignRolePermissions(roleId: string, permissionIds: string[]): Promise<void> {
+  await api.post(`/admin/roles/${roleId}/permissions`, { permission_ids: permissionIds })
+}
+
+export async function getUserRoles(userId: string): Promise<RoleInfo[]> {
+  const res = await api.get(`/admin/users/${userId}/roles`)
+  return res.data.data || []
+}
+
+export async function assignUserRole(userId: string, roleId: string): Promise<void> {
+  await api.post(`/admin/users/${userId}/roles`, { role_id: roleId })
+}
+
+export async function removeUserRole(userId: string, roleId: string): Promise<void> {
+  await api.delete(`/admin/users/${userId}/roles/${roleId}`)
+}
+
+export async function getDirectUserPermissions(userId: string): Promise<PermissionInfo[]> {
+  const res = await api.get(`/admin/users/${userId}/permissions`)
+  return res.data.data || []
+}
+
+export async function replaceDirectUserPermissions(userId: string, permissionIds: string[]): Promise<void> {
+  await api.put(`/admin/users/${userId}/permissions`, { permission_ids: permissionIds })
 }
 
 export async function getMetrics(): Promise<SystemMetrics> {
@@ -198,6 +260,30 @@ export async function addNode(req: {
 
 export async function deleteNode(name: string): Promise<void> {
   await api.delete(`/admin/nodes/${name}`)
+}
+
+export interface ManagedService {
+  key: string
+  name: string
+  service: string
+  compose_name: string
+  profile: string
+  description: string
+  required: boolean
+  container_id: string
+  state: string
+  status_text: string
+  created: boolean
+  startable: boolean
+}
+
+export async function getManagedServices(): Promise<ManagedService[]> {
+  const res = await api.get('/admin/services')
+  return res.data.data.services || []
+}
+
+export async function startManagedService(service: string): Promise<void> {
+  await api.post(`/admin/services/${service}/start`)
 }
 
 // --- 告警规则 ---

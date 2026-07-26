@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Avatar, Button, Drawer, Dropdown, Grid, Menu, Typography } from 'antd'
 import {
+  BgColorsOutlined,
   CloudOutlined,
   ContainerOutlined,
   CustomerServiceOutlined,
@@ -18,7 +19,6 @@ import {
   ShareAltOutlined,
   SunOutlined,
   TeamOutlined,
-  UnorderedListOutlined,
   UserOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons'
@@ -35,6 +35,7 @@ interface NavItem {
   icon: React.ReactNode
   label: string
   path: string
+  permission?: string
 }
 
 interface RouteContext {
@@ -46,23 +47,23 @@ interface RouteContext {
 
 const baseNavItems: NavItem[] = [
   { key: 'dashboard', icon: <DashboardOutlined />, label: '首页', path: '/dashboard' },
-  { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files' },
-  { key: 'drama', icon: <PlaySquareOutlined />, label: '短剧工坊', path: '/drama' },
-  { key: 'shares', icon: <ShareAltOutlined />, label: '我的分享', path: '/shares' },
-  { key: 'trash', icon: <DeleteOutlined />, label: '回收站', path: '/trash' },
-  { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat' },
-  { key: 'friends', icon: <TeamOutlined />, label: '好友', path: '/friends' },
-  { key: 'docker', icon: <ContainerOutlined />, label: 'Docker', path: '/docker' },
-  { key: 'camera', icon: <VideoCameraOutlined />, label: '摄像头', path: '/cameras' },
-  { key: 'album', icon: <PictureOutlined />, label: '相册', path: '/album' },
-  { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐', path: '/music' },
-  { key: 'playlist', icon: <UnorderedListOutlined />, label: '播放列表', path: '/playlist' },
-  { key: 'docs', icon: <FileTextOutlined />, label: '文档', path: '/documents' },
+  { key: 'files', icon: <CloudOutlined />, label: '文件', path: '/files', permission: 'module:files' },
+  { key: 'drama', icon: <PlaySquareOutlined />, label: '短剧工坊', path: '/drama', permission: 'module:drama' },
+  { key: 'image_generation', icon: <BgColorsOutlined />, label: '图片生成', path: '/image-generation', permission: 'module:image_generation' },
+  { key: 'shares', icon: <ShareAltOutlined />, label: '我的分享', path: '/shares', permission: 'module:shares' },
+  { key: 'trash', icon: <DeleteOutlined />, label: '回收站', path: '/trash', permission: 'module:trash' },
+  { key: 'chat', icon: <MessageOutlined />, label: '聊天', path: '/chat', permission: 'module:chat' },
+  { key: 'friends', icon: <TeamOutlined />, label: '好友', path: '/friends', permission: 'module:friends' },
+  { key: 'docker', icon: <ContainerOutlined />, label: 'Docker', path: '/docker', permission: 'module:docker' },
+  { key: 'camera', icon: <VideoCameraOutlined />, label: '摄像头', path: '/cameras', permission: 'module:cameras' },
+  { key: 'album', icon: <PictureOutlined />, label: '相册', path: '/album', permission: 'module:album' },
+  { key: 'music', icon: <CustomerServiceOutlined />, label: '音乐', path: '/music', permission: 'module:music' },
+  { key: 'docs', icon: <FileTextOutlined />, label: '文档', path: '/documents', permission: 'module:documents' },
 ]
 
 const adminNavItems: NavItem[] = [
   { key: 'admin', icon: <SettingOutlined />, label: '管理后台', path: '/admin' },
-  { key: 'status', icon: <DashboardOutlined />, label: '系统状态', path: '/status' },
+  { key: 'status', icon: <DashboardOutlined />, label: '系统状态', path: '/admin?tab=status' },
 ]
 
 const routeContexts: RouteContext[] = [
@@ -70,6 +71,7 @@ const routeContexts: RouteContext[] = [
   { key: '/files', title: '在线文档', description: '从文件工作台打开的协作文档会保留当前文件上下文。', match: (pathname) => pathname.startsWith('/files/') && pathname.endsWith('/edit') },
   { key: '/files', title: '文件工作台', description: '统一管理目录、上传、分享、版本与协作入口。', match: (pathname) => pathname.startsWith('/files') },
   { key: '/drama', title: '短剧工坊', description: '管理剧本、分镜、角色场景资产和 ComfyUI 生成任务。', match: (pathname) => pathname.startsWith('/drama') },
+  { key: '/image-generation', title: '图片生成', description: '使用提示词和参考图片创建图片。', match: (pathname) => pathname.startsWith('/image-generation') },
   { key: '/documents', title: '在线文档', description: '集中处理协作文档的浏览、进入与编辑状态。', match: (pathname) => pathname.startsWith('/documents/') },
   { key: '/documents', title: '文档中心', description: '浏览、创建并进入实时协作的在线文档。', match: (pathname) => pathname.startsWith('/documents') },
   { key: '/chat', title: '即时通讯', description: '会话、成员和实时消息流都围绕当前上下文集中展示。', match: (pathname) => pathname.startsWith('/chat') },
@@ -78,7 +80,6 @@ const routeContexts: RouteContext[] = [
   { key: '/cameras', title: '摄像头中心', description: '集中查看摄像头、识别结果、人脸库与考勤状态。', match: (pathname) => pathname.startsWith('/cameras') },
   { key: '/album', title: '相册', description: '按时间线、文件夹和媒体视角管理影像内容。', match: (pathname) => pathname.startsWith('/album') },
   { key: '/music', title: '音乐', description: '浏览曲库、管理播放与全局播放器体验。', match: (pathname) => pathname.startsWith('/music') },
-  { key: '/playlist', title: '播放列表', description: '管理歌单、排序和导入导出。', match: (pathname) => pathname.startsWith('/playlist') },
   { key: '/shares', title: '我的分享', description: '集中查看已创建的公开分享与访问策略。', match: (pathname) => pathname.startsWith('/shares') },
   { key: '/trash', title: '回收站', description: '回溯误删文件并执行恢复或彻底清理。', match: (pathname) => pathname.startsWith('/trash') },
   { key: '/admin', title: '管理后台', description: '权限、日志、配额和系统规则等后台配置集中在这里。', match: (pathname) => pathname.startsWith('/admin') },
@@ -91,7 +92,7 @@ export default function TopNav() {
   const location = useLocation()
   const { logout, user, fetchProfile } = useAuthStore()
   const { isDark, toggleTheme } = useThemeStore()
-  const { isAdmin } = useAccess()
+  const { isAdmin, hasPermission } = useAccess()
   const screens = useBreakpoint()
   const isMobile = !screens.md
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -102,9 +103,10 @@ export default function TopNav() {
     }
   }, [fetchProfile, user])
 
-  const navItems = useMemo(() => (
-    isAdmin ? [...baseNavItems, ...adminNavItems] : baseNavItems
-  ), [isAdmin])
+  const navItems = useMemo(() => {
+    const visible = baseNavItems.filter((item) => !item.permission || hasPermission(item.permission))
+    return isAdmin ? [...visible, ...adminNavItems] : visible
+  }, [isAdmin, hasPermission])
 
   const currentContext = useMemo(() => {
     return routeContexts.find((context) => context.match(location.pathname)) ?? routeContexts[0]
@@ -127,11 +129,24 @@ export default function TopNav() {
       disabled: true,
     },
     { type: 'divider' as const },
+    ...(isAdmin ? [
+      { key: 'admin', icon: <SettingOutlined />, label: '管理后台' },
+      { key: 'status', icon: <DashboardOutlined />, label: '系统状态' },
+      { type: 'divider' as const },
+    ] : []),
     { key: 'settings', icon: <SettingOutlined />, label: '个人设置' },
     { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ]
 
   const handleUserMenuClick = ({ key }: { key: string }) => {
+    if (key === 'admin') {
+      navigate('/admin')
+      return
+    }
+    if (key === 'status') {
+      navigate('/admin?tab=status')
+      return
+    }
     if (key === 'settings') {
       navigate('/settings')
       return

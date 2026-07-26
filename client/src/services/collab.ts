@@ -13,14 +13,16 @@ export interface CollabDocument {
 
 export interface CollabListResponse {
   data: CollabDocument[]
+  items?: CollabDocument[]
   total: number
   page: number
   page_size: number
 }
 
-export async function listDocuments(page = 1, pageSize = 20): Promise<CollabListResponse> {
-  const { data } = await api.get('/collab', { params: { page, page_size: pageSize } })
-  return data.data
+export async function listDocuments(page = 1, pageSize = 20, keyword = ''): Promise<CollabListResponse> {
+  const { data } = await api.get('/collab', { params: { page, page_size: pageSize, q: keyword || undefined } })
+  const payload = data.data
+  return { ...payload, data: payload.data ?? payload.items ?? [] }
 }
 
 export async function createDocument(title: string): Promise<CollabDocument> {

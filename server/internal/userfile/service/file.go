@@ -1,12 +1,17 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/url"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/internal/userfile/repository"
@@ -14,6 +19,12 @@ import (
 	"github.com/cloudnexus/server/pkg/model"
 	"github.com/minio/minio-go/v7"
 )
+
+type officeTemplate struct {
+	ext      string
+	mimeType string
+	content  []byte
+}
 
 type FileService struct {
 	repo      *repository.FileRepository
@@ -114,6 +125,280 @@ func (s *FileService) Download(userID, fileID uint64) (io.ReadCloser, *model.Fil
 	return obj, file, nil
 }
 
+type tempFileReadCloser struct {
+	*os.File
+	dir string
+}
+
+func (r *tempFileReadCloser) Close() error {
+	err := r.File.Close()
+	_ = os.RemoveAll(r.dir)
+	return err
+}
+
+func (s *FileService) SaveTextContent(userID, fileID uint64, content string, versionMessage string) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "file not found", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
+	}
+	if file.IsDir {
+		return nil, apperrors.NewAppError(400, "directories cannot be edited", apperrors.ErrBadRequest)
+	}
+
+	maxNum, _ := s.repo.GetMaxVersionNum(file.ID)
+	if file.StorageKey != "" {
+		v := &model.FileVersion{
+			FileID:     file.ID,
+			VersionNum: maxNum + 1,
+			StorageKey: file.StorageKey,
+			Size:       file.Size,
+			SHA256:     file.StorageSHA256,
+			Message:    versionMessage,
+		}
+		if err := s.repo.CreateVersion(v); err != nil {
+			return nil, apperrors.NewAppError(500, "save version failed", err)
+		}
+	}
+
+	ext := filepath.Ext(file.Name)
+	storageKey := fmt.Sprintf("%d/%d/%d%s", userID, file.ParentID, time.Now().UnixNano(), ext)
+	reader := strings.NewReader(content)
+	contentType := file.MimeType
+	if contentType == "" {
+		contentType = "text/plain; charset=utf-8"
+	}
+	_, err = s.minio.PutObject(context.Background(), s.bucket, storageKey, reader, int64(reader.Len()), minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "save content failed", err)
+	}
+
+	oldSize := file.Size
+	file.StorageKey = storageKey
+	file.Size = int64(len(content))
+	if err := s.repo.Update(file); err != nil {
+		_ = s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+		return nil, apperrors.NewAppError(500, "update file failed", err)
+	}
+	_ = s.quotaRepo.AddStorageUsed(userID, file.Size-oldSize)
+	return file, nil
+}
+
+func (s *FileService) SaveBinaryContent(userID, fileID uint64, content []byte, contentType, versionMessage string) (*model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, apperrors.NewAppError(404, "file not found", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
+	}
+	if file.IsDir {
+		return nil, apperrors.NewAppError(400, "directories cannot be edited", apperrors.ErrBadRequest)
+	}
+
+	maxNum, _ := s.repo.GetMaxVersionNum(file.ID)
+	if file.StorageKey != "" {
+		v := &model.FileVersion{
+			FileID:     file.ID,
+			VersionNum: maxNum + 1,
+			StorageKey: file.StorageKey,
+			Size:       file.Size,
+			SHA256:     file.StorageSHA256,
+			Message:    versionMessage,
+		}
+		if err := s.repo.CreateVersion(v); err != nil {
+			return nil, apperrors.NewAppError(500, "save version failed", err)
+		}
+	}
+
+	ext := filepath.Ext(file.Name)
+	storageKey := fmt.Sprintf("%d/%d/%d%s", userID, file.ParentID, time.Now().UnixNano(), ext)
+	if contentType == "" {
+		contentType = file.MimeType
+	}
+	reader := bytes.NewReader(content)
+	_, err = s.minio.PutObject(context.Background(), s.bucket, storageKey, reader, int64(reader.Len()), minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "save content failed", err)
+	}
+
+	oldSize := file.Size
+	file.StorageKey = storageKey
+	file.Size = int64(len(content))
+	if contentType != "" {
+		file.MimeType = contentType
+	}
+	if err := s.repo.Update(file); err != nil {
+		_ = s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+		return nil, apperrors.NewAppError(500, "update file failed", err)
+	}
+	_ = s.quotaRepo.AddStorageUsed(userID, file.Size-oldSize)
+	return file, nil
+}
+
+func (s *FileService) ConvertHTMLToWord(userID, fileID uint64, html string) ([]byte, *model.File, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, nil, apperrors.NewAppError(404, "file not found", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, nil, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
+	}
+	ext := strings.ToLower(filepath.Ext(file.Name))
+	if ext != ".docx" && ext != ".doc" {
+		return nil, nil, apperrors.NewAppError(400, "only Word documents can be edited", apperrors.ErrBadRequest)
+	}
+	if strings.TrimSpace(html) == "" {
+		html = "<p></p>"
+	}
+
+	content, err := convertHTMLToDOCX(html)
+	if err != nil {
+		return nil, nil, err
+	}
+	return content, file, nil
+}
+
+func (s *FileService) SaveWordHTML(userID, fileID uint64, html, versionMessage string) (*model.File, error) {
+	content, _, err := s.ConvertHTMLToWord(userID, fileID, html)
+	if err != nil {
+		return nil, err
+	}
+	return s.SaveBinaryContent(
+		userID,
+		fileID,
+		content,
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		versionMessage,
+	)
+}
+
+func convertHTMLToDOCX(html string) ([]byte, error) {
+	bin := "libreoffice"
+	if _, err := exec.LookPath(bin); err != nil {
+		bin = "soffice"
+		if _, sofficeErr := exec.LookPath(bin); sofficeErr != nil {
+			return nil, apperrors.NewAppError(501, "LibreOffice is required for Word editing", err)
+		}
+	}
+
+	tmpDir, err := os.MkdirTemp("", "cloudnexus-html-docx-*")
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "create temp dir failed", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	inputPath := filepath.Join(tmpDir, "document.html")
+	if err := os.WriteFile(inputPath, []byte(html), 0600); err != nil {
+		return nil, apperrors.NewAppError(500, "write Word content failed", err)
+	}
+
+	profileDir := filepath.Join(tmpDir, "lo-profile")
+	cmd := exec.Command(
+		bin,
+		"-env:UserInstallation=file://"+filepath.ToSlash(profileDir),
+		"--headless",
+		"--convert-to",
+		"docx:Office Open XML Text",
+		"--outdir",
+		tmpDir,
+		inputPath,
+	)
+	cmd.Env = append(os.Environ(), "HOME="+tmpDir)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return nil, apperrors.NewAppError(500, "HTML to Word conversion failed: "+string(output), err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(tmpDir, "document.docx"))
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "converted Word file not found", err)
+	}
+	return content, nil
+}
+
+func (s *FileService) ConvertWordToPDF(userID, fileID uint64) (io.ReadCloser, string, int64, error) {
+	file, err := s.repo.FindByID(fileID)
+	if err != nil {
+		return nil, "", 0, apperrors.NewAppError(404, "file not found", apperrors.ErrNotFound)
+	}
+	if file.UserID != userID {
+		return nil, "", 0, apperrors.NewAppError(403, "forbidden", apperrors.ErrForbidden)
+	}
+	ext := strings.ToLower(filepath.Ext(file.Name))
+	if ext != ".docx" && ext != ".doc" {
+		return nil, "", 0, apperrors.NewAppError(400, "only Word documents can be converted", apperrors.ErrBadRequest)
+	}
+	if _, err := exec.LookPath("libreoffice"); err != nil {
+		if _, sofficeErr := exec.LookPath("soffice"); sofficeErr != nil {
+			return nil, "", 0, apperrors.NewAppError(501, "LibreOffice is required for Word to PDF conversion", err)
+		}
+	}
+
+	obj, _, err := s.Download(userID, fileID)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	defer obj.Close()
+
+	tmpDir, err := os.MkdirTemp("", "cloudnexus-word-pdf-*")
+	if err != nil {
+		return nil, "", 0, apperrors.NewAppError(500, "create temp dir failed", err)
+	}
+	inputPath := filepath.Join(tmpDir, file.Name)
+	input, err := os.Create(inputPath)
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return nil, "", 0, apperrors.NewAppError(500, "create temp file failed", err)
+	}
+	if _, err := io.Copy(input, obj); err != nil {
+		input.Close()
+		_ = os.RemoveAll(tmpDir)
+		return nil, "", 0, apperrors.NewAppError(500, "write temp file failed", err)
+	}
+	input.Close()
+
+	bin := "libreoffice"
+	if _, err := exec.LookPath(bin); err != nil {
+		bin = "soffice"
+	}
+	profileDir := filepath.Join(tmpDir, "lo-profile")
+	cmd := exec.Command(
+		bin,
+		"-env:UserInstallation=file://"+filepath.ToSlash(profileDir),
+		"--headless",
+		"--convert-to",
+		"pdf",
+		"--outdir",
+		tmpDir,
+		inputPath,
+	)
+	cmd.Env = append(os.Environ(), "HOME="+tmpDir)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return nil, "", 0, apperrors.NewAppError(500, "Word to PDF conversion failed: "+string(output), err)
+	}
+
+	pdfPath := filepath.Join(tmpDir, strings.TrimSuffix(file.Name, ext)+".pdf")
+	pdf, err := os.Open(pdfPath)
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return nil, "", 0, apperrors.NewAppError(500, "converted PDF not found", err)
+	}
+	info, err := pdf.Stat()
+	if err != nil {
+		pdf.Close()
+		_ = os.RemoveAll(tmpDir)
+		return nil, "", 0, apperrors.NewAppError(500, "read converted PDF failed", err)
+	}
+	return &tempFileReadCloser{File: pdf, dir: tmpDir}, strings.TrimSuffix(file.Name, ext) + ".pdf", info.Size(), nil
+}
+
 // DownloadForShare 用于分享下载，跳过所有权检查（由调用方验证分享权限）
 func (s *FileService) DownloadForShare(fileID uint64) (io.ReadCloser, *model.File, error) {
 	file, err := s.repo.FindByID(fileID)
@@ -141,14 +426,14 @@ func (s *FileService) ListFiles(userID, parentID uint64, page, pageSize int) ([]
 	return s.repo.FindByUserAndParent(userID, parentID, page, pageSize)
 }
 
-func (s *FileService) ListCollabDocs(userID uint64, page, pageSize int) ([]model.File, int64, error) {
+func (s *FileService) ListCollabDocs(userID uint64, page, pageSize int, keyword string) ([]model.File, int64, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.repo.FindCollabDocs(userID, page, pageSize)
+	return s.repo.FindCollabDocs(userID, page, pageSize, strings.TrimSpace(keyword))
 }
 
 func (s *FileService) DeleteFile(userID, fileID uint64) error {
@@ -440,6 +725,100 @@ func (s *FileService) CreateCollab(userID, parentID uint64, name, collabType str
 	if err := s.repo.Update(file); err != nil {
 		return nil, apperrors.NewAppError(500, "更新存储路径失败", err)
 	}
+	return file, nil
+}
+
+func zipParts(parts map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range parts {
+		w, err := zw.Create(name)
+		if err != nil {
+			zw.Close()
+			return nil, err
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			zw.Close()
+			return nil, err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func blankDocx() ([]byte, error) {
+	return zipParts(map[string]string{
+		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+		"_rels/.rels":         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+		"word/document.xml":   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t></w:t></w:r></w:p><w:sectPr/></w:body></w:document>`,
+	})
+}
+
+func blankXlsx() ([]byte, error) {
+	return zipParts(map[string]string{
+		"[Content_Types].xml":        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+		"_rels/.rels":                `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+		"xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+		"xl/workbook.xml":            `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+		"xl/worksheets/sheet1.xml":   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData/></worksheet>`,
+	})
+}
+
+func newOfficeTemplate(kind string) (*officeTemplate, error) {
+	switch strings.ToLower(kind) {
+	case "word", "docx":
+		content, err := blankDocx()
+		if err != nil {
+			return nil, err
+		}
+		return &officeTemplate{ext: ".docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", content: content}, nil
+	case "excel", "xlsx":
+		content, err := blankXlsx()
+		if err != nil {
+			return nil, err
+		}
+		return &officeTemplate{ext: ".xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: content}, nil
+	default:
+		return nil, apperrors.ErrBadRequest
+	}
+}
+
+func (s *FileService) CreateOfficeDoc(userID, parentID uint64, name, kind string) (*model.File, error) {
+	tpl, err := newOfficeTemplate(kind)
+	if err != nil {
+		return nil, apperrors.NewAppError(400, "unsupported document type", apperrors.ErrBadRequest)
+	}
+	fileName := strings.TrimSpace(name)
+	if fileName == "" {
+		return nil, apperrors.NewAppError(400, "document name is required", apperrors.ErrBadRequest)
+	}
+	if !strings.HasSuffix(strings.ToLower(fileName), tpl.ext) {
+		fileName += tpl.ext
+	}
+	existing, err := s.repo.FindByNameAndParent(userID, parentID, fileName)
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "check duplicate file failed", err)
+	}
+	if existing != nil {
+		return nil, apperrors.NewAppError(409, "file already exists", apperrors.ErrConflict)
+	}
+	if err := s.quotaSvc.CheckQuota(userID, int64(len(tpl.content))); err != nil {
+		return nil, err
+	}
+	storageKey := fmt.Sprintf("%d/%d/%d%s", userID, parentID, time.Now().UnixNano(), tpl.ext)
+	reader := bytes.NewReader(tpl.content)
+	_, err = s.minio.PutObject(context.Background(), s.bucket, storageKey, reader, int64(reader.Len()), minio.PutObjectOptions{ContentType: tpl.mimeType})
+	if err != nil {
+		return nil, apperrors.NewAppError(500, "save document failed", err)
+	}
+	file := &model.File{UserID: userID, Name: fileName, ParentID: parentID, Size: int64(len(tpl.content)), MimeType: tpl.mimeType, StorageKey: storageKey}
+	if err := s.repo.Create(file); err != nil {
+		_ = s.minio.RemoveObject(context.Background(), s.bucket, storageKey, minio.RemoveObjectOptions{})
+		return nil, apperrors.NewAppError(500, "create document record failed", err)
+	}
+	_ = s.quotaRepo.AddStorageUsed(userID, file.Size)
 	return file, nil
 }
 

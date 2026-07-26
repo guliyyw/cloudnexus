@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
 )
@@ -69,6 +71,61 @@ func (r *CameraRepository) ListEvents(cameraID uint64, offset, limit int) ([]mod
 
 func (r *CameraRepository) CreateEvent(e *model.RecognitionEvent) error {
 	return r.db.Create(e).Error
+}
+
+// --- CameraRecording ---
+
+func (r *CameraRepository) CreateRecording(rec *model.CameraRecording) error {
+	return r.db.Create(rec).Error
+}
+
+func (r *CameraRepository) FindRecordingByID(id uint64) (*model.CameraRecording, error) {
+	var rec model.CameraRecording
+	if err := r.db.First(&rec, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+func (r *CameraRepository) FindRecordingByPath(path string) (*model.CameraRecording, error) {
+	var rec model.CameraRecording
+	if err := r.db.First(&rec, "file_path = ?", path).Error; err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+func (r *CameraRepository) ListRecordings(cameraID, ownerID uint64, offset, limit int) ([]model.CameraRecording, int64, error) {
+	var total int64
+	var recordings []model.CameraRecording
+	q := r.db.Model(&model.CameraRecording{}).Where("camera_id = ? AND owner_id = ?", cameraID, ownerID)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := q.Order("started_at DESC").Offset(offset).Limit(limit).Find(&recordings).Error; err != nil {
+		return nil, 0, err
+	}
+	return recordings, total, nil
+}
+
+func (r *CameraRepository) ListRecordingsBefore(cameraID uint64, before time.Time) ([]model.CameraRecording, error) {
+	var recordings []model.CameraRecording
+	err := r.db.Where("camera_id = ? AND started_at < ?", cameraID, before).
+		Order("started_at ASC").
+		Find(&recordings).Error
+	return recordings, err
+}
+
+func (r *CameraRepository) ListRecordingsByCamera(cameraID uint64) ([]model.CameraRecording, error) {
+	var recordings []model.CameraRecording
+	err := r.db.Where("camera_id = ?", cameraID).
+		Order("started_at DESC").
+		Find(&recordings).Error
+	return recordings, err
+}
+
+func (r *CameraRepository) DeleteRecording(id uint64) error {
+	return r.db.Delete(&model.CameraRecording{}, "id = ?", id).Error
 }
 
 // --- FaceProfile ---

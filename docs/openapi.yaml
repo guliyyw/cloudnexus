@@ -1203,6 +1203,150 @@ paths:
           content:
             application/octet-stream: {}
 
+  /api/v1/file/office:
+    post:
+      tags: [????]
+      summary: ?? Word/Excel ????
+      description: ???? .docx ? .xlsx ????? MinIO?????????????????
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, kind]
+              properties:
+                title:
+                  type: string
+                  description: ???????????
+                parent_id:
+                  type: string
+                  description: ??? ID????? 0 ???
+                kind:
+                  type: string
+                  enum: [word, excel, docx, xlsx]
+                  description: ????
+      responses:
+        '200':
+          description: ???????????
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/File'
+
+  /api/v1/file/{id}/text:
+    put:
+      tags: [文件管理]
+      summary: 保存文本类文档内容
+      description: 当前用于 Markdown 在线编辑保存。保存时会写入新的 MinIO 对象，并把旧对象记录为文件版本。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: 文本文档内容
+                version_message:
+                  type: string
+                  description: 版本备注
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIResponse'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/File'
+
+  /api/v1/file/{id}/word:
+    put:
+      tags: [文件管理]
+      summary: 保存在线编辑后的 Word 内容
+      description: 接收 HTML，由服务端 LibreOffice 转换为标准 DOCX 后保存，并保留原文件版本。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [html]
+              properties:
+                html:
+                  type: string
+                version_message:
+                  type: string
+      responses:
+        '200':
+          description: 保存成功
+
+  /api/v1/file/{id}/convert/docx:
+    post:
+      tags: [文件管理]
+      summary: 将在线编辑内容导出为标准 DOCX
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [html]
+              properties:
+                html:
+                  type: string
+      responses:
+        '200':
+          description: DOCX 内容
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document: {}
+
+  /api/v1/file/{id}/convert/pdf:
+    get:
+      tags: [文件管理]
+      summary: Word 转 PDF
+      description: 将 .doc/.docx 文件转换为 PDF 并以内联 PDF 流返回。服务端容器需要安装 LibreOffice 或 soffice。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF 内容
+          content:
+            application/pdf: {}
+        '501':
+          description: 服务端未安装 LibreOffice/soffice
+
   /api/v1/file/{id}:
     delete:
       tags: [文件管理]

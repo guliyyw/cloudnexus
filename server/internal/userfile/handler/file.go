@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cloudnexus/server/internal/userfile/service"
@@ -82,6 +83,125 @@ func (h *FileHandler) HandleDownload(c *gin.Context) {
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Content-Length", strconv.FormatInt(file.Size, 10))
 	c.DataFromReader(http.StatusOK, file.Size, file.MimeType, stream, nil)
+}
+
+type saveTextReq struct {
+	Content        string `json:"content"`
+	VersionMessage string `json:"version_message"`
+}
+
+type saveWordReq struct {
+	HTML           string `json:"html"`
+	VersionMessage string `json:"version_message"`
+}
+
+func (h *FileHandler) HandleSaveText(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid file id"))
+		return
+	}
+	var req saveTextReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid request"))
+		return
+	}
+	file, err := h.svc.SaveTextContent(userID, fileID, req.Content, req.VersionMessage)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleSaveContent(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid file id"))
+		return
+	}
+	uploaded, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "请选择要保存的文件内容"))
+		return
+	}
+	defer uploaded.Close()
+	content, err := io.ReadAll(uploaded)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "读取文件内容失败"))
+		return
+	}
+	contentType := header.Header.Get("Content-Type")
+	versionMessage := c.DefaultPostForm("version_message", "online edit")
+	file, err := h.svc.SaveBinaryContent(userID, fileID, content, contentType, versionMessage)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleSaveWord(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid file id"))
+		return
+	}
+	var req saveWordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid request"))
+		return
+	}
+	file, err := h.svc.SaveWordHTML(userID, fileID, req.HTML, req.VersionMessage)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response.OKWithData(file))
+}
+
+func (h *FileHandler) HandleExportWord(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid file id"))
+		return
+	}
+	var req saveWordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid request"))
+		return
+	}
+	content, file, err := h.svc.ConvertHTMLToWord(userID, fileID, req.HTML)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	name := strings.TrimSuffix(file.Name, filepath.Ext(file.Name)) + ".docx"
+	c.Header("Content-Disposition", "attachment; filename=\""+name+"\"")
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", content)
+}
+
+func (h *FileHandler) HandleConvertWordToPDF(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	fileID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "invalid file id"))
+		return
+	}
+	stream, name, size, err := h.svc.ConvertWordToPDF(userID, fileID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	defer stream.Close()
+	c.Header("Content-Disposition", "inline; filename=\""+name+"\"")
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Length", strconv.FormatInt(size, 10))
+	c.DataFromReader(http.StatusOK, size, "application/pdf", stream, nil)
 }
 
 func (h *FileHandler) HandleList(c *gin.Context) {
@@ -296,6 +416,12 @@ type createCollabReq struct {
 	CollabType string `json:"collab_type"`
 }
 
+type createOfficeReq struct {
+	Title    string `json:"title" binding:"required"`
+	ParentID uint64 `json:"parent_id,string"`
+	Kind     string `json:"kind" binding:"required"`
+}
+
 func (h *FileHandler) HandleCreateCollab(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	var req createCollabReq
@@ -314,25 +440,41 @@ func (h *FileHandler) HandleCreateCollab(c *gin.Context) {
 	c.JSON(http.StatusCreated, response.OKWithData(file))
 }
 
+func (h *FileHandler) HandleCreateOfficeDoc(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var req createOfficeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.Error(400, "参数错误：请提供 title 和 kind"))
+		return
+	}
+	file, err := h.svc.CreateOfficeDoc(userID, req.ParentID, req.Title, req.Kind)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, response.OKWithData(file))
+}
+
 func (h *FileHandler) HandleListCollabDocs(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	keyword := c.Query("q")
 
-	files, total, err := h.svc.ListCollabDocs(userID, page, pageSize)
+	files, total, err := h.svc.ListCollabDocs(userID, page, pageSize, keyword)
 	if err != nil {
 		handleError(c, err)
 		return
 	}
 
 	type item struct {
-		ID          uint64 `json:"id,string"`
-		Title       string `json:"title"`
-		OwnerID     uint64 `json:"owner_id,string"`
-		LastEditor  string `json:"last_editor"`
-		Version     int64  `json:"version"`
-		CreatedAt   string `json:"created_at"`
-		UpdatedAt   string `json:"updated_at"`
+		ID         uint64 `json:"id,string"`
+		Title      string `json:"title"`
+		OwnerID    uint64 `json:"owner_id,string"`
+		LastEditor string `json:"last_editor"`
+		Version    int64  `json:"version"`
+		CreatedAt  string `json:"created_at"`
+		UpdatedAt  string `json:"updated_at"`
 	}
 	items := make([]item, 0, len(files))
 	for _, f := range files {

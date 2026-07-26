@@ -58,6 +58,7 @@ func main() {
 	}
 	if err := db.AutoMigrate(
 		&model.Camera{},
+		&model.CameraRecording{},
 		&model.RecognitionEvent{},
 		&model.FaceProfile{},
 		&model.FaceRecognitionEvent{},
@@ -102,9 +103,15 @@ func main() {
 	inferenceToken := os.Getenv("AI_INFERENCE_TOKEN")
 
 	camSvc := service.NewCameraService(repo, mediamtxURL)
+	recordingDir := os.Getenv("CAMERA_RECORDING_DIR")
+	if recordingDir == "" {
+		recordingDir = "/app/recordings"
+	}
+	recordingSvc := service.NewRecordingService(repo, recordingDir)
 	recSvc := service.NewRecognitionService(repo, inferenceURL, inferenceToken)
 	faceSvc := service.NewFaceService(repo, minioClient, cfg.MinIO.Bucket)
 	camH := handler.NewCameraHandler(camSvc, recSvc)
+	recordingH := handler.NewRecordingHandler(recordingSvc)
 	faceH := handler.NewFaceHandler(faceSvc)
 
 	r := gin.Default()
@@ -113,6 +120,8 @@ func main() {
 
 	api := r.Group("/api/v1")
 	api.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+	api.Use(middleware.LoadPermissions(db))
+	api.Use(middleware.RequirePermission("module:cameras"))
 	{
 		cameras := api.Group("/cameras")
 		{
@@ -123,6 +132,12 @@ func main() {
 			cameras.POST("/discover", middleware.RequirePermission("camera:admin"), camH.HandleDiscoverCameras)
 			cameras.POST("/:id/stream/start", middleware.RequirePermission("camera:control"), camH.HandleStartStream)
 			cameras.POST("/:id/stream/stop", middleware.RequirePermission("camera:control"), camH.HandleStopStream)
+			cameras.POST("/:id/recording/start", middleware.RequirePermission("camera:control"), recordingH.HandleStart)
+			cameras.POST("/:id/recording/stop", middleware.RequirePermission("camera:control"), recordingH.HandleStop)
+			cameras.GET("/:id/recording/status", middleware.RequirePermission("camera:read"), recordingH.HandleStatus)
+			cameras.GET("/:id/recordings", middleware.RequirePermission("camera:read"), recordingH.HandleList)
+			cameras.GET("/:id/recordings/:recording_id/play", middleware.RequirePermission("camera:read"), recordingH.HandlePlayback)
+			cameras.DELETE("/:id/recordings/:recording_id", middleware.RequirePermission("camera:control"), recordingH.HandleDelete)
 			cameras.POST("/:id/recognition/start", middleware.RequirePermission("camera:control"), camH.HandleStartRecognition)
 			cameras.POST("/:id/recognition/stop", middleware.RequirePermission("camera:control"), camH.HandleStopRecognition)
 			cameras.GET("/:id/events", middleware.RequirePermission("camera:read"), camH.HandleListEvents)

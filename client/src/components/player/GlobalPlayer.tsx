@@ -8,7 +8,7 @@ export default function GlobalPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const {
     queue, currentIndex, isPlaying, volume, isMuted, mode,
-    setPlaying, setTime, setDuration, next, isMiniVisible, isFullScreen,
+    setTime, setDuration, setError, next, isMiniVisible, isFullScreen,
   } = usePlayerStore()
 
   const track = queue[currentIndex]
@@ -19,14 +19,16 @@ export default function GlobalPlayer() {
 
     audio.src = getStreamUrl(track.id, track.source)
     audio.volume = isMuted ? 0 : volume
-    audio.play().catch(() => {})
+    setError(null)
+    audio.play().catch(() => setError('音频加载失败，请重试'))
   }, [track?.id])
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
     if (isPlaying) {
-      audio.play().catch(() => setPlaying(false))
+      setError(null)
+      audio.play().catch(() => setError('音频加载失败，请重试'))
     } else {
       audio.pause()
     }
@@ -52,13 +54,13 @@ export default function GlobalPlayer() {
           if (mode === 'repeat-one') {
             if (audioRef.current) {
               audioRef.current.currentTime = 0
-              audioRef.current.play().catch(() => {})
+              audioRef.current.play().catch(() => setError('音频加载失败，请重试'))
             }
           } else {
             next()
           }
         }}
-        onError={() => setPlaying(false)}
+        onError={() => setError('音频加载失败，请重试')}
       />
       {isFullScreen && <FullPlayer />}
       {isMiniVisible && !isFullScreen && <MiniPlayer />}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/cloudnexus/server/pkg/response"
+	"github.com/cloudnexus/server/pkg/system"
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
@@ -50,17 +51,18 @@ func (h *SystemHandler) HandleHealthz(c *gin.Context) {
 		components["minio"] = "ok"
 	}
 
-	var memStats runtime.MemStats
-	runtime.ReadMemStats(&memStats)
+	cpuPercent, memoryMB, memorySysMB := system.ProcessResourceUsage()
 
 	c.JSON(200, gin.H{
-		"status":     "ok",
-		"service":    "user-file-svc",
-		"uptime":     time.Since(startTime).String(),
-		"go_version": runtime.Version(),
-		"goroutines": runtime.NumGoroutine(),
-		"memory_mb":  memStats.Alloc / 1024 / 1024,
-		"components": components,
+		"status":        "ok",
+		"service":       "user-file-svc",
+		"uptime":        time.Since(startTime).String(),
+		"go_version":    runtime.Version(),
+		"goroutines":    runtime.NumGoroutine(),
+		"cpu_percent":   cpuPercent,
+		"memory_mb":     memoryMB,
+		"memory_sys_mb": memorySysMB,
+		"components":    components,
 	})
 }
 

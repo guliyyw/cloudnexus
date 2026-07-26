@@ -329,3 +329,41 @@ EXIF 提取：文件上传时异步 goroutine 解析 image/jpeg、image/tiff，�
 - [数据库设计](database.md)
 - [部署指南](deployment.md)
 - [开发指南](development.md)
+---
+
+## 10. 多格式在线文档
+
+在线文档从单一 TipTap 协作文档扩展为统一文档工作台，入口仍复用 `/documents/:id` 与 `/files/:id/edit`。
+
+### 10.1 支持类型
+
+| 类型 | 在线能力 | 保存/导出 |
+|------|----------|-----------|
+| `.clouddoc` | TipTap + Yjs 实时协作富文本 | 导出 `.docx` |
+| `.md` / `.markdown` | 源码、预览、双栏三种模式 | 保存回原文件，导出 `.md` |
+| `.doc` / `.docx` | 导入为在线富文本编辑 | 导出 `.docx`，服务端转 PDF |
+| `.xls` / `.xlsx` / `.csv` | 多 Sheet 表格网格、单元格编辑、筛选、按列排序、公式输入 | 导出 `.xlsx` |
+| `.pdf` | 在线查看 | 不编辑原 PDF |
+
+### 10.2 数据流
+
+```
+文件列表/文档中心
+    -> DocumentEditorPage 类型识别
+        -> Markdown: 下载原文件文本 -> 本地源码/预览编辑 -> PUT /api/v1/file/:id/text
+        -> Word: 下载原文件 -> mammoth 导入 HTML -> TipTap 编辑 -> docx 导出
+        -> Excel: 下载原文件 -> xlsx 解析 workbook -> 网格编辑 -> xlsx 导出
+        -> PDF: iframe 内联预览 /api/v1/file/download/:id?inline=true
+        -> 协作文档: Yjs WebSocket /ws/collab/:id
+```
+
+Word 转 PDF 由 `user-file-svc` 调用容器内 LibreOffice/soffice 完成，接口为 `GET /api/v1/file/:id/convert/pdf`。转换只返回 PDF 流，不修改原 Word 文件。
+
+### 10.3 协作边界
+
+`.clouddoc` 继续使用 Yjs CRDT 实时协作。Word 导入后的在线编辑复用 TipTap/Yjs 编辑体验，但原始 `.docx` 对象不会被 collab-svc 覆盖；collab-svc 的持久化对象固定写入 `collab/{fileId}/ydoc.bin`。Markdown 和 Excel 当前以文件保存/导出为主，后续如需多人实时协作，可继续把其编辑状态接入 Yjs 类型。
+
+
+### ???? Word/Excel
+
+Word/Excel ????? `user-file-svc` ?????? OOXML ????? MinIO????????????? `DocumentEditorPage`??????????????????????????????????

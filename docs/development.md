@@ -443,3 +443,75 @@ CONFIG_PATH=config/config.single.yaml go run ./cmd/drama-svc
 短剧生成依赖 ComfyUI。开发调试时优先通过 `/api/v1/drama/settings/comfyui/status` 或前端“ComfyUI 检测”确认连通性、checkpoint、IP-Adapter、ReActor 以及 Wan2.2/IP-Adapter 相关本地模型是否就绪。
 
 任务执行由 `server/internal/drama/service/task_runner.go` 管理：任务进入 Redis 队列 `drama:tasks:queue` 后异步执行，执行进度写回 `drama_tasks`，并通过事件发布给前端。排查失败任务时，应优先查看任务详情里的生成提示词、原始 payload、错误消息和 ComfyUI 模型检查清单。
+---
+
+## 10. 多格式在线文档开发说明
+
+### 10.1 前端依赖
+
+文档工作台新增以下依赖：
+
+| 包 | 用途 |
+|----|------|
+| `marked` | Markdown 预览与粘贴转换 |
+| `mammoth` | `.docx` 导入为 HTML |
+| `docx-preview` | 按 Word 原始页面尺寸、分页、页眉页脚和表格样式预览 `.docx` |
+| `xlsx` | Excel/CSV 导入导出、Sheet/公式/合并区域处理 |
+
+安装或更新依赖：
+
+```bash
+cd client
+npm install
+```
+
+### 10.2 编辑器入口
+
+核心入口为 `client/src/pages/DocumentEditorPage.tsx`，同一页面根据文件元信息和扩展名分流：
+
+- `.clouddoc`：沿用 TipTap + Yjs + WebSocket 实时协作。
+- `.md` / `.markdown`：源码、预览、双栏三模式，保存走 `PUT /api/v1/file/:id/text`。
+- `.doc` / `.docx`：下载原文件后用 mammoth 导入为 HTML，进入富文本编辑，支持导出 `.docx` 和服务端转 PDF。
+- `.xls` / `.xlsx` / `.csv`：用 xlsx 解析 workbook，支持多个 sheet、单元格编辑、筛选、按列排序、公式输入，导出 `.xlsx`。
+- `.pdf`：使用现有文件下载接口以内联方式预览，不编辑 PDF 正文。
+
+文件列表入口在 `client/src/pages/FileListPage.tsx` 中判断这些扩展名并跳转到 `/files/:id/edit`。
+
+### 10.3 后端接口
+
+`user-file-svc` 新增：
+
+| 位置 | 说明 |
+|------|------|
+| `FileHandler.HandleSaveText` | 接收文本内容并保存为新对象，同时保留旧版本 |
+| `FileService.SaveTextContent` | 写入 MinIO、更新文件大小和配额、记录版本 |
+| `FileHandler.HandleConvertWordToPDF` | 返回 Word 转换后的 PDF |
+| `FileService.ConvertWordToPDF` | 临时下载 Word 文件，调用 LibreOffice/soffice 转 PDF，响应后清理临时目录 |
+
+路由注册在 `server/cmd/user-file-svc/main.go`：
+
+```go
+file.PUT("/:id/text", middleware.RequirePermission("file:write"), fileH.HandleSaveText)
+file.PUT("/:id/word", middleware.RequirePermission("file:write"), fileH.HandleSaveWord)
+file.POST("/:id/convert/docx", middleware.RequirePermission("file:read"), fileH.HandleExportWord)
+file.GET("/:id/convert/pdf", middleware.RequirePermission("file:read"), fileH.HandleConvertWordToPDF)
+```
+
+### 10.4 本地验证
+
+```bash
+cd client
+npm run build
+
+cd ../deploy
+docker compose -f docker-compose.single.yml build user-file-svc
+docker compose -f docker-compose.single.yml up -d user-file-svc
+docker compose -f docker-compose.single.yml restart nginx
+```
+
+如果在宿主机直接运行 `go test`，需要本机 PATH 中存在 `go` 和 `gofmt`。Docker 构建 `user-file-svc` 会在镜像内完成 Go 编译校验。
+
+
+### ???? Office ??
+
+???? `createOfficeDoc(title, parentId, kind)` ?? `POST /api/v1/file/office`?`kind=word` ?? `.docx`?`kind=excel` ?? `.xlsx`???? `FileService.CreateOfficeDoc` ????? OOXML ????? MinIO??????????????????

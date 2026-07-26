@@ -627,3 +627,55 @@
 | `/api/v1/drama/projects/:id/tasks/:taskId/retry` | POST | 重试任务 |
 | `/api/v1/drama/settings` | GET / PUT | 获取 / 保存短剧生成设置 |
 | `/api/v1/drama/settings/comfyui/status` | GET | 检测 ComfyUI 状态与本地模型 |
+---
+
+## 7. 多格式在线文档重构补充
+
+> 更新：2026-07-18
+
+### 7.1 已完成
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 新分支开发 | 已完成 | 分支：`codex/document-suite-refactor` |
+| 文档编辑页重构 | 已完成 | `DocumentEditorPage` 按文件类型分流 Markdown、Word、Excel、PDF、协作文档 |
+| Markdown 在线编辑 | 已完成 | 支持源码、预览、双栏模式；保存回原文件；导出 `.md` |
+| Word 导入编辑 | 已完成 | `.doc/.docx` 下载后导入为在线富文本编辑；支持导出 `.docx` |
+| Word 转 PDF | 已完成 | 后端新增 `/api/v1/file/:id/convert/pdf`，容器内调用 LibreOffice/soffice |
+| Excel 在线编辑 | 已完成 | 支持多 sheet、单元格编辑、筛选、按列排序、公式输入，导出 `.xlsx` |
+| PDF 查看 | 已完成 | 使用现有内联预览接口查看 PDF |
+| 文件列表入口 | 已完成 | `.md/.doc/.docx/.xls/.xlsx/.csv/.pdf` 均进入在线文档入口 |
+| Docker 更新 | 已完成 | `user-file-svc` 镜像新增 `INSTALL_LIBREOFFICE` 构建参数，单机 Compose 为该服务启用 |
+
+### 7.2 新增 API
+
+| Endpoint | Method | 说明 |
+|----------|--------|------|
+| `/api/v1/file/:id/text` | PUT | 保存文本类文档内容，当前用于 Markdown |
+| `/api/v1/file/:id/word` | PUT | 将在线编辑 HTML 转换为标准 DOCX 后保存，并记录旧版本 |
+| `/api/v1/file/:id/convert/docx` | POST | 将在线编辑 HTML 导出为标准 DOCX |
+| `/api/v1/file/:id/convert/pdf` | GET | Word 转 PDF，返回 `application/pdf` |
+
+### 7.3 验证记录
+
+| 场景 | 状态 | 备注 |
+|------|------|------|
+| 前端生产构建 | 通过 | `npm.cmd run build` |
+| user-file-svc Docker 构建 | 通过 | Go 代码在容器构建阶段编译通过 |
+| Docker 服务更新 | 通过 | `user-file-svc` 重建并健康 |
+| LibreOffice 可用性 | 通过 | 容器内存在 `/usr/bin/libreoffice` |
+| nginx 静态入口 | 通过 | `http://localhost/` 返回 200 |
+| 聚合健康检查 | 通过 | `http://localhost/healthz` 返回 ok |
+
+### 7.4 后续增强
+
+- Excel 样式目前以导入/导出结构为主，可继续增强为可视化样式编辑。
+- Markdown 和 Excel 当前以保存/导出为主；如需多人实时协作，可继续接入 Yjs 类型。
+- Word 导出当前优先保证正文可导出，复杂 Word 样式、图片和表格可作为下一轮增强。
+
+
+### 7.5 ???? Word/Excel
+
+- ??? `POST /api/v1/file/office`??????? Word `.docx` ? Excel `.xlsx` ???
+- ?????????????????????? / Word ?? / Excel ?????????????????
+- Word/Excel ?????? MinIO ????????????????????????????????

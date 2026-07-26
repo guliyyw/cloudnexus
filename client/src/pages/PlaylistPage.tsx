@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Typography, Row, Col, Card, Button, Modal, Input, Tag, Empty, Spin } from 'antd'
-import { PlusOutlined, UserOutlined } from '@ant-design/icons'
+import { Row, Col, Card, Button, Modal, Input, Tag, Empty, Spin, Typography, Space } from 'antd'
+import { DeleteOutlined, PlusOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { PageHeader, MetricStrip } from '../components/common/PageHeader'
 import { usePlaylistStore } from '../stores/playlistStore'
-import { colors, radius, shadow } from '../theme/tokens'
+import { colors, radius, shadow, spacing } from '../theme/tokens'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
 export default function PlaylistPage() {
   const navigate = useNavigate()
@@ -18,22 +19,34 @@ export default function PlaylistPage() {
     fetchPlaylists()
   }, [fetchPlaylists])
 
+  const stats = useMemo(() => {
+    const totalTracks = playlists.reduce((sum, item) => sum + (item.track_count || 0), 0)
+    const publicCount = playlists.filter((item) => item.is_public).length
+    return { totalTracks, publicCount }
+  }, [playlists])
+
+  const openCreateModal = () => {
+    setName('')
+    setModalOpen(true)
+  }
+
   const handleCreate = async () => {
     if (!name.trim()) return
     setSaving(true)
     try {
-      const pl = await create(name.trim())
+      const playlist = await create(name.trim())
       setModalOpen(false)
       setName('')
-      navigate(`/playlist/${pl.id}`)
-    } catch { /* ignore */ }
-    setSaving(false)
+      navigate(`/playlist/${playlist.id}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = (id: string, playlistName: string) => {
     Modal.confirm({
       title: '删除播放列表',
-      content: `确定要删除「${playlistName}」吗？`,
+      content: `确定要删除「${playlistName}」吗？播放列表中的歌曲不会被删除。`,
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -43,15 +56,20 @@ export default function PlaylistPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <Title level={4} style={{ margin: 0 }}>播放列表</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-          setName('')
-          setModalOpen(true)
-        }}>
-          新建播放列表
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Playlists"
+        title="播放列表"
+        description="把常听的歌曲整理成不同场景的播放清单，并支持导入导出。"
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>新建播放列表</Button>}
+      />
+
+      <MetricStrip
+        items={[
+          { label: '播放列表', value: playlists.length, tone: 'primary' },
+          { label: '歌曲总数', value: stats.totalTracks, tone: 'success' },
+          { label: '公开列表', value: stats.publicCount },
+        ]}
+      />
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>
@@ -59,54 +77,59 @@ export default function PlaylistPage() {
         <Empty description="还没有播放列表，创建第一个吧" />
       ) : (
         <Row gutter={[16, 16]}>
-          {playlists.map((pl) => (
-            <Col xs={24} sm={12} md={8} lg={6} key={pl.id}>
+          {playlists.map((playlist) => (
+            <Col xs={24} sm={12} md={8} lg={6} key={playlist.id}>
               <Card
                 hoverable
                 style={{
                   borderRadius: radius.lg,
                   overflow: 'hidden',
                   boxShadow: shadow.card,
+                  border: `1px solid ${colors.borderSubtle}`,
                 }}
-                bodyStyle={{ padding: 12 }}
-                onClick={() => navigate(`/playlist/${pl.id}`)}
+                styles={{ body: { padding: 14 } }}
+                onClick={() => navigate(`/playlist/${playlist.id}`)}
                 actions={[
-                  <span
+                  <Button
                     key="delete"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(pl.id, pl.name) }}
-                    style={{ color: colors.error, fontSize: 14 }}
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleDelete(playlist.id, playlist.name)
+                    }}
                   >
                     删除
-                  </span>,
+                  </Button>,
                 ]}
               >
                 <div
                   style={{
                     width: '100%',
-                    height: 140,
+                    height: 136,
                     borderRadius: radius.md,
-                    background: `linear-gradient(135deg, ${colors.primaryLight}, ${colors.primary}22)`,
+                    background: `linear-gradient(135deg, ${colors.primaryLight}, ${colors.surfaceMuted})`,
+                    border: `1px solid ${colors.borderSubtle}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: 10,
-                    fontSize: 48,
+                    marginBottom: spacing.sm,
+                    fontSize: 44,
                     color: colors.primary,
                   }}
                 >
-                  <UserOutlined />
+                  <UnorderedListOutlined />
                 </div>
-                <Card.Meta
-                  title={<Text ellipsis style={{ fontSize: 14 }}>{pl.name}</Text>}
-                  description={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{pl.track_count} 首歌曲</Text>
-                      <Tag color={pl.is_public ? 'blue' : 'default'} style={{ fontSize: 11 }}>
-                        {pl.is_public ? '公开' : '私密'}
-                      </Tag>
-                    </div>
-                  }
-                />
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <Text ellipsis style={{ fontSize: 14, fontWeight: 600 }}>{playlist.name}</Text>
+                  <Space size={8} wrap>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{playlist.track_count} 首歌曲</Text>
+                    <Tag color={playlist.is_public ? 'blue' : 'default'} style={{ fontSize: 11 }}>
+                      {playlist.is_public ? '公开' : '私密'}
+                    </Tag>
+                  </Space>
+                </Space>
               </Card>
             </Col>
           ))}

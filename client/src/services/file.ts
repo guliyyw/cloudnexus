@@ -123,6 +123,38 @@ export function getPreviewUrl(id: string): string {
   return `/api/v1/file/download/${id}?inline=true`
 }
 
+export function getWordPdfUrl(id: string): string {
+  return `/api/v1/file/${id}/convert/pdf`
+}
+
+export async function downloadFileBlob(id: string): Promise<Blob> {
+  const res = await api.get(`/file/download/${id}`, { responseType: 'blob' })
+  return res.data
+}
+
+export async function saveTextFile(id: string, content: string, versionMessage = 'online edit'): Promise<FileItem> {
+  const res = await api.put(`/file/${id}/text`, { content, version_message: versionMessage })
+  return res.data.data
+}
+
+export async function saveFileContent(id: string, blob: Blob, filename: string, versionMessage = 'online edit'): Promise<FileItem> {
+  const form = new FormData()
+  form.append('file', blob, filename)
+  form.append('version_message', versionMessage)
+  const res = await api.put(`/file/${id}/content`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data.data
+}
+
+export async function saveWordHtml(id: string, html: string, versionMessage = 'Word online edit'): Promise<FileItem> {
+  const res = await api.put(`/file/${id}/word`, { html, version_message: versionMessage })
+  return res.data.data
+}
+
+export async function exportWordHtml(id: string, html: string): Promise<Blob> {
+  const res = await api.post(`/file/${id}/convert/docx`, { html }, { responseType: 'blob' })
+  return res.data
+}
+
 export interface ShareInfo {
   id: string
   file_id: string
@@ -183,6 +215,11 @@ export function getSharePreviewUrl(code: string): string {
 
 export async function createCollabDoc(title: string, parentId: string, collabType: string = 'doc'): Promise<FileItem> {
   const res = await api.post('/file/collab', { title, parent_id: parentId, collab_type: collabType })
+  return res.data.data
+}
+
+export async function createOfficeDoc(title: string, parentId: string, kind: 'word' | 'excel'): Promise<FileItem> {
+  const res = await api.post('/file/office', { title, parent_id: parentId, kind })
   return res.data.data
 }
 

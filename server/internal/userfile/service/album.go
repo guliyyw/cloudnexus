@@ -1,6 +1,8 @@
 package service
 
 import (
+	"strconv"
+
 	"github.com/cloudnexus/server/internal/userfile/repository"
 	apperrors "github.com/cloudnexus/server/pkg/errors"
 	"github.com/cloudnexus/server/pkg/model"
@@ -27,7 +29,7 @@ type UpdateAlbumReq struct {
 }
 
 type AddFilesReq struct {
-	FileIDs []uint64 `json:"file_ids"`
+	FileIDs []string `json:"file_ids"`
 }
 
 type AlbumWithFiles struct {
@@ -77,6 +79,12 @@ func (s *AlbumService) Update(id, userID uint64, req UpdateAlbumReq) (*model.Alb
 		album.Description = *req.Description
 	}
 	if req.CoverFileID != nil {
+		if *req.CoverFileID != 0 {
+			file, err := s.fileRepo.FindByID(*req.CoverFileID)
+			if err != nil || file == nil || file.UserID != userID || file.IsDir {
+				return nil, apperrors.NewAppError(400, "封面文件不可用", apperrors.ErrBadRequest)
+			}
+		}
 		album.CoverFileID = *req.CoverFileID
 	}
 	if err := s.albumRepo.Update(album); err != nil {
@@ -107,7 +115,22 @@ func (s *AlbumService) AddFiles(albumID, userID uint64, req AddFilesReq) error {
 	if len(req.FileIDs) == 0 {
 		return apperrors.NewAppError(400, "文件列表不能为空", apperrors.ErrBadRequest)
 	}
-	return s.albumRepo.AddFiles(albumID, req.FileIDs)
+	ownedFileIDs := make([]uint64, 0, len(req.FileIDs))
+	for _, rawFileID := range req.FileIDs {
+		fileID, err := strconv.ParseUint(rawFileID, 10, 64)
+		if err != nil {
+			continue
+		}
+		file, err := s.fileRepo.FindByID(fileID)
+		if err != nil || file == nil || file.UserID != userID || file.IsDir {
+			continue
+		}
+		ownedFileIDs = append(ownedFileIDs, fileID)
+	}
+	if len(ownedFileIDs) == 0 {
+		return apperrors.NewAppError(400, "没有可添加的文件", apperrors.ErrBadRequest)
+	}
+	return s.albumRepo.AddFiles(albumID, ownedFileIDs)
 }
 
 func (s *AlbumService) RemoveFile(albumID, fileID, userID uint64) error {

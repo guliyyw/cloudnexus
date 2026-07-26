@@ -159,8 +159,7 @@ func (h *UserHandler) HandleGetPermissions(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	username := c.GetString("username")
 	isAdmin := c.GetBool("is_admin")
-	roles := c.GetStringSlice("roles")
-	permissions := c.GetStringSlice("permissions")
+	roles, permissions := h.svc.GetUserRolesAndPermissions(userID)
 
 	c.JSON(http.StatusOK, response.OKWithData(gin.H{
 		"user_id":    userID,

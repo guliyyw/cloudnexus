@@ -13,7 +13,7 @@
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `DEFAULT_ADMIN_USERNAME` | `admin` | 管理员用户名 |
-| `DEFAULT_ADMIN_PASSWORD` | `CloudNexus@admin` | 管理员密码 |
+| `DEFAULT_ADMIN_PASSWORD` | `cloudnexus-admin` | 管理员密码 |
 | `DEFAULT_ADMIN_EMAIL` | `admin@cloudnexus.local` | 管理员邮箱 |
 
 > 这些值可通过 Docker Compose 的 `environment` 修改。仅当数据库中无任何用户时才会触发种子创建。
@@ -22,7 +22,7 @@
 
 | 用户名 | 密码 | 备注 |
 |--------|------|------|
-| admin | CloudNexus@admin | 默认管理员 (super_admin 角色) |
+| admin | cloudnexus-admin | 默认管理员 (super_admin 角色) |
 | testuser | 123456 | 默认测试账号 |
 | alice | alice123 | |
 | bob | bob123 | |

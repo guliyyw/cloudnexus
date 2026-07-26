@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm } from 'antd'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, InputNumber } from 'antd'
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined } from '@ant-design/icons'
-import type { Camera, RecognitionEvent, FaceRecognitionEvent } from '../services/camera'
-import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents } from '../services/camera'
+import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
+import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
 import { detectFaces, embeddingToArray, loadModels } from '../utils/faceDetection'
-import { VideoRecorder } from '../utils/videoRecorder'
 import { FaceTracker } from '../utils/faceTracker'
 import FaceOverlay, { type FaceBox } from '../components/FaceOverlay'
 import FaceRegisterModal from '../components/FaceRegisterModal'
@@ -89,10 +88,14 @@ export default function CameraLiveView() {
   const facePauseRef = useRef(false)  // pause main loop while register modal is open
   const trackerRef = useRef(new FaceTracker())
 
-  // Recording
+  // Server-side recording
   const [recording, setRecording] = useState(false)
-  const recorderRef = useRef<VideoRecorder | null>(null)
-  const recordedUrlRef = useRef('')
+  const [recordings, setRecordings] = useState<CameraRecording[]>([])
+  const [recordingLoading, setRecordingLoading] = useState(false)
+  const [playbackUrl, setPlaybackUrl] = useState('')
+  const [retentionDays, setRetentionDays] = useState(7)
+  const [maxStorageMB, setMaxStorageMB] = useState(1024)
+  const [segmentSeconds, setSegmentSeconds] = useState(60)
   const [historyPlaying, setHistoryPlaying] = useState(false)
 
   // Canvas dimensions for face detection input + display size for overlay scaling
@@ -124,6 +127,21 @@ export default function CameraLiveView() {
     } catch { /* ignore */ }
   }, [id])
 
+  const fetchRecordingState = useCallback(async () => {
+    if (!id) return
+    try {
+      const [status, list] = await Promise.all([
+        getCameraRecordingStatus(id),
+        getCameraRecordings(id, 1, 20),
+      ])
+      setRecording(status.recording)
+      if (status.segment_seconds) setSegmentSeconds(status.segment_seconds)
+      if (status.retention_days) setRetentionDays(status.retention_days)
+      if (status.max_storage_mb) setMaxStorageMB(status.max_storage_mb)
+      setRecordings(list.items)
+    } catch { /* ignore */ }
+  }, [id])
+
   const handleClearFaceEvents = async () => {
     if (!id) return
     try {
@@ -133,7 +151,7 @@ export default function CameraLiveView() {
     } catch { message.error('清空失败') }
   }
 
-  useEffect(() => { fetchCamera(); fetchEvents(); fetchFaceEvents() }, [fetchCamera, fetchEvents, fetchFaceEvents])
+  useEffect(() => { fetchCamera(); fetchEvents(); fetchFaceEvents(); fetchRecordingState() }, [fetchCamera, fetchEvents, fetchFaceEvents, fetchRecordingState])
 
   // Track actual display size of video/canvas for overlay alignment
   useEffect(() => {
@@ -162,8 +180,6 @@ export default function CameraLiveView() {
       if (videoRef.current) { videoRef.current.pause(); videoRef.current.src = '' }
       // Stop face detection timer
       if (faceTimerRef.current) clearInterval(faceTimerRef.current)
-      // Stop recorder
-      if (recorderRef.current) recorderRef.current.destroy()
       // Notify server to release stream (fire-and-forget, don't block unmount)
       if (id) {
         const release = async () => {
@@ -287,13 +303,8 @@ export default function CameraLiveView() {
         if (faceTimerRef.current) clearInterval(faceTimerRef.current)
         setFaceRecognizing(false)
       }
-      if (recorderRef.current) {
-        recorderRef.current.destroy()
-        recorderRef.current = null
-        setRecording(false)
-        recordedUrlRef.current = ''
-        setHistoryPlaying(false)
-      }
+      setPlaybackUrl('')
+      setHistoryPlaying(false)
       if (mjpegAnimRef.current) {
         cancelAnimationFrame(mjpegAnimRef.current)
         mjpegAnimRef.current = 0
@@ -397,62 +408,69 @@ export default function CameraLiveView() {
     }
   }
 
-  // --- Recording (records from display canvas in MJPEG mode, or video element) ---
-  const handleToggleRecording = (checked: boolean) => {
+  const handleToggleRecording = async (checked: boolean) => {
+    if (!id) return
+    setRecordingLoading(true)
+    try {
+      if (checked) {
+        const status = await startCameraRecording(id, {
+          segment_seconds: segmentSeconds,
+          retention_days: retentionDays,
+          max_storage_mb: maxStorageMB,
+        })
+        setRecording(status.recording)
+        message.success('Recording started')
+      } else {
+        await stopCameraRecording(id)
+        setRecording(false)
+        message.success('Recording stopped')
+      }
+      await fetchRecordingState()
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || 'Recording operation failed')
+    } finally {
+      setRecordingLoading(false)
+    }
+  }
+
+  const handlePlayRecording = (rec: CameraRecording) => {
+    if (!id) return
+    if (hlsRef.current && !mjpegMode) {
+      hlsRef.current.detachMedia()
+    }
+    setPlaybackUrl(getCameraRecordingPlaybackUrl(id, rec.id))
+    setHistoryPlaying(true)
+    setPlaying(true)
+  }
+
+  const handleReturnLive = async () => {
+    setPlaybackUrl('')
+    setHistoryPlaying(false)
+    if (!playing) return
+    if (mjpegMode) return
     const video = videoRef.current
-    if (!video && !mjpegMode) { message.warning('请先开启视频流'); return }
-
-    if (checked) {
-      const rec = new VideoRecorder()
-      if (mjpegMode) {
-        const dc = displayCanvasRef.current
-        if (dc) rec.startFromCanvas(dc)
-      } else if (video) {
-        rec.start(video)
-      }
-      recorderRef.current = rec
-      setRecording(true)
-      message.success('已开始保留历史视频（客户端本地录制）')
-    } else {
-      if (recorderRef.current) {
-        recorderRef.current.destroy()
-        recorderRef.current = null
-      }
-      setRecording(false)
-      recordedUrlRef.current = ''
-      setHistoryPlaying(false)
-      message.success('已停止录制')
+    if (video) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+    if (hlsRef.current && video) {
+      hlsRef.current.attachMedia(video)
+    } else if (id) {
+      await handlePlayHls()
     }
   }
 
-  const handlePlayHistory = () => {
-    if (!recorderRef.current) return
-
-    if (historyPlaying) {
-      const video = videoRef.current
-      if (video) {
-        video.pause()
-        video.src = ''
-      }
-      if (hlsRef.current && !mjpegMode) {
-        hlsRef.current.attachMedia(video!)
-      }
-      setHistoryPlaying(false)
-    } else {
-      // Ensure video element exists for playback
-      const video = videoRef.current
-      if (!video) return
-      const url = recorderRef.current.getBlobUrl()
-      recordedUrlRef.current = url
-      if (hlsRef.current && !mjpegMode) {
-        hlsRef.current.detachMedia()
-      }
-      video.src = url
-      video.play()
-      setHistoryPlaying(true)
+  const handleDeleteRecording = async (rec: CameraRecording) => {
+    if (!id) return
+    try {
+      await deleteCameraRecording(id, rec.id)
+      message.success('Recording deleted')
+      await fetchRecordingState()
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || 'Delete failed')
     }
   }
-
   const statusColor = camera?.status === 'online' ? 'green' : 'default'
   const statusText = camera?.status === 'online' ? '在线' : '离线'
 
@@ -520,6 +538,43 @@ export default function CameraLiveView() {
     },
   ]
 
+  const recordingColumns = [
+    {
+      title: 'Start',
+      dataIndex: 'started_at',
+      key: 'started_at',
+      width: 160,
+      render: (t: string) => new Date(t).toLocaleString(),
+    },
+    {
+      title: 'Duration',
+      dataIndex: 'duration_seconds',
+      key: 'duration_seconds',
+      width: 90,
+      render: (v: number) => `${v}s`,
+    },
+    {
+      title: 'Size',
+      dataIndex: 'size_bytes',
+      key: 'size_bytes',
+      width: 90,
+      render: (v: number) => `${(v / 1024 / 1024).toFixed(1)} MB`,
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
+      render: (_: unknown, rec: CameraRecording) => (
+        <Space size="small">
+          <Button type="link" size="small" onClick={() => handlePlayRecording(rec)}>Play</Button>
+          <Popconfirm title="Delete this recording?" onConfirm={() => handleDeleteRecording(rec)}>
+            <Button type="link" size="small" danger>Delete</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
   return (
     <div>
       <Card
@@ -533,25 +588,24 @@ export default function CameraLiveView() {
           </Space>
         }
         extra={
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => { fetchCamera(); fetchEvents(); fetchFaceEvents() }}>刷新</Button>
-            <span>AI 识别: <Switch checked={recognizing} onChange={handleToggleRecognition} disabled={!playing} /></span>
-            <span>人脸识别: <Switch checked={faceRecognizing} onChange={handleToggleFaceRecognition} disabled={!playing} /></span>
-            <span>保留历史: <Switch checked={recording} onChange={handleToggleRecording} disabled={!playing} /></span>
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} onClick={() => { fetchCamera(); fetchEvents(); fetchFaceEvents(); fetchRecordingState() }}>刷新</Button>
+            <span>AI 识别: <Switch checked={recognizing} onChange={handleToggleRecognition} disabled={!playing || historyPlaying} /></span>
+            <span>人脸识别: <Switch checked={faceRecognizing} onChange={handleToggleFaceRecognition} disabled={!playing || historyPlaying} /></span>
+            <span>监控录像: <Switch checked={recording} onChange={handleToggleRecording} loading={recordingLoading} /></span>
             {faceRecognizing && (
               <Button type="link" icon={<SmileOutlined />} onClick={() => { facePauseRef.current = true; setRegisterModalOpen(true) }} size="small">
                 注册人脸
               </Button>
             )}
-            {recording && (
+            {historyPlaying && (
               <Button
                 size="small"
                 icon={<VideoCameraOutlined />}
-                type={historyPlaying ? 'primary' : 'default'}
-                onClick={handlePlayHistory}
-                disabled={!recorderRef.current || recorderRef.current.getDurationMs() < 1000}
+                type="primary"
+                onClick={handleReturnLive}
               >
-                {historyPlaying ? '返回实时' : '回看历史'}
+                返回实时
               </Button>
             )}
             {playing ? (
@@ -577,19 +631,19 @@ export default function CameraLiveView() {
                     alt=""
                   />
                   <div style={{ position: 'relative', lineHeight: 0 }}>
+                    {historyPlaying && (
+                      <video src={playbackUrl} controls autoPlay style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
+                    )}
                     {mjpegMode && !historyPlaying && (
                       <canvas
                         ref={displayCanvasRef}
                         style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }}
                       />
                     )}
-                    {(mjpegMode && historyPlaying) && (
+                    {!mjpegMode && !historyPlaying && (
                       <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
                     )}
-                    {!mjpegMode && (
-                      <video ref={videoRef} controls autoPlay muted style={{ maxWidth: '100%', maxHeight: 480, display: 'block' }} />
-                    )}
-                    {faceRecognizing && (
+                    {faceRecognizing && !historyPlaying && (
                       <FaceOverlay
                         faces={detectedFaces}
                         videoWidth={canvasSizeRef.current.w}
@@ -624,6 +678,32 @@ export default function CameraLiveView() {
               </Descriptions>
               )
             })()}
+            <Card
+              title="录像回放"
+              size="small"
+              style={{ marginBottom: 16 }}
+              extra={<Button size="small" onClick={fetchRecordingState}>刷新</Button>}
+            >
+              <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 12 }}>
+                <Space wrap size="small">
+                  <span>片段</span>
+                  <InputNumber min={10} max={3600} size="small" value={segmentSeconds} onChange={(v) => setSegmentSeconds(Number(v || 60))} addonAfter="秒" disabled={recording} style={{ width: 120 }} />
+                  <span>保留</span>
+                  <InputNumber min={1} max={365} size="small" value={retentionDays} onChange={(v) => setRetentionDays(Number(v || 7))} addonAfter="天" disabled={recording} style={{ width: 120 }} />
+                  <span>空间</span>
+                  <InputNumber min={128} size="small" value={maxStorageMB} onChange={(v) => setMaxStorageMB(Number(v || 1024))} addonAfter="MB" disabled={recording} style={{ width: 140 }} />
+                </Space>
+                {recording && <Tag color="red">正在录像，达到保留策略后会自动循环删除旧片段</Tag>}
+              </Space>
+              <Table
+                dataSource={recordings}
+                columns={recordingColumns}
+                rowKey="id"
+                size="small"
+                pagination={{ pageSize: 5, size: 'small' }}
+                locale={{ emptyText: '暂无录像' }}
+              />
+            </Card>
             <Card title="识别记录" size="small" extra={<Button size="small" onClick={() => { fetchEvents(); fetchFaceEvents() }}>刷新</Button>}>
               <Tabs defaultActiveKey="object" size="small" items={tabs} />
             </Card>

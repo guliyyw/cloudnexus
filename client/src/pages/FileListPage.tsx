@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Table, Button, Modal, Input, Breadcrumb, Popconfirm,
-  Space, message, Tag, Typography, Tooltip, Card, Empty,
+  Table, Button, Modal, Input, Breadcrumb, Popconfirm, Select,
+  Space, message, Tag, Typography, Tooltip, Card, Empty, Progress,
 } from 'antd'
 import {
   FolderAddOutlined, SearchOutlined,
@@ -11,8 +11,10 @@ import {
   FileImageOutlined, PlayCircleOutlined, SoundOutlined,
   FilePdfOutlined, FileZipOutlined, EyeOutlined, ShareAltOutlined,
   SwapOutlined, CopyOutlined, HistoryOutlined, FileTextOutlined,
+  FileWordOutlined, FileExcelOutlined,
 } from '@ant-design/icons'
 import { useFileStore } from '../stores/fileStore'
+import { useQuotaStore } from '../stores/quotaStore'
 import UploadModal from '../components/UploadModal'
 import PreviewModal from '../components/PreviewModal'
 import ShareModal from '../components/ShareModal'
@@ -20,20 +22,53 @@ import DirectoryPickerModal from '../components/DirectoryPickerModal'
 import FileVersionPanel from '../components/FileVersionPanel'
 import { isPreviewable } from '../utils/preview'
 import { colors, radius, shadow, spacing } from '../theme/tokens'
-import { getDownloadUrl, createCollabDoc } from '../services/file'
+import { getDownloadUrl, createCollabDoc, createOfficeDoc } from '../services/file'
 import type { FileItem } from '../services/file'
 import type { ColumnsType } from 'antd/es/table'
+import { formatFileSize } from '../utils/format'
 
 function getFileIcon(mimeType: string, isDir: boolean, collabType?: string) {
   if (isDir) return <FolderOutlined style={{ color: colors.warning }} />
   if (collabType === 'doc') return <FileTextOutlined style={{ color: colors.primary }} />
   if (!mimeType) return <FileOutlined />
+  if (mimeType.includes('word') || mimeType.includes('officedocument.wordprocessingml')) return <FileWordOutlined style={{ color: '#2b579a' }} />
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheetml')) return <FileExcelOutlined style={{ color: '#217346' }} />
   if (mimeType.startsWith('image/')) return <FileImageOutlined style={{ color: colors.success }} />
   if (mimeType.startsWith('video/')) return <PlayCircleOutlined style={{ color: '#5b8def' }} />
   if (mimeType.startsWith('audio/')) return <SoundOutlined style={{ color: '#722ed1' }} />
   if (mimeType === 'application/pdf') return <FilePdfOutlined style={{ color: colors.error }} />
   if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return <FileZipOutlined />
   return <FileOutlined />
+}
+
+function isOfficeDocument(file: FileItem) {
+  const name = file.name.toLowerCase()
+  return file.collab_type === 'doc'
+    || name.endsWith('.clouddoc')
+    || name.endsWith('.md')
+    || name.endsWith('.markdown')
+    || name.endsWith('.doc')
+    || name.endsWith('.docx')
+    || name.endsWith('.xls')
+    || name.endsWith('.xlsx')
+    || name.endsWith('.csv')
+    || name.endsWith('.pdf')
+}
+
+function getFileTypeLabel(file: FileItem) {
+  const name = file.name.toLowerCase()
+  const mimeType = file.mime_type || ''
+  if (file.is_dir) return { label: '目录' }
+  if (file.collab_type === 'doc' || name.endsWith('.clouddoc')) return { label: '协作文档', color: 'orange' }
+  if (name.endsWith('.doc') || name.endsWith('.docx') || mimeType.includes('wordprocessingml') || mimeType.includes('msword')) return { label: 'Word', color: 'blue' }
+  if (name.endsWith('.xls') || name.endsWith('.xlsx') || name.endsWith('.csv') || mimeType.includes('spreadsheetml') || mimeType.includes('excel')) return { label: 'Excel', color: 'green' }
+  if (name.endsWith('.md') || name.endsWith('.markdown') || mimeType.includes('markdown')) return { label: 'Markdown', color: 'cyan' }
+  if (name.endsWith('.pdf') || mimeType === 'application/pdf') return { label: 'PDF', color: 'red' }
+  if (mimeType.startsWith('image/')) return { label: '图片', color: 'green' }
+  if (mimeType.startsWith('video/')) return { label: '视频', color: 'geekblue' }
+  if (mimeType.startsWith('audio/')) return { label: '音频', color: 'purple' }
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress')) return { label: '压缩包' }
+  return { label: mimeType || '-' }
 }
 
 const { Text } = Typography
@@ -53,11 +88,13 @@ export default function FileListPage() {
     files, total, page, pageSize, breadcrumb, loading, searchMode, searchKeyword,
     fetchFiles, remove, batchRemove, batchDownload, moveItem, copyItem, mkdir, search, navigateTo, setPage, currentParentId,
   } = useFileStore()
+  const { quota, fetchQuota } = useQuotaStore()
 
   const [mkdirVisible, setMkdirVisible] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
   const [collabVisible, setCollabVisible] = useState(false)
   const [collabTitle, setCollabTitle] = useState('')
+  const [newDocKind, setNewDocKind] = useState<'collab' | 'word' | 'excel'>('collab')
   const [creatingCollab, setCreatingCollab] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
@@ -70,7 +107,10 @@ export default function FileListPage() {
   const [pickerOpen, setPickerOpen] = useState<'move' | 'copy' | null>(null)
   const [pendingMoveCopyIds, setPendingMoveCopyIds] = useState<string[]>([])
 
-  useEffect(() => { fetchFiles() }, [fetchFiles])
+  useEffect(() => {
+    fetchFiles()
+    fetchQuota()
+  }, [fetchFiles, fetchQuota])
 
   const currentFolderName = breadcrumb[breadcrumb.length - 1]?.name || '根目录'
 
@@ -80,6 +120,16 @@ export default function FileListPage() {
 
   const selectedFileCount = selectedFiles.filter((item) => !item.is_dir).length
   const selectedDirCount = selectedFiles.filter((item) => item.is_dir).length
+
+  const usedSpace = quota?.used || 0
+  const totalSpace = quota?.limit || 0
+  const remainingSpace = totalSpace > 0 ? Math.max(totalSpace - usedSpace, 0) : 0
+  const usagePercent = totalSpace > 0 ? Math.min(Math.round((usedSpace / totalSpace) * 100), 100) : 0
+
+  const refreshFilesAndQuota = () => {
+    fetchFiles()
+    fetchQuota()
+  }
 
   // Open upload modal, optionally targeting a specific directory
   const openUploadModal = (dirId = currentParentId, dirName?: string) => {
@@ -145,6 +195,7 @@ export default function FileListPage() {
         try {
           const result = await batchRemove(selectedRowKeys)
           setSelectedRowKeys([])
+          fetchQuota()
           if (result.errors.length > 0) {
             message.warning(`部分删除失败: ${result.errors.join(', ')}`)
           } else {
@@ -220,10 +271,14 @@ export default function FileListPage() {
     if (!collabTitle.trim()) return
     setCreatingCollab(true)
     try {
-      const file = await createCollabDoc(collabTitle.trim(), currentParentId)
-      message.success('协作文档已创建')
+      const file = newDocKind === 'collab'
+        ? await createCollabDoc(collabTitle.trim(), currentParentId)
+        : await createOfficeDoc(collabTitle.trim(), currentParentId, newDocKind)
+      message.success('在线文档已创建')
       setCollabTitle('')
+      setNewDocKind('collab')
       setCollabVisible(false)
+      fetchQuota()
       navigate(`/files/${file.id}/edit`)
     } catch {
       message.error('创建失败')
@@ -257,6 +312,8 @@ export default function FileListPage() {
             <a onClick={() => navigate(`/files/${record.id}/edit`)} style={{ fontWeight: 500 }}>
               {name}
             </a>
+          ) : isOfficeDocument(record) ? (
+            <a onClick={() => navigate(`/files/${record.id}/edit`)} style={{ fontWeight: 500 }}>{name}</a>
           ) : isPreviewable(record.mime_type) ? (
             <a onClick={() => setPreviewFile(record)}>{name}</a>
           ) : (
@@ -271,10 +328,9 @@ export default function FileListPage() {
     },
     {
       title: '类型', dataIndex: 'mime_type', key: 'mime_type', width: 150,
-      render: (v: string, r: FileItem) => {
-        if (r.is_dir) return <Tag>目录</Tag>
-        if (r.collab_type === 'doc') return <Tag color="orange">协作文档</Tag>
-        return <Text type="secondary">{v || '-'}</Text>
+      render: (_: string, r: FileItem) => {
+        const type = getFileTypeLabel(r)
+        return <Tag color={type.color}>{type.label}</Tag>
       },
     },
     {
@@ -311,7 +367,7 @@ export default function FileListPage() {
               <Button type="link" size="small" icon={<HistoryOutlined />} onClick={() => setVersionFile(record)} />
             </Tooltip>
           )}
-          <Popconfirm title="确定删除？" onConfirm={() => remove(record.id)}>
+          <Popconfirm title="确定删除？" onConfirm={async () => { await remove(record.id); fetchQuota() }}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -332,9 +388,6 @@ export default function FileListPage() {
       >
         <Text style={{ color: colors.primary, fontWeight: 700, letterSpacing: 0.5 }}>FILES</Text>
         <Typography.Title level={3} style={{ margin: '10px 0 8px', color: colors.text }}>文件工作台</Typography.Title>
-        <Typography.Paragraph style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, lineHeight: 1.8 }}>
-          文件页承担目录浏览、上传、分享、版本、协作文档和批量处理入口。页面改版重点是把目录上下文、主操作和内容列表拆清，避免所有能力挤在一排按钮里。
-        </Typography.Paragraph>
       </section>
 
       <section
@@ -365,8 +418,8 @@ export default function FileListPage() {
           <Space wrap size={[10, 10]}>
             <Button type="primary" icon={<UploadOutlined />} onClick={() => openUploadModal()}>上传文件</Button>
             <Button icon={<FolderAddOutlined />} onClick={() => setMkdirVisible(true)}>新建目录</Button>
-            <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建协作文档</Button>
-            <Button icon={<ReloadOutlined />} onClick={() => fetchFiles()}>刷新</Button>
+            <Button icon={<FileTextOutlined />} onClick={() => setCollabVisible(true)}>新建在线文档</Button>
+            <Button icon={<ReloadOutlined />} onClick={refreshFilesAndQuota}>刷新</Button>
           </Space>
         </div>
 
@@ -395,7 +448,22 @@ export default function FileListPage() {
               size="small"
               style={{ background: colors.surfaceMuted, borderColor: colors.borderSubtle }}
             >
-              <Space direction="vertical" size={4}>
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Text strong style={{ color: colors.text }}>空间使用</Text>
+                <Text style={{ color: colors.textSecondary }}>
+                  已用 {formatFileSize(usedSpace)} / {totalSpace > 0 ? formatFileSize(totalSpace) : '不限'}
+                </Text>
+                <Progress
+                  percent={usagePercent}
+                  size="small"
+                  showInfo={false}
+                  status={usagePercent >= 90 ? 'exception' : 'normal'}
+                  strokeColor={usagePercent >= 90 ? colors.error : colors.primary}
+                  trailColor={colors.surface}
+                />
+                <Text style={{ color: colors.textSecondary }}>
+                  剩余 {totalSpace > 0 ? formatFileSize(remainingSpace) : '不限'}
+                </Text>
                 <Text strong style={{ color: colors.text }}>目录统计</Text>
                 <Text style={{ color: colors.textSecondary }}>当前页 {files.length} 项，累计 {total} 项</Text>
                 <Text style={{ color: colors.textSecondary }}>已选文件 {selectedFileCount} 项，目录 {selectedDirCount} 项</Text>
@@ -529,6 +597,7 @@ export default function FileListPage() {
             setMkdirName('')
             setMkdirVisible(false)
             message.success('目录已创建')
+            fetchQuota()
           }
         }}
         onCancel={() => setMkdirVisible(false)}
@@ -537,28 +606,47 @@ export default function FileListPage() {
       </Modal>
 
       <Modal
-        title="新建协作文档"
+        title="新建在线文档"
         open={collabVisible}
         onOk={handleCreateCollab}
-        onCancel={() => { setCollabVisible(false); setCollabTitle('') }}
+        onCancel={() => {
+          setCollabVisible(false)
+          setCollabTitle('')
+          setNewDocKind('collab')
+        }}
         confirmLoading={creatingCollab}
         okText="创建"
         cancelText="取消"
       >
-        <Input
-          placeholder="输入文档标题"
-          value={collabTitle}
-          onChange={(e) => setCollabTitle(e.target.value)}
-          onPressEnter={handleCreateCollab}
-          autoFocus
-        />
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Select
+            value={newDocKind}
+            onChange={setNewDocKind}
+            style={{ width: '100%' }}
+            options={[
+              { value: 'collab', label: '协作文档' },
+              { value: 'word', label: 'Word 文档 (.docx)' },
+              { value: 'excel', label: 'Excel 表格 (.xlsx)' },
+            ]}
+          />
+          <Input
+            placeholder="文档名称"
+            value={collabTitle}
+            onChange={(e) => setCollabTitle(e.target.value)}
+            onPressEnter={handleCreateCollab}
+            autoFocus
+          />
+        </Space>
       </Modal>
 
       <UploadModal
         open={uploadModalOpen}
         targetDirId={uploadTargetDir.id}
         targetDirName={uploadTargetDir.name}
-        onClose={() => setUploadModalOpen(false)}
+        onClose={() => {
+          setUploadModalOpen(false)
+          refreshFilesAndQuota()
+        }}
       />
 
       <PreviewModal
@@ -589,3 +677,4 @@ export default function FileListPage() {
     </div>
   )
 }
+

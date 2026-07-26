@@ -93,11 +93,9 @@ export const useAlbumStore = create<AlbumState>((set, get) => ({
   },
 
   addFiles: async (albumId: string, fileIds: string[]) => {
-    try {
-      await addFilesToAlbum(albumId, fileIds)
-      // refresh files
-      get().fetchFiles(albumId)
-    } catch { /* ignore */ }
+    await addFilesToAlbum(albumId, fileIds)
+    await get().fetchFiles(albumId)
+    await get().fetchAlbum(albumId)
   },
 
   removeFile: async (albumId: string, fileId: string) => {

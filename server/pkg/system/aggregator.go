@@ -24,18 +24,19 @@ type InfraNode struct {
 // HealthAggregator periodically probes all registered nodes' /healthz endpoints
 // and manages online session tracking.
 type HealthAggregator struct {
-	db              *gorm.DB
-	interval        time.Duration
-	client          *http.Client
-	stopCh          chan struct{}
-	stopped         bool
-	mu              sync.Mutex
-	infraNodes      []InfraNode
-	failures        map[string]int
-	failuresMu      sync.Mutex
-	alerter         *AlertEvaluator
-	snapshotSaver   func(statusData string)
-	lastSnapshotAt  time.Time
+	db               *gorm.DB
+	interval         time.Duration
+	client           *http.Client
+	stopCh           chan struct{}
+	stopped          bool
+	mu               sync.Mutex
+	infraNodes       []InfraNode
+	failures         map[string]int
+	failuresMu       sync.Mutex
+	alerter          *AlertEvaluator
+	snapshotSaver    func(statusData string)
+	resourceSaver    func(service string, cpuPercent float64, memoryUsed, memoryTotal int64)
+	lastSnapshotAt   time.Time
 	snapshotInterval time.Duration
 }
 
@@ -44,6 +45,11 @@ type HealthAggregator struct {
 func (a *HealthAggregator) SetSnapshotSaver(saver func(statusData string)) {
 	a.snapshotSaver = saver
 	a.snapshotInterval = 5 * time.Minute
+}
+
+// SetResourceMetricSaver registers a callback to persist per-service resource metrics.
+func (a *HealthAggregator) SetResourceMetricSaver(saver func(service string, cpuPercent float64, memoryUsed, memoryTotal int64)) {
+	a.resourceSaver = saver
 }
 
 // NewHealthAggregator creates a new health aggregator.
@@ -112,9 +118,12 @@ func (a *HealthAggregator) loop() {
 }
 
 type healthResponse struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
-	Version string `json:"version"`
+	Status      string  `json:"status"`
+	Service     string  `json:"service"`
+	Version     string  `json:"version"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryMB    uint64  `json:"memory_mb"`
+	MemorySysMB uint64  `json:"memory_sys_mb"`
 }
 
 func (a *HealthAggregator) probeAll() {
@@ -156,10 +165,11 @@ func (a *HealthAggregator) buildSnapshotJSON(nodes []model.DockerNode) string {
 
 	var modules []moduleSnap
 	moduleDefs := []struct{ key, name, service string }{
+		{"drama", "短剧工坊", "drama-svc"},
 		{"files", "云存储", "user-file-svc"},
 		{"im", "即时通讯", "im-svc"},
 		{"docker", "Docker管理", "docker-svc"},
-		{"camera", "视频监控", "camera-svc"},
+		{"cameras", "视频监控", "camera-svc"},
 		{"collab", "在线文档", "collab-svc"},
 		{"infra", "基础设施", ""},
 	}
@@ -170,21 +180,7 @@ func (a *HealthAggregator) buildSnapshotJSON(nodes []model.DockerNode) string {
 		} else {
 			ns = serviceNodes[def.service]
 		}
-		status := "green"
-		if len(ns) == 0 {
-			status = "red"
-		} else {
-			for _, n := range ns {
-				switch n.Status {
-				case "offline":
-					status = "red"
-				case "unresponsive":
-					if status != "red" {
-						status = "yellow"
-					}
-				}
-			}
-		}
+		status := moduleAvailabilityStatus(ns)
 		modules = append(modules, moduleSnap{Name: def.name, Status: status})
 	}
 
@@ -192,9 +188,28 @@ func (a *HealthAggregator) buildSnapshotJSON(nodes []model.DockerNode) string {
 	return string(data)
 }
 
+func moduleAvailabilityStatus(nodes []model.DockerNode) string {
+	if len(nodes) == 0 {
+		return "red"
+	}
+	hasUnresponsive := false
+	for _, node := range nodes {
+		if node.Status == "healthy" {
+			return "green"
+		}
+		if node.Status == "unresponsive" {
+			hasUnresponsive = true
+		}
+	}
+	if hasUnresponsive {
+		return "yellow"
+	}
+	return "red"
+}
+
 // Consecutive failure thresholds.
-const unresponsiveAfter = 2 // ~30s of failures → unresponsive
-const offlineAfter = 5      // ~75s of failures → offline
+const unresponsiveAfter = 1 // first failed probe → unresponsive
+const offlineAfter = 2      // second failed probe → offline
 
 func (a *HealthAggregator) recordFailure(name string) int {
 	a.failuresMu.Lock()
@@ -265,9 +280,20 @@ func (a *HealthAggregator) tryProbe(host string, port int, node *model.DockerNod
 	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil || hr.Status != "ok" {
 		return false
 	}
+	if hr.Service == "" || (node.Service != "" && hr.Service != node.Service) {
+		return false
+	}
 
 	a.resetFailures(node.Name)
 	a.markHealthy(node, hr.Service, hr.Version, now)
+	if a.resourceSaver != nil && hr.Service != "" {
+		memoryUsed := int64(hr.MemoryMB) * 1024 * 1024
+		memoryTotal := int64(hr.MemorySysMB) * 1024 * 1024
+		if memoryTotal < memoryUsed {
+			memoryTotal = memoryUsed
+		}
+		a.resourceSaver(hr.Service, hr.CPUPercent, memoryUsed, memoryTotal)
+	}
 	return true
 }
 

@@ -107,8 +107,10 @@ func main() {
 
 	api := r.Group("/api/v1")
 	api.Use(middleware.AuthRequired(jwtCfg.AccessSecret))
+	api.Use(middleware.LoadPermissions(db))
 	{
 		im := api.Group("/im")
+		im.Use(middleware.RequireAnyPermission("module:chat", "module:friends"))
 		{
 			im.GET("/conversations", imH.HandleGetConversations)
 				im.POST("/conversations/import", imH.HandleImportConversation)
@@ -144,7 +146,7 @@ func main() {
 	}
 
 	// WebSocket needs auth via query param
-	r.GET("/ws", middleware.AuthRequired(jwtCfg.AccessSecret), imH.HandleWebSocket)
+	r.GET("/ws", middleware.AuthRequired(jwtCfg.AccessSecret), middleware.LoadPermissions(db), middleware.RequirePermission("module:chat"), imH.HandleWebSocket)
 
 	r.GET("/healthz", system.HealthzHandler("im-svc",
 		func() (string, string) {

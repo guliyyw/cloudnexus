@@ -1,8 +1,11 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/cloudnexus/server/pkg/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AlbumRepository struct {
@@ -38,6 +41,19 @@ func (r *AlbumRepository) FindByOwner(ownerID uint64, page, pageSize int) ([]mod
 		var cnt int64
 		r.db.Model(&model.AlbumFile{}).Where("album_id = ?", albums[i].ID).Count(&cnt)
 		albums[i].FileCount = int(cnt)
+		if albums[i].CoverFileID == 0 {
+			var cover struct {
+				FileID uint64
+			}
+			r.db.Table("album_files").
+				Select("album_files.file_id").
+				Joins("JOIN files ON files.id = album_files.file_id").
+				Where("album_files.album_id = ? AND files.deleted_at IS NULL AND files.is_dir = ? AND files.mime_type LIKE ?", albums[i].ID, false, "image/%").
+				Order("album_files.added_at DESC").
+				Limit(1).
+				Scan(&cover)
+			albums[i].CoverFileID = cover.FileID
+		}
 	}
 	return albums, total, err
 }
@@ -55,9 +71,9 @@ func (r *AlbumRepository) Delete(id uint64) error {
 func (r *AlbumRepository) AddFiles(albumID uint64, fileIDs []uint64) error {
 	records := make([]model.AlbumFile, 0, len(fileIDs))
 	for _, fid := range fileIDs {
-		records = append(records, model.AlbumFile{AlbumID: albumID, FileID: fid})
+		records = append(records, model.AlbumFile{AlbumID: albumID, FileID: fid, AddedAt: time.Now()})
 	}
-	return r.db.Create(&records).Error
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&records).Error
 }
 
 func (r *AlbumRepository) RemoveFile(albumID, fileID uint64) error {

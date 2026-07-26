@@ -23,3 +23,17 @@ type RecognitionEvent struct {
 	Metadata    string    `json:"metadata" gorm:"type:text"`
 	CreatedAt   time.Time `json:"created_at" gorm:"index"`
 }
+
+// CameraRecording stores one playable recording segment for a camera.
+type CameraRecording struct {
+	BaseModel
+	CameraID        uint64     `json:"camera_id,string" gorm:"not null;index"`
+	OwnerID         uint64     `json:"owner_id,string" gorm:"not null;index"`
+	FileName        string     `json:"file_name" gorm:"not null;size:255"`
+	FilePath        string     `json:"-" gorm:"not null;size:1024"`
+	Status          string     `json:"status" gorm:"not null;default:ready;size:16"`
+	StartedAt       time.Time  `json:"started_at" gorm:"not null;index"`
+	EndedAt         *time.Time `json:"ended_at"`
+	DurationSeconds int        `json:"duration_seconds"`
+	SizeBytes       int64      `json:"size_bytes"`
+}

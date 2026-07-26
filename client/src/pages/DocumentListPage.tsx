@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Button,
@@ -6,6 +6,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Typography,
@@ -15,15 +16,25 @@ import {
   ArrowRightOutlined,
   DeleteOutlined,
   EditOutlined,
+  FileExcelOutlined,
   FileTextOutlined,
+  FileWordOutlined,
   PlusOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { createDocument, deleteDocument, listDocuments, type CollabDocument } from '../services/collab'
+import { createOfficeDoc } from '../services/file'
 import { colors, radius, shadow, spacing } from '../theme/tokens'
 
 const { Paragraph, Text, Title } = Typography
+
+function getDocIcon(title: string) {
+  const name = title.toLowerCase()
+  if (name.endsWith('.doc') || name.endsWith('.docx')) return <FileWordOutlined />
+  if (name.endsWith('.xls') || name.endsWith('.xlsx') || name.endsWith('.csv')) return <FileExcelOutlined />
+  return <FileTextOutlined />
+}
 
 export default function DocumentListPage() {
   const [docs, setDocs] = useState<CollabDocument[]>([])
@@ -33,6 +44,7 @@ export default function DocumentListPage() {
   const [searchValue, setSearchValue] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [newDocKind, setNewDocKind] = useState<'collab' | 'word' | 'excel'>('collab')
   const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
   const pageSize = 20
@@ -40,7 +52,7 @@ export default function DocumentListPage() {
   const fetchDocs = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await listDocuments(page, pageSize)
+      const res = await listDocuments(page, pageSize, searchValue.trim())
       setDocs(res.data ?? [])
       setTotal(res.total ?? 0)
     } catch {
@@ -48,28 +60,30 @@ export default function DocumentListPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, searchValue])
 
   useEffect(() => {
     fetchDocs()
   }, [fetchDocs])
 
-  const filteredDocs = useMemo(() => {
-    if (!searchValue.trim()) return docs
-    const keyword = searchValue.trim().toLowerCase()
-    return docs.filter((doc) => doc.title.toLowerCase().includes(keyword))
-  }, [docs, searchValue])
+  const recentDocs = docs.slice(0, 3)
 
-  const recentDocs = filteredDocs.slice(0, 3)
+  const handleSearchChange = (value: string) => {
+    setSearchValue(value)
+    setPage(1)
+  }
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return
     setCreating(true)
     try {
-      const doc = await createDocument(newTitle.trim())
-      message.success('创建成功')
+      const doc = newDocKind === 'collab'
+        ? await createDocument(newTitle.trim())
+        : await createOfficeDoc(newTitle.trim(), '0', newDocKind)
+      message.success('在线文档已创建')
       setCreateOpen(false)
       setNewTitle('')
+      setNewDocKind('collab')
       navigate(`/documents/${doc.id}`)
     } catch {
       message.error('创建失败')
@@ -122,7 +136,7 @@ export default function DocumentListPage() {
               flexShrink: 0,
             }}
           >
-            <FileTextOutlined />
+            {getDocIcon(title)}
           </span>
           <span>{title}</span>
         </button>
@@ -173,8 +187,7 @@ export default function DocumentListPage() {
         <Text style={{ color: colors.primary, fontWeight: 700, letterSpacing: 0.5 }}>DOCUMENTS</Text>
         <Title level={3} style={{ margin: '10px 0 12px', color: colors.text }}>文档中心</Title>
         <Paragraph style={{ marginBottom: 0, color: colors.textSecondary, fontSize: 15, lineHeight: 1.8 }}>
-          这里集中承接协作文档的浏览、创建和继续编辑入口。列表区负责处理中长期内容，
-          顶部摘要区先把最近活动和主操作露出来，避免文档页一上来就只剩一张大表格。
+          集中管理协作文档、Markdown、Word、Excel 和 PDF。搜索会在全部文档中筛选，不再只筛当前页。
         </Paragraph>
       </section>
 
@@ -206,10 +219,10 @@ export default function DocumentListPage() {
 
           <div style={{ marginTop: 18 }}>
             <Input
-              placeholder="筛选当前页文档标题"
+              placeholder="搜索全部文档标题"
               prefix={<SearchOutlined style={{ color: colors.textSecondary }} />}
               value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               allowClear
             />
           </div>
@@ -254,10 +267,7 @@ export default function DocumentListPage() {
                 <ArrowRightOutlined style={{ color: colors.primary, flexShrink: 0 }} />
               </button>
             )) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<span style={{ color: colors.textSecondary }}>还没有最近文档</span>}
-              />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span style={{ color: colors.textSecondary }}>还没有最近文档</span>} />
             )}
           </div>
         </div>
@@ -278,12 +288,12 @@ export default function DocumentListPage() {
             <Title level={4} style={{ margin: '6px 0 0', color: colors.text }}>全部文档</Title>
           </div>
           <Text style={{ color: colors.textSecondary }}>
-            当前页 {filteredDocs.length} 篇，累计 {total} 篇
+            当前页 {docs.length} 篇，匹配 {total} 篇
           </Text>
         </div>
 
         <Table
-          dataSource={filteredDocs}
+          dataSource={docs}
           columns={columns}
           rowKey="id"
           loading={loading}
@@ -296,34 +306,44 @@ export default function DocumentListPage() {
           }}
           locale={{
             emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<span style={{ color: colors.textSecondary }}>暂无文档，点击“新建文档”开始</span>}
-              />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span style={{ color: colors.textSecondary }}>暂无匹配文档</span>} />
             ),
           }}
         />
       </section>
 
       <Modal
-        title="新建文档"
+        title="新建在线文档"
         open={createOpen}
         onOk={handleCreate}
         onCancel={() => {
           setCreateOpen(false)
           setNewTitle('')
+          setNewDocKind('collab')
         }}
         confirmLoading={creating}
         okText="创建"
         cancelText="取消"
       >
-        <Input
-          placeholder="输入文档标题"
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          onPressEnter={handleCreate}
-          autoFocus
-        />
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Select
+            value={newDocKind}
+            onChange={setNewDocKind}
+            style={{ width: '100%' }}
+            options={[
+              { value: 'collab', label: '协作文档' },
+              { value: 'word', label: 'Word 文档 (.docx)' },
+              { value: 'excel', label: 'Excel 表格 (.xlsx)' },
+            ]}
+          />
+          <Input
+            placeholder="文档名称"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onPressEnter={handleCreate}
+            autoFocus
+          />
+        </Space>
       </Modal>
     </div>
   )

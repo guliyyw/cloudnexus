@@ -6,7 +6,51 @@ import (
 	"github.com/cloudnexus/server/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
+
+// LoadPermissions refreshes roles and permissions from the database for the
+// authenticated request, so grants and revocations take effect immediately.
+func LoadPermissions(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if db == nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "Permission service unavailable"})
+			return
+		}
+		userID := c.GetUint64("user_id")
+		if userID == 0 {
+			c.Next()
+			return
+		}
+		var isAdmin bool
+		if err := db.Table("users").Select("is_admin").Where("id = ?", userID).Scan(&isAdmin).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to load user access"})
+			return
+		}
+		var roles []string
+		if err := db.Table("roles").Select("roles.code").
+			Joins("JOIN user_roles ur ON ur.role_id = roles.id").Where("ur.user_id = ?", userID).
+			Pluck("roles.code", &roles).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to load roles"})
+			return
+		}
+		var permissions []string
+		if err := db.Raw(`
+			SELECT DISTINCT p.code FROM permissions p
+			LEFT JOIN role_permissions rp ON rp.permission_id = p.id
+			LEFT JOIN user_roles ur ON ur.role_id = rp.role_id AND ur.user_id = ?
+			LEFT JOIN user_permissions up ON up.permission_id = p.id AND up.user_id = ?
+			WHERE ur.user_id IS NOT NULL OR up.user_id IS NOT NULL
+		`, userID, userID).Scan(&permissions).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "Failed to load permissions"})
+			return
+		}
+		c.Set("is_admin", isAdmin)
+		c.Set("roles", roles)
+		c.Set("permissions", permissions)
+		c.Next()
+	}
+}
 
 // PermissionChecker 定义权限检查接口
 type PermissionChecker interface {

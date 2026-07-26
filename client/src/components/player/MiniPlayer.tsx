@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Slider, Button, Typography } from 'antd'
 import {
   PlayCircleOutlined,
@@ -23,7 +23,7 @@ function formatTime(s: number): string {
 
 export default function MiniPlayer() {
   const {
-    queue, currentIndex, isPlaying, currentTime, duration,
+    queue, currentIndex, isPlaying, currentTime, duration, errorMessage,
     volume, isMuted, pause, resume, next, prev, seek, setVolume,
     hideMini, toggleFullScreen,
   } = usePlayerStore()
@@ -55,8 +55,8 @@ export default function MiniPlayer() {
         <Text strong ellipsis style={{ fontSize: 13, display: 'block' }}>
           {track.title}
         </Text>
-        <Text type="secondary" ellipsis style={{ fontSize: 11 }}>
-          {track.artist || '未知艺术家'}
+        <Text type="secondary" ellipsis style={{ fontSize: 11, color: errorMessage ? colors.error : undefined }}>
+          {errorMessage || track.artist || '未知艺术家'}
         </Text>
       </div>
 

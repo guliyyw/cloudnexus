@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Modal, Table, Breadcrumb, message, Space, Tag, Typography } from 'antd'
+import { useEffect, useMemo, useState, type Key } from 'react'
+import { Modal, Table, Breadcrumb, message, Space, Tag, Typography, Button } from 'antd'
 import { HomeOutlined, FileOutlined, FolderOutlined } from '@ant-design/icons'
 import * as fileApi from '../services/file'
 import type { FileItem } from '../services/file'
@@ -11,6 +11,10 @@ interface Props {
   open: boolean
   onOk: (file: FileItem) => void
   onCancel: () => void
+  onOkMultiple?: (files: FileItem[]) => void
+  title?: string
+  accept?: (file: FileItem) => boolean
+  multiple?: boolean
 }
 
 function getFileIcon(mimeType: string) {
@@ -21,7 +25,15 @@ function getFileIcon(mimeType: string) {
   return <FileOutlined />
 }
 
-export default function FilePickerModal({ open, onOk, onCancel }: Props) {
+export default function FilePickerModal({
+  open,
+  onOk,
+  onCancel,
+  onOkMultiple,
+  title = '选择文件',
+  accept,
+  multiple = false,
+}: Props) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -30,7 +42,14 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
     { id: '0', name: '根目录' },
   ])
   const [page, setPage] = useState(1)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
   const pageSize = 20
+
+  const selectableFiles = useMemo(
+    () => files.filter((file) => !file.is_dir && (!accept || accept(file))),
+    [accept, files],
+  )
+  const selectedFiles = selectableFiles.filter((file) => selectedRowKeys.includes(file.id))
 
   const loadFiles = async (pId: string, pg = 1) => {
     setLoading(true)
@@ -50,6 +69,7 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
       setParentId('0')
       setBreadcrumb([{ id: '0', name: '根目录' }])
       setPage(1)
+      setSelectedRowKeys([])
       loadFiles('0')
     }
   }, [open])
@@ -63,16 +83,33 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
     }
     setParentId(dirId)
     setPage(1)
+    setSelectedRowKeys([])
     loadFiles(dirId)
+  }
+
+  const handlePick = (file: FileItem) => {
+    if (file.is_dir) return
+    if (accept && !accept(file)) {
+      message.warning('该文件类型不能用于当前操作')
+      return
+    }
+    onOk(file)
   }
 
   return (
     <Modal
-      title="选择文件发送到聊天"
+      title={title}
       open={open}
       onCancel={onCancel}
-      footer={null}
-      width={600}
+      footer={multiple ? (
+        <Space>
+          <Button onClick={onCancel}>取消</Button>
+          <Button type="primary" disabled={!selectedFiles.length} onClick={() => onOkMultiple?.(selectedFiles)}>
+            添加已选 ({selectedFiles.length})
+          </Button>
+        </Space>
+      ) : null}
+      width={680}
     >
       <Space direction="vertical" style={{ width: '100%' }} size="small">
         <Breadcrumb
@@ -95,6 +132,13 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
           rowKey="id"
           loading={loading}
           size="small"
+          rowSelection={multiple ? {
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+            getCheckboxProps: (record) => ({
+              disabled: record.is_dir || !!(accept && !accept(record)),
+            }),
+          } : undefined}
           pagination={{
             current: page,
             pageSize,
@@ -112,7 +156,7 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
                   {record.is_dir ? (
                     <a onClick={() => navigateTo(record.id, record.name)}>{name}</a>
                   ) : (
-                    <a onClick={() => onOk(record)}>{name}</a>
+                    <a onClick={() => handlePick(record)}>{name}</a>
                   )}
                 </Space>
               ),
@@ -122,7 +166,7 @@ export default function FilePickerModal({ open, onOk, onCancel }: Props) {
               render: (size: number, record: FileItem) => record.is_dir ? '-' : formatFileSize(size),
             },
             {
-              title: '类型', dataIndex: 'mime_type', key: 'mime_type', width: 120,
+              title: '类型', dataIndex: 'mime_type', key: 'mime_type', width: 140,
               render: (v: string, r: FileItem) => r.is_dir ? <Tag>目录</Tag> : <Text type="secondary">{v || '-'}</Text>,
             },
           ]}
