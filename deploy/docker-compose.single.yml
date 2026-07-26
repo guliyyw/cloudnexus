@@ -323,6 +323,7 @@ services:
       start_period: 10s
 
   comfyui:
+    profiles: ["comfyui"]
     build:
       context: ./comfyui
       args:
@@ -344,7 +345,7 @@ services:
       - comfyui_output:/app/ComfyUI/output
       - comfyui_user:/app/ComfyUI/user
       - comfyui_insightface:/root/.insightface
-    restart: unless-stopped
+    restart: "no"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8188/system_stats', timeout=5).read()"]
       interval: 15s
