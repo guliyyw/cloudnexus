@@ -877,6 +877,7 @@ func (s *DramaService) buildComfyReferenceImages(ctx context.Context, ownerID ui
 			Data:   data,
 			Kind:   asset.Type,
 			Weight: referenceAssetWeight(asset),
+			Prompt: strings.TrimSpace(asset.ReferencePrompt),
 		})
 	}
 	return refs, nil

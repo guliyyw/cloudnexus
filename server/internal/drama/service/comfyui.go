@@ -56,6 +56,7 @@ type ComfyReferenceImage struct {
 	Data   []byte
 	Kind   string
 	Weight float64
+	Prompt string
 }
 
 type ComfyClient struct {

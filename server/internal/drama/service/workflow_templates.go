@@ -137,7 +137,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 		}, "Load scene IPAdapter")
 		workflow[applyID] = workflowNode("IPAdapterAdvanced", map[string]interface{}{
 			"model": modelRef, "ipadapter": []interface{}{loaderID, 1}, "image": []interface{}{prepID, 0},
-			"weight": 0.35, "weight_type": "composition precise", "combine_embeds": "average",
+			"weight": 0.45, "weight_type": "composition precise", "combine_embeds": "average",
 			"start_at": 0.0, "end_at": 0.68, "embeds_scaling": "V only", "clip_vision": []interface{}{"8", 0},
 		}, "Apply scene globally")
 		modelRef = []interface{}{applyID, 0}
@@ -203,13 +203,17 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 			}, "Feather character region")
 			regionLabel := characterRegionLabel(characterIndex, characterCount)
 			characterName := strings.TrimSuffix(reference.Name, filepath.Ext(reference.Name))
+			characterPrompt := compactRegionalPrompt(reference.Prompt, 260)
+			if characterPrompt == "" {
+				characterPrompt = characterName
+			}
 			workflow[characterPromptID] = workflowNode("CLIPTextEncode", map[string]interface{}{
-				"text": fmt.Sprintf("one visible person, %s, located on the %s, medium shot, complete upper body, clear face", characterName, regionLabel),
+				"text": fmt.Sprintf("one visible %s, %s, located on the %s, medium shot, complete upper body, clear face", characterSemanticLabel(characterName), characterPrompt, regionLabel),
 				"clip": []interface{}{"1", 1},
 			}, "Character regional prompt")
 			workflow[characterConditionID] = workflowNode("ConditioningSetMask", map[string]interface{}{
 				"conditioning": []interface{}{characterPromptID, 0}, "mask": []interface{}{featherMaskID, 0},
-				"strength": 1.25, "set_cond_area": "mask bounds",
+				"strength": 0.72, "set_cond_area": "mask bounds",
 			}, "Bind character prompt to region")
 			workflow[combinedConditionID] = workflowNode("ConditioningCombine", map[string]interface{}{
 				"conditioning_1": positiveRef, "conditioning_2": []interface{}{characterConditionID, 0},
@@ -255,6 +259,31 @@ func characterRegionBounds(index, count, width int) (int, int) {
 		end = width
 	}
 	return start, end - start
+}
+
+func characterSemanticLabel(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "丈夫"), strings.Contains(lower, "父亲"), strings.Contains(lower, "爷爷"),
+		strings.Contains(lower, "哥哥"), strings.Contains(lower, "弟弟"), strings.Contains(lower, "男友"),
+		strings.Contains(lower, "husband"), strings.Contains(lower, "father"), strings.Contains(lower, "boyfriend"):
+		return "adult man"
+	case strings.Contains(lower, "妻子"), strings.Contains(lower, "母亲"), strings.Contains(lower, "奶奶"),
+		strings.Contains(lower, "姐姐"), strings.Contains(lower, "妹妹"), strings.Contains(lower, "女友"),
+		strings.Contains(lower, "wife"), strings.Contains(lower, "mother"), strings.Contains(lower, "girlfriend"):
+		return "adult woman"
+	default:
+		return "person"
+	}
+}
+
+func compactRegionalPrompt(prompt string, limit int) string {
+	prompt = strings.Join(strings.Fields(prompt), " ")
+	runes := []rune(prompt)
+	if len(runes) <= limit {
+		return prompt
+	}
+	return strings.TrimSpace(string(runes[:limit]))
 }
 
 func workflowNode(classType string, inputs map[string]interface{}, title string) map[string]interface{} {

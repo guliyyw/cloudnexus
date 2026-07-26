@@ -2,6 +2,7 @@ package service
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cloudnexus/server/pkg/model"
@@ -40,8 +41,8 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 		Sampler: "euler", Scheduler: "normal", NegativePrompt: "text",
 	}
 	references := []ComfyReferenceImage{
-		{Name: "husband.png", Kind: "character"},
-		{Name: "wife.png", Kind: "character"},
+		{Name: "husband.png", Kind: "character", Prompt: "Chinese man in a blue suit"},
+		{Name: "wife.png", Kind: "character", Prompt: "Chinese woman in a cream sweater"},
 		{Name: "dining-room.png", Kind: "scene"},
 	}
 	workflow, err := systemRegionalStoryboardWorkflow(
@@ -57,6 +58,7 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 	classCounts := make(map[string]int)
 	loaderPresets := make(map[string]bool)
 	maskX := make(map[int]bool)
+	regionalPrompts := make([]string, 0)
 	for _, rawNode := range workflow {
 		node := rawNode.(map[string]interface{})
 		classType := node["class_type"].(string)
@@ -68,6 +70,11 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 		if classType == "MaskComposite" {
 			maskX[inputs["x"].(int)] = true
 		}
+		if classType == "ConditioningSetMask" {
+			promptNodeID := inputs["conditioning"].([]interface{})[0].(string)
+			promptInputs := workflow[promptNodeID].(map[string]interface{})["inputs"].(map[string]interface{})
+			regionalPrompts = append(regionalPrompts, promptInputs["text"].(string))
+		}
 	}
 	if classCounts["IPAdapterAdvanced"] != 3 {
 		t.Fatalf("IPAdapterAdvanced count = %d, want 3", classCounts["IPAdapterAdvanced"])
@@ -77,6 +84,10 @@ func TestRegionalWorkflowSeparatesCharactersAndScene(t *testing.T) {
 	}
 	if classCounts["ConditioningSetMask"] != 2 || classCounts["ConditioningCombine"] != 2 {
 		t.Fatalf("regional character prompts were not applied: %#v", classCounts)
+	}
+	if !strings.Contains(strings.Join(regionalPrompts, "\n"), "adult man") ||
+		!strings.Contains(strings.Join(regionalPrompts, "\n"), "blue suit") {
+		t.Fatalf("regional prompts do not include role and asset details: %#v", regionalPrompts)
 	}
 	if !loaderPresets["PLUS (high strength)"] || !loaderPresets["PLUS FACE (portraits)"] {
 		t.Fatalf("scene and face loaders were not separated: %#v", loaderPresets)
