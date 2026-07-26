@@ -598,7 +598,7 @@ ${current.content}`
     setDetail({ ...detail, assets })
     setAssetImportOpen(false)
     setAiAssetText('')
-    message.success(`已导入 ${assets.length} 个资产`)
+    message.success(`已清空原有资产并导入 ${assets.length} 个新资产`)
   }
 
   const importProps: UploadProps = {
@@ -1050,6 +1050,7 @@ ${current.content}`
       </Modal>
 
       <Modal title="粘贴 AI 资产分析结果" open={assetImportOpen} onOk={handleImportAIAssets} onCancel={() => setAssetImportOpen(false)} width={760}>
+        <Alert type="warning" showIcon message="导入后将删除当前项目的原有角色与场景资产，并以本次结果完整替换。" style={{ marginBottom: 12 }} />
         <TextArea value={aiAssetText} onChange={(e) => setAiAssetText(e.target.value)} placeholder="粘贴 AI 输出的 JSON" autoSize={{ minRows: 14, maxRows: 24 }} />
       </Modal>
 

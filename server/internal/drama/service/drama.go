@@ -505,38 +505,13 @@ func (s *DramaService) ImportAssetsFromAI(ownerID, projectID uint64, text string
 			assets = append(assets, model.DramaAsset{OwnerID: ownerID, ProjectID: projectID, Type: "scene", Name: scene.Name, Description: scene.Description})
 		}
 	}
-	existing, err := s.repo.ListAssets(ownerID, projectID)
-	if err != nil {
-		return nil, err
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("AI asset result contains no valid characters or scenes")
 	}
-	preserveAssetReferences(assets, existing)
-	if err := s.repo.UpsertAssets(assets); err != nil {
+	if err := s.repo.ReplaceAssets(ownerID, projectID, assets); err != nil {
 		return nil, err
 	}
 	return s.repo.ListAssets(ownerID, projectID)
-}
-
-func preserveAssetReferences(next []model.DramaAsset, existing []model.DramaAsset) {
-	byKey := make(map[string]model.DramaAsset, len(existing))
-	for _, asset := range existing {
-		byKey[assetIdentityKey(asset.Type, asset.Name)] = asset
-	}
-	for index := range next {
-		old, ok := byKey[assetIdentityKey(next[index].Type, next[index].Name)]
-		if !ok {
-			continue
-		}
-		if next[index].ReferenceFileID == 0 {
-			next[index].ReferenceFileID = old.ReferenceFileID
-		}
-		if strings.TrimSpace(next[index].VoiceName) == "" {
-			next[index].VoiceName = old.VoiceName
-		}
-	}
-}
-
-func assetIdentityKey(assetType, name string) string {
-	return strings.ToLower(strings.TrimSpace(assetType)) + "\x00" + strings.TrimSpace(name)
 }
 
 func (s *DramaService) CreateTask(ownerID, projectID uint64, input CreateTaskInput) (*model.DramaTask, error) {

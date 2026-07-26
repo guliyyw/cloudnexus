@@ -210,6 +210,11 @@ func (r *DramaRepository) ReplaceAssets(ownerID, projectID uint64, assets []mode
 		if err := tx.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Delete(&model.DramaAsset{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&model.DramaStoryboardSegment{}).
+			Where("owner_id = ? AND project_id = ?", ownerID, projectID).
+			Update("reference_file_id", 0).Error; err != nil {
+			return err
+		}
 		if len(assets) == 0 {
 			return nil
 		}
