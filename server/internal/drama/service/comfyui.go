@@ -159,21 +159,25 @@ func (c *ComfyClient) GenerateWithReferences(ctx context.Context, prompt string,
 }
 
 func (c *ComfyClient) GenerateVideoFromImage(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec int, progress func(int, string)) ([]byte, string, error) {
+	return c.GenerateVideoFromImageSized(ctx, image, imageName, prompt, negativePrompt, durationSec, 832, 480, progress)
+}
+
+func (c *ComfyClient) GenerateVideoFromImageSized(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec, width, height int, progress func(int, string)) ([]byte, string, error) {
 	uploadedName, err := c.UploadImage(ctx, image, imageName)
 	if err != nil {
 		return nil, "", fmt.Errorf("上传视频首帧到 ComfyUI 失败：%w", err)
 	}
-	workflow, err := c.imageToVideoWorkflow(ctx, uploadedName, prompt, negativePrompt, durationSec)
+	workflow, err := c.imageToVideoWorkflow(ctx, uploadedName, prompt, negativePrompt, durationSec, width, height)
 	if err != nil {
 		return nil, "", err
 	}
 	return c.generateVideoWithWorkflow(ctx, workflow, progress)
 }
 
-func (c *ComfyClient) imageToVideoWorkflow(ctx context.Context, uploadedName, prompt, negativePrompt string, durationSec int) (map[string]interface{}, error) {
+func (c *ComfyClient) imageToVideoWorkflow(ctx context.Context, uploadedName, prompt, negativePrompt string, durationSec, width, height int) (map[string]interface{}, error) {
 	ok, err := c.hasLocalWan22I2V(ctx)
 	if err == nil && ok {
-		return systemWan22LocalImageToVideoWorkflow(uploadedName, prompt, negativePrompt, durationSec), nil
+		return systemWan22LocalImageToVideoWorkflow(uploadedName, prompt, negativePrompt, durationSec, width, height), nil
 	}
 	return nil, fmt.Errorf("未检测到完整的本地 Wan2.2 图生视频模型，请确认 high_noise、low_noise、umt5 文本编码器和 wan_2.1_vae.safetensors 已放入 ComfyUI models 目录并重启 ComfyUI")
 }
@@ -442,9 +446,13 @@ func systemTextToImageIPAdapterWorkflow(prompt string, settings ImageGenerationS
 	}
 	modelRef := []interface{}{"9", 0}
 	nextID := 10
+	firstLoadID := ""
 	for index, imageName := range uploaded {
 		loadID := fmt.Sprintf("%d", nextID)
 		nextID++
+		if firstLoadID == "" {
+			firstLoadID = loadID
+		}
 		prepID := fmt.Sprintf("%d", nextID)
 		nextID++
 		adapterID := fmt.Sprintf("%d", nextID)
@@ -470,10 +478,26 @@ func systemTextToImageIPAdapterWorkflow(prompt string, settings ImageGenerationS
 		}}
 		modelRef = []interface{}{adapterID, 0}
 	}
+	latentRef := []interface{}{"4", 0}
+	denoise := 1.0
+	if firstLoadID != "" && len(references) > 0 && references[0].Kind == "reference" {
+		scaleID := fmt.Sprintf("%d", nextID)
+		nextID++
+		encodeID := fmt.Sprintf("%d", nextID)
+		workflow[scaleID] = map[string]interface{}{"class_type": "ImageScale", "inputs": map[string]interface{}{
+			"image": []interface{}{firstLoadID, 0}, "upscale_method": "lanczos",
+			"width": settings.Width, "height": settings.Height, "crop": "center",
+		}}
+		workflow[encodeID] = map[string]interface{}{"class_type": "VAEEncode", "inputs": map[string]interface{}{
+			"pixels": []interface{}{scaleID, 0}, "vae": []interface{}{"1", 2},
+		}}
+		latentRef = []interface{}{encodeID, 0}
+		denoise = referenceDenoise(references[0].Weight)
+	}
 	workflow["5"] = map[string]interface{}{"class_type": "KSampler", "inputs": map[string]interface{}{
 		"seed": seed, "steps": settings.Steps, "cfg": settings.CFG, "sampler_name": settings.Sampler,
-		"scheduler": settings.Scheduler, "denoise": 1, "model": modelRef,
-		"positive": []interface{}{"2", 0}, "negative": []interface{}{"3", 0}, "latent_image": []interface{}{"4", 0},
+		"scheduler": settings.Scheduler, "denoise": denoise, "model": modelRef,
+		"positive": []interface{}{"2", 0}, "negative": []interface{}{"3", 0}, "latent_image": latentRef,
 	}}
 	workflow["6"] = map[string]interface{}{"class_type": "VAEDecode", "inputs": map[string]interface{}{"samples": []interface{}{"5", 0}, "vae": []interface{}{"1", 2}}}
 	workflow["7"] = map[string]interface{}{"class_type": "SaveImage", "inputs": map[string]interface{}{"filename_prefix": "cloudnexus_drama", "images": []interface{}{"6", 0}}}
@@ -515,17 +539,19 @@ func systemWanImageToVideoWorkflow(imageName, prompt, negativePrompt string, dur
 	}
 }
 
-func systemWan22LocalImageToVideoWorkflow(imageName, prompt, negativePrompt string, durationSec int) map[string]interface{} {
-	if durationSec < 5 {
-		durationSec = 5
+func systemWan22LocalImageToVideoWorkflow(imageName, prompt, negativePrompt string, durationSec, width, height int) map[string]interface{} {
+	if durationSec < 2 {
+		durationSec = 2
 	}
 	if durationSec > 10 {
 		durationSec = 10
 	}
+	width, height = normalizeWanVideoDimensions(width, height)
 	seed := time.Now().UnixNano() & 0x7fffffffffffffff
 	frameLength := 81
 	fps := 8.0
 	if durationSec <= 5 {
+		frameLength = durationSec*16 + 1
 		fps = 16.0
 	}
 	negative := strings.TrimSpace(strings.Join([]string{
@@ -542,7 +568,7 @@ func systemWan22LocalImageToVideoWorkflow(imageName, prompt, negativePrompt stri
 		"7":  map[string]interface{}{"class_type": "ModelSamplingSD3", "inputs": map[string]interface{}{"model": []interface{}{"5", 0}, "shift": 5.0}},
 		"8":  map[string]interface{}{"class_type": "CLIPTextEncode", "inputs": map[string]interface{}{"text": prompt, "clip": []interface{}{"2", 0}}},
 		"9":  map[string]interface{}{"class_type": "CLIPTextEncode", "inputs": map[string]interface{}{"text": negative, "clip": []interface{}{"2", 0}}},
-		"10": map[string]interface{}{"class_type": "WanImageToVideo", "inputs": map[string]interface{}{"positive": []interface{}{"8", 0}, "negative": []interface{}{"9", 0}, "vae": []interface{}{"3", 0}, "start_image": []interface{}{"1", 0}, "width": 640, "height": 640, "length": frameLength, "batch_size": 1}},
+		"10": map[string]interface{}{"class_type": "WanImageToVideo", "inputs": map[string]interface{}{"positive": []interface{}{"8", 0}, "negative": []interface{}{"9", 0}, "vae": []interface{}{"3", 0}, "start_image": []interface{}{"1", 0}, "width": width, "height": height, "length": frameLength, "batch_size": 1}},
 		"11": map[string]interface{}{"class_type": "KSamplerAdvanced", "inputs": map[string]interface{}{"model": []interface{}{"6", 0}, "positive": []interface{}{"10", 0}, "negative": []interface{}{"10", 1}, "latent_image": []interface{}{"10", 2}, "add_noise": "enable", "noise_seed": seed, "steps": 20, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "start_at_step": 0, "end_at_step": 10, "return_with_leftover_noise": "enable"}},
 		"12": map[string]interface{}{"class_type": "KSamplerAdvanced", "inputs": map[string]interface{}{"model": []interface{}{"7", 0}, "positive": []interface{}{"10", 0}, "negative": []interface{}{"10", 1}, "latent_image": []interface{}{"11", 0}, "add_noise": "disable", "noise_seed": seed, "steps": 20, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "start_at_step": 10, "end_at_step": 20, "return_with_leftover_noise": "disable"}},
 		"13": map[string]interface{}{"class_type": "VAEDecode", "inputs": map[string]interface{}{"samples": []interface{}{"12", 0}, "vae": []interface{}{"3", 0}}},
@@ -551,28 +577,66 @@ func systemWan22LocalImageToVideoWorkflow(imageName, prompt, negativePrompt stri
 	}
 }
 
+func normalizeWanVideoDimensions(width, height int) (int, int) {
+	if width <= 0 || height <= 0 {
+		return 832, 480
+	}
+	width = ((width + 8) / 16) * 16
+	height = ((height + 8) / 16) * 16
+	if width < 256 {
+		width = 256
+	}
+	if height < 256 {
+		height = 256
+	}
+	if width > 832 {
+		width = 832
+	}
+	if height > 832 {
+		height = 832
+	}
+	return width, height
+}
+
 func referenceWeight(index int, references []ComfyReferenceImage) float64 {
 	if index < len(references) && references[index].Weight > 0 {
 		return references[index].Weight
 	}
 	if index < len(references) && references[index].Kind == "scene" {
-		return 0.88
+		return 0.55
 	}
-	return 0.22
+	return 0.62
 }
 
 func referenceWeightType(index int, references []ComfyReferenceImage) string {
-	if index < len(references) && references[index].Kind == "scene" {
+	if index < len(references) && (references[index].Kind == "scene" || references[index].Kind == "reference") {
 		return "composition precise"
 	}
 	return "style transfer precise"
 }
 
 func referenceEndAt(index int, references []ComfyReferenceImage) float64 {
-	if index < len(references) && references[index].Kind == "scene" {
-		return 0.82
+	if index < len(references) && references[index].Kind == "reference" {
+		return 0.92
 	}
-	return 0.48
+	if index < len(references) && references[index].Kind == "scene" {
+		return 0.72
+	}
+	return 0.82
+}
+
+func referenceDenoise(weight float64) float64 {
+	if weight <= 0 {
+		weight = 0.65
+	}
+	denoise := 0.9 - 0.55*weight
+	if denoise < 0.3 {
+		return 0.3
+	}
+	if denoise > 0.75 {
+		return 0.75
+	}
+	return denoise
 }
 
 func defaultImageGenerationSettings(raw string) ImageGenerationSettings {

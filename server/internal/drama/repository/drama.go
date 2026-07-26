@@ -136,6 +136,10 @@ func (r *DramaRepository) ReplaceStoryboardSegments(ownerID, projectID, storyboa
 	})
 }
 
+func (r *DramaRepository) UpdateStoryboardSegment(segment *model.DramaStoryboardSegment) error {
+	return r.db.Save(segment).Error
+}
+
 func (r *DramaRepository) ListStoryboardMedia(ownerID, projectID uint64) ([]model.DramaStoryboardMedia, error) {
 	var media []model.DramaStoryboardMedia
 	err := r.db.Where("owner_id = ? AND project_id = ?", ownerID, projectID).Order("storyboard_id ASC, sort_order ASC, created_at ASC").Find(&media).Error

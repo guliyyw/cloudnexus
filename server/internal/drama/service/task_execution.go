@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -18,16 +22,23 @@ import (
 )
 
 type generationTaskPayload struct {
-	AssetID       string                 `json:"asset_id"`
-	AssetType     string                 `json:"asset_type"`
-	Name          string                 `json:"name"`
-	Prompt        string                 `json:"prompt"`
-	ImageCount    int                    `json:"image_count"`
-	StoryboardIDs []string               `json:"storyboard_ids"`
-	SegmentIDs    []string               `json:"segment_ids"`
-	ForceGenerate bool                   `json:"force_generate"`
-	Results       []generationTaskResult `json:"results,omitempty"`
-	PromptLog     []generationPromptLog  `json:"prompt_log,omitempty"`
+	AssetID          string                 `json:"asset_id"`
+	AssetType        string                 `json:"asset_type"`
+	Name             string                 `json:"name"`
+	Prompt           string                 `json:"prompt"`
+	ImageCount       int                    `json:"image_count"`
+	StoryboardIDs    []string               `json:"storyboard_ids"`
+	SegmentIDs       []string               `json:"segment_ids"`
+	ForceGenerate    bool                   `json:"force_generate"`
+	ReferenceFileIDs []string               `json:"reference_file_ids,omitempty"`
+	NegativePrompt   string                 `json:"negative_prompt,omitempty"`
+	Width            int                    `json:"width,omitempty"`
+	Height           int                    `json:"height,omitempty"`
+	Steps            int                    `json:"steps,omitempty"`
+	CFG              float64                `json:"cfg,omitempty"`
+	ReferenceWeight  float64                `json:"reference_weight,omitempty"`
+	Results          []generationTaskResult `json:"results,omitempty"`
+	PromptLog        []generationPromptLog  `json:"prompt_log,omitempty"`
 }
 
 type generationTaskResult struct {
@@ -46,6 +57,16 @@ type generationPromptLog struct {
 }
 
 type storyboardImageTarget struct {
+	Storyboard *model.DramaStoryboard
+	Segment    *model.DramaStoryboardSegment
+}
+
+type storyboardVideoStartFrame struct {
+	FileID uint64
+	Label  string
+}
+
+type storyboardVideoTarget struct {
 	Storyboard *model.DramaStoryboard
 	Segment    *model.DramaStoryboardSegment
 }
@@ -86,6 +107,8 @@ func (s *DramaService) SubscribeTaskEvents(ownerID uint64) (<-chan TaskEvent, fu
 
 func (s *DramaService) executeGenerationTask(ctx context.Context, task *model.DramaTask, update func(int, string)) error {
 	switch task.Type {
+	case "image_generation":
+		return s.executeStandaloneImageTask(ctx, task, update)
 	case "image", "asset_reference":
 		return s.executeImageTask(ctx, task, update)
 	case "tts":
@@ -113,7 +136,7 @@ func (s *DramaService) executeVideoTask(ctx context.Context, task *model.DramaTa
 	}
 	var payload generationTaskPayload
 	_ = json.Unmarshal([]byte(task.Payload), &payload)
-	return s.generateStoryboardVideos(ctx, task, client, project, payload, update)
+	return s.generateStoryboardSegmentVideos(ctx, task, client, project, payload, update)
 }
 
 func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTask, update func(int, string)) error {
@@ -338,10 +361,18 @@ func (s *DramaService) generateStoryboardVideos(ctx context.Context, task *model
 	if err != nil {
 		return err
 	}
+	media, err := s.repo.ListStoryboardMedia(project.OwnerID, project.ID)
+	if err != nil {
+		return err
+	}
 	hydrateSegmentReferenceFiles(segments, assets)
 	segmentsByStoryboard := make(map[uint64][]model.DramaStoryboardSegment)
 	for _, segment := range segments {
 		segmentsByStoryboard[segment.StoryboardID] = append(segmentsByStoryboard[segment.StoryboardID], segment)
+	}
+	mediaByStoryboard := make(map[uint64][]model.DramaStoryboardMedia)
+	for _, item := range media {
+		mediaByStoryboard[item.StoryboardID] = append(mediaByStoryboard[item.StoryboardID], item)
 	}
 	for storyboardID := range segmentsByStoryboard {
 		sort.SliceStable(segmentsByStoryboard[storyboardID], func(i, j int) bool {
@@ -366,6 +397,20 @@ func (s *DramaService) generateStoryboardVideos(ctx context.Context, task *model
 	for index, storyboard := range targets {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		originalImageFileID := storyboard.ImageFileID
+		{
+			storyboardSegments := segmentsByStoryboard[storyboard.ID]
+			relevantAssets := filterAssetsForSegments(assets, storyboardSegments)
+			if len(relevantAssets) == 0 {
+				relevantAssets = assets
+			}
+			startFrame := selectStoryboardVideoStartFrame(storyboard, storyboardSegments, mediaByStoryboard[storyboard.ID], relevantAssets)
+			if startFrame.FileID == 0 {
+				return fmt.Errorf("分镜 %d 还没有可用的视频首帧，请先生成至少一张片段图片，或给角色/场景资产添加参考图", storyboard.Seq)
+			}
+			storyboard.ImageFileID = startFrame.FileID
+			s.appendTaskPromptLog(task, fmt.Sprintf("Storyboard %d video start frame", storyboard.Seq), fmt.Sprintf("%s (file_id=%d)", startFrame.Label, startFrame.FileID))
 		}
 		if storyboard.ImageFileID == 0 {
 			return fmt.Errorf("分镜 %d 还没有图片，请先生成分镜图片", storyboard.Seq)
@@ -395,6 +440,7 @@ func (s *DramaService) generateStoryboardVideos(ctx context.Context, task *model
 		if err != nil {
 			return err
 		}
+		storyboard.ImageFileID = originalImageFileID
 		storyboard.VideoFileID = fileID
 		if err := s.repo.UpdateStoryboard(storyboard); err != nil {
 			return err
@@ -412,6 +458,150 @@ func (s *DramaService) generateStoryboardVideos(ctx context.Context, task *model
 		s.appendTaskResult(task, generationTaskResult{
 			Kind: "storyboard_video", FileID: strconv.FormatUint(fileID, 10), StoryboardID: strconv.FormatUint(storyboard.ID, 10), Title: fmt.Sprintf("%s 10s", storyboard.Title), Prompt: prompt,
 		})
+	}
+	return nil
+}
+
+func (s *DramaService) generateStoryboardSegmentVideos(ctx context.Context, task *model.DramaTask, client *ComfyClient, project *model.DramaProject, payload generationTaskPayload, update func(int, string)) error {
+	storyboards, err := s.repo.ListStoryboards(project.OwnerID, project.ID)
+	if err != nil {
+		return err
+	}
+	assets, err := s.repo.ListAssets(project.OwnerID, project.ID)
+	if err != nil {
+		return err
+	}
+	segments, err := s.repo.ListStoryboardSegments(project.OwnerID, project.ID)
+	if err != nil {
+		return err
+	}
+	media, err := s.repo.ListStoryboardMedia(project.OwnerID, project.ID)
+	if err != nil {
+		return err
+	}
+	hydrateSegmentReferenceFiles(segments, assets)
+
+	segmentsByStoryboard := make(map[uint64][]model.DramaStoryboardSegment)
+	for _, segment := range segments {
+		segmentsByStoryboard[segment.StoryboardID] = append(segmentsByStoryboard[segment.StoryboardID], segment)
+	}
+	mediaByStoryboard := make(map[uint64][]model.DramaStoryboardMedia)
+	for _, item := range media {
+		mediaByStoryboard[item.StoryboardID] = append(mediaByStoryboard[item.StoryboardID], item)
+	}
+	selectedStoryboards := parseGenerationIDSet(payload.StoryboardIDs)
+	selectedSegments := parseGenerationIDSet(payload.SegmentIDs)
+	targets := make([]storyboardVideoTarget, 0, len(segments))
+	for i := range storyboards {
+		storyboard := &storyboards[i]
+		if len(selectedStoryboards) > 0 && !selectedStoryboards[storyboard.ID] {
+			continue
+		}
+		storyboardSegments := segmentsByStoryboard[storyboard.ID]
+		if len(storyboardSegments) == 0 {
+			if len(selectedSegments) == 0 {
+				targets = append(targets, storyboardVideoTarget{Storyboard: storyboard})
+			}
+			continue
+		}
+		for segmentIndex := range storyboardSegments {
+			segment := &storyboardSegments[segmentIndex]
+			if len(selectedSegments) > 0 && !selectedSegments[segment.ID] {
+				continue
+			}
+			targets = append(targets, storyboardVideoTarget{Storyboard: storyboard, Segment: segment})
+		}
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no storyboard segment found for video generation")
+	}
+
+	for index, target := range targets {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		storyboard := target.Storyboard
+		storyboardSegments := segmentsByStoryboard[storyboard.ID]
+		relevantAssets := filterAssetsForSegments(assets, storyboardSegments)
+		startFrame := selectStoryboardVideoStartFrame(storyboard, storyboardSegments, mediaByStoryboard[storyboard.ID], relevantAssets)
+		durationSec := 10
+		prompt := buildStoryboardVideoPrompt(project, storyboard, relevantAssets, storyboardSegments)
+		negative := buildStoryboardVideoNegativePrompt(storyboardSegments)
+		if target.Segment != nil {
+			relevantAssets = filterAssetsForSegment(assets, target.Segment)
+			startFrame = selectSegmentVideoStartFrame(storyboard, target.Segment, mediaByStoryboard[storyboard.ID], relevantAssets)
+			durationSec = target.Segment.DurationSec
+			if durationSec <= 0 {
+				durationSec = 3
+			}
+			prompt = buildSegmentVideoPrompt(storyboard, target.Segment, relevantAssets)
+			negative = buildSegmentVideoNegativePrompt(target.Segment)
+		}
+		if startFrame.FileID == 0 {
+			return fmt.Errorf("%s has no usable start frame; generate its segment image first", storyboardVideoTargetTitle(storyboard, target.Segment))
+		}
+		imageData, imageName, err := s.readCloudFile(ctx, project.OwnerID, startFrame.FileID)
+		if err != nil {
+			return err
+		}
+		width, height := videoDimensionsFromImage(imageData)
+		targetTitle := storyboardVideoTargetTitle(storyboard, target.Segment)
+		s.appendTaskPromptLog(task, targetTitle+" start frame", fmt.Sprintf("%s (file_id=%d)", startFrame.Label, startFrame.FileID))
+		s.appendTaskPromptLog(task, targetTitle, prompt)
+
+		baseProgress := index * 90 / len(targets)
+		span := 90 / len(targets)
+		update(5+baseProgress, fmt.Sprintf("Generating video %d/%d: %s", index+1, len(targets), targetTitle))
+		data, filename, err := client.GenerateVideoFromImageSized(ctx, imageData, imageName, prompt, negative, durationSec, width, height, func(localProgress int, message string) {
+			update(5+baseProgress+localProgress*span/100, fmt.Sprintf("Video %d/%d: %s", index+1, len(targets), message))
+		})
+		if err != nil {
+			return fmt.Errorf("%s video generation failed: %w", targetTitle, err)
+		}
+
+		fileLabel := fmt.Sprintf("storyboard-%03d-video", storyboard.Seq)
+		if target.Segment != nil {
+			fileLabel = fmt.Sprintf("storyboard-%03d-segment-%02d-video", storyboard.Seq, target.Segment.Seq)
+		}
+		fileID, err := s.saveGeneratedFile(project.OwnerID, project.ID, project.Title, "videos", fileLabel, filename, data, "video/mp4")
+		if err != nil {
+			return err
+		}
+		segmentID := uint64(0)
+		selected := true
+		resultKind := "storyboard_video"
+		if target.Segment != nil {
+			segmentID = target.Segment.ID
+			selected = false
+			resultKind = "storyboard_segment_video"
+			target.Segment.VideoFileID = fileID
+			if err := s.repo.UpdateStoryboardSegment(target.Segment); err != nil {
+				return err
+			}
+		} else {
+			storyboard.VideoFileID = fileID
+			if err := s.repo.UpdateStoryboard(storyboard); err != nil {
+				return err
+			}
+		}
+		sortOrder, err := s.repo.NextStoryboardMediaSort(project.OwnerID, project.ID, storyboard.ID)
+		if err != nil {
+			return err
+		}
+		if err := s.repo.CreateStoryboardMedia(&model.DramaStoryboardMedia{
+			ProjectID: project.ID, StoryboardID: storyboard.ID, SegmentID: segmentID, OwnerID: project.OwnerID,
+			Kind: "video", FileID: fileID, Source: "generated", Prompt: prompt, SortOrder: sortOrder, Selected: selected,
+		}); err != nil {
+			return err
+		}
+		result := generationTaskResult{
+			Kind: resultKind, FileID: strconv.FormatUint(fileID, 10), StoryboardID: strconv.FormatUint(storyboard.ID, 10),
+			Title: fmt.Sprintf("%s %ds %dx%d", targetTitle, durationSec, width, height), Prompt: prompt,
+		}
+		if segmentID != 0 {
+			result.SegmentID = strconv.FormatUint(segmentID, 10)
+		}
+		s.appendTaskResult(task, result)
 	}
 	return nil
 }
@@ -455,7 +645,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	scenes := make([]string, 0)
 	for _, asset := range relevantAssets {
 		name := strings.TrimSpace(asset.Name)
-		description := compactText(strings.TrimSpace(asset.Description+" "+asset.ReferencePrompt), 260)
+		description := compactText(strings.TrimSpace(asset.Description+" "+asset.ReferencePrompt), 140)
 		if name == "" && description == "" {
 			continue
 		}
@@ -470,23 +660,19 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		}
 	}
 	parts := []string{
-		"cinematic storyboard frame, high quality still image, coherent scene, realistic lighting, detailed composition",
-		"Use the approved character and scene assets as strict continuity references. Do not redesign faces, age, hairstyle, clothing, body shape, or room layout.",
-		"Output format: wide horizontal 16:9 cinematic frame, environmental medium shot, enough space for all listed characters and the room background.",
-		"Frame rule: obey the current composition lock over portrait reference image composition. Character references preserve identity and clothing only, never copy their portrait crop or front-facing pose. Scene references preserve room layout. If two or more characters are listed, all listed characters must be visible in the same frame, medium wide two-shot or group shot, no solo portrait, no close-up portrait, no cropped second person.",
-		"Composition lock: " + compositionPrompt,
-		"Current shot title: " + strings.TrimSpace(storyboard.Title),
-		"Current segment title: " + segmentTitle,
-		"Scene anchor: " + scene,
-		"Shot action: " + compactText(plot, 500),
-		"Visual prompt: " + compactText(basePrompt, 500),
-		"Project context: " + compactText(project.Preface, 260),
+		"Composition priority: " + compactText(compositionPrompt, 420),
+		"Realistic cinematic still frame, wide horizontal 16:9, coherent natural lighting, clear faces and hands.",
+		"Visible action and dialogue state: " + compactText(plot, 360),
+		"Scene: " + compactText(scene, 180),
+		"Visual details: " + compactText(basePrompt, 380),
+		"Continuity rule: preserve identities, age, hairstyle, clothing, body shape, props, and room layout from approved references. References control identity and environment only; the composition priority controls pose and framing.",
+		"Shot: " + strings.TrimSpace(storyboard.Title) + " / " + segmentTitle,
 	}
 	if len(characters) > 0 {
-		parts = append(parts, "Character continuity: "+compactText(strings.Join(characters, "; "), 700))
+		parts = append(parts, "Characters: "+compactText(strings.Join(characters, "; "), 420))
 	}
 	if len(scenes) > 0 {
-		parts = append(parts, "Scene continuity: "+compactText(strings.Join(scenes, "; "), 500))
+		parts = append(parts, "Environment reference: "+compactText(strings.Join(scenes, "; "), 280))
 	}
 	parts = append(parts, "single frame, no text, no subtitles, no watermark, no UI, no comic panels")
 	kept := make([]string, 0, len(parts))
@@ -629,9 +815,9 @@ func safeReferenceFilename(assetName, fileName string) string {
 
 func referenceAssetWeight(asset model.DramaAsset) float64 {
 	if asset.Type == "scene" {
-		return 0.88
+		return 0.55
 	}
-	return 0.22
+	return 0.62
 }
 
 func storyboardImageTargetTitle(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment) string {
@@ -650,6 +836,220 @@ func storyboardImageFileLabel(storyboard *model.DramaStoryboard, segment *model.
 		return fmt.Sprintf("storyboard-%03d-%02d", storyboard.Seq, candidate)
 	}
 	return fmt.Sprintf("storyboard-%03d-segment-%02d-%02d", storyboard.Seq, segment.Seq, candidate)
+}
+
+func selectStoryboardVideoStartFrame(storyboard *model.DramaStoryboard, segments []model.DramaStoryboardSegment, media []model.DramaStoryboardMedia, assets []model.DramaAsset) storyboardVideoStartFrame {
+	for _, segment := range segments {
+		for _, item := range media {
+			if item.Kind == "image" && item.FileID != 0 && item.SegmentID == segment.ID {
+				return storyboardVideoStartFrame{FileID: item.FileID, Label: fmt.Sprintf("segment %d generated image", segment.Seq)}
+			}
+		}
+	}
+	for _, segment := range segments {
+		if segment.ReferenceFileID != 0 {
+			return storyboardVideoStartFrame{FileID: segment.ReferenceFileID, Label: fmt.Sprintf("segment %d reference image", segment.Seq)}
+		}
+	}
+	if storyboard.ImageFileID != 0 {
+		return storyboardVideoStartFrame{FileID: storyboard.ImageFileID, Label: "storyboard selected image"}
+	}
+	for _, item := range media {
+		if item.Kind == "image" && item.FileID != 0 && item.SegmentID == 0 && item.Selected {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: "selected storyboard image"}
+		}
+	}
+	for _, item := range media {
+		if item.Kind == "image" && item.FileID != 0 && item.SegmentID == 0 {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: "storyboard image"}
+		}
+	}
+	for _, asset := range assets {
+		if asset.Type == "scene" && asset.ReferenceFileID != 0 {
+			return storyboardVideoStartFrame{FileID: asset.ReferenceFileID, Label: "global scene reference image"}
+		}
+	}
+	for _, asset := range assets {
+		if asset.Type == "character" && asset.ReferenceFileID != 0 {
+			return storyboardVideoStartFrame{FileID: asset.ReferenceFileID, Label: "global character reference image"}
+		}
+	}
+	return storyboardVideoStartFrame{}
+}
+
+func selectSegmentVideoStartFrame(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment, media []model.DramaStoryboardMedia, assets []model.DramaAsset) storyboardVideoStartFrame {
+	for index := len(media) - 1; index >= 0; index-- {
+		item := media[index]
+		if item.Kind == "image" && item.FileID != 0 && item.SegmentID == segment.ID {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: fmt.Sprintf("segment %d latest generated image", segment.Seq)}
+		}
+	}
+	if storyboard.ImageFileID != 0 {
+		return storyboardVideoStartFrame{FileID: storyboard.ImageFileID, Label: "storyboard selected image"}
+	}
+	for index := len(media) - 1; index >= 0; index-- {
+		item := media[index]
+		if item.Kind == "image" && item.FileID != 0 && item.SegmentID == 0 && item.Selected {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: "selected storyboard image"}
+		}
+	}
+	if segment.ReferenceFileID != 0 {
+		return storyboardVideoStartFrame{FileID: segment.ReferenceFileID, Label: fmt.Sprintf("segment %d asset reference image", segment.Seq)}
+	}
+	for _, asset := range assets {
+		if asset.Type == "scene" && asset.ReferenceFileID != 0 {
+			return storyboardVideoStartFrame{FileID: asset.ReferenceFileID, Label: "scene reference image"}
+		}
+	}
+	for _, asset := range assets {
+		if asset.Type == "character" && asset.ReferenceFileID != 0 {
+			return storyboardVideoStartFrame{FileID: asset.ReferenceFileID, Label: "character reference image"}
+		}
+	}
+	return storyboardVideoStartFrame{}
+}
+
+func buildSegmentVideoPrompt(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment, assets []model.DramaAsset) string {
+	motion := strings.TrimSpace(segment.VideoPrompt)
+	if motion == "" {
+		motion = strings.TrimSpace(segment.Action)
+	}
+	assetNames := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		if name := strings.TrimSpace(asset.Name); name != "" {
+			assetNames = append(assetNames, name)
+		}
+	}
+	parts := []string{
+		"Single continuous cinematic shot. Use the input image as the exact first frame.",
+		"Motion: " + compactText(motion, 320),
+		"Visible action: " + compactText(segment.Action, 260),
+		"Camera and framing: " + compactText(segment.Shot, 180),
+		"Characters visible: " + compactText(segment.Characters, 160),
+		"Scene: " + compactText(segment.Scene, 160),
+		"Continuity assets: " + strings.Join(assetNames, ", "),
+		"Preserve every face, hairstyle, costume, body shape, prop, room layout, lighting direction, and framing from the first frame. Use subtle natural body motion. No new person, object, costume, or location.",
+		"Storyboard context: " + compactText(storyboard.Title, 120),
+	}
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" && !strings.HasSuffix(part, ":") {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func buildSegmentVideoNegativePrompt(segment *model.DramaStoryboardSegment) string {
+	characterCount := segmentCharacterCount(segment.Characters)
+	characters := strings.ToLower(segment.Characters)
+	closeUpRequested := strings.Contains(strings.ToLower(segment.Shot), "close-up") ||
+		strings.Contains(segment.Shot, "特写") || strings.Contains(segment.Shot, "近景")
+	parts := []string{
+		"text", "subtitles", "watermark", "logo", "UI", "flicker", "jitter",
+		"distorted face", "deformed hands", "identity change", "clothing change",
+		"hairstyle change", "scene change", "room redesign", "extra people",
+		"wrong gaze direction", "wrong hand position", "foreground obstruction",
+	}
+	if characterCount >= 2 {
+		parts = append(parts, "solo portrait", "cropped second person", "missing character")
+	}
+	for _, rawPart := range splitPromptTerms(segment.NegativePrompt) {
+		part := strings.TrimSpace(rawPart)
+		lower := strings.ToLower(part)
+		if part == "" {
+			continue
+		}
+		if characterCount <= 1 && (lower == "single person" || lower == "solo portrait" || lower == "cropped second person" || lower == "missing character") {
+			continue
+		}
+		if !strings.Contains(characters, "丈夫") && lower == "missing husband" {
+			continue
+		}
+		if !strings.Contains(characters, "妻子") && lower == "missing wife" {
+			continue
+		}
+		if closeUpRequested && (lower == "close-up" || lower == "close-up portrait" || lower == "extreme close-up") {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(uniquePromptTerms(parts), ", ")
+}
+
+func storyboardVideoTargetTitle(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment) string {
+	if segment == nil {
+		return fmt.Sprintf("Storyboard %d: %s", storyboard.Seq, storyboard.Title)
+	}
+	title := strings.TrimSpace(segment.Title)
+	if title == "" {
+		title = fmt.Sprintf("Segment %d", segment.Seq)
+	}
+	return fmt.Sprintf("Storyboard %d Segment %d: %s", storyboard.Seq, segment.Seq, title)
+}
+
+func parseGenerationIDSet(values []string) map[uint64]bool {
+	result := make(map[uint64]bool)
+	for _, value := range values {
+		if id, err := strconv.ParseUint(value, 10, 64); err == nil && id != 0 {
+			result[id] = true
+		}
+	}
+	return result
+}
+
+func videoDimensionsFromImage(data []byte) (int, int) {
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width <= 0 || config.Height <= 0 {
+		return 832, 480
+	}
+	if config.Width >= config.Height {
+		height := roundVideoDimension(832 * config.Height / config.Width)
+		return 832, height
+	}
+	width := roundVideoDimension(832 * config.Width / config.Height)
+	return width, 832
+}
+
+func roundVideoDimension(value int) int {
+	if value < 256 {
+		value = 256
+	}
+	return ((value + 8) / 16) * 16
+}
+
+func segmentCharacterCount(value string) int {
+	count := 0
+	for _, item := range strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == '，' || r == ';' || r == '；' || r == '\n'
+	}) {
+		if strings.TrimSpace(item) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func splitPromptTerms(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == '，' || r == '\n'
+	})
+}
+
+func uniquePromptTerms(values []string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, value)
+	}
+	return result
 }
 
 func buildStoryboardVideoPrompt(project *model.DramaProject, storyboard *model.DramaStoryboard, assets []model.DramaAsset, segments []model.DramaStoryboardSegment) string {
@@ -785,15 +1185,51 @@ func storyboardImageSettings(settings ImageGenerationSettings, segment *model.Dr
 		settings.Width = 1344
 		settings.Height = 768
 	}
-	negativeParts := []string{
-		settings.NegativePrompt,
-		"single person, solo portrait, portrait crop, close-up portrait, headshot, bust shot, cropped second person, missing character, missing husband, missing wife, wrong pose, wrong hand position, wrong gaze direction, different room, mirror frame, decorative frame, glowing frame, oversized foreground lamp, foreground obstruction, vertical poster composition",
-	}
-	if segment != nil && strings.TrimSpace(segment.NegativePrompt) != "" {
-		negativeParts = append(negativeParts, strings.TrimSpace(segment.NegativePrompt))
+	negativeParts := []string{settings.NegativePrompt}
+	if segment == nil {
+		negativeParts = append(negativeParts, "wrong pose, wrong hand position, wrong gaze direction, different room, foreground obstruction, vertical poster composition")
+	} else {
+		negativeParts = append(negativeParts, buildSegmentImageNegativePrompt(segment))
 	}
 	settings.NegativePrompt = strings.TrimSpace(strings.Join(negativeParts, ", "))
 	return settings
+}
+
+func buildSegmentImageNegativePrompt(segment *model.DramaStoryboardSegment) string {
+	characterCount := segmentCharacterCount(segment.Characters)
+	characters := strings.ToLower(segment.Characters)
+	closeUpRequested := strings.Contains(strings.ToLower(segment.Shot), "close-up") ||
+		strings.Contains(segment.Shot, "特写") || strings.Contains(segment.Shot, "近景")
+	parts := []string{
+		"low quality", "blurry", "deformed face", "deformed hands", "extra fingers",
+		"wrong identity", "different face", "different clothing", "different room",
+		"wrong pose", "wrong hand position", "wrong gaze direction", "extra people",
+		"foreground obstruction", "vertical poster composition", "text", "watermark", "logo", "UI",
+	}
+	if characterCount >= 2 {
+		parts = append(parts, "solo portrait", "cropped second person", "missing character")
+	}
+	for _, rawPart := range splitPromptTerms(segment.NegativePrompt) {
+		part := strings.TrimSpace(rawPart)
+		lower := strings.ToLower(part)
+		if part == "" {
+			continue
+		}
+		if characterCount <= 1 && (lower == "single person" || lower == "solo portrait" || lower == "cropped second person" || lower == "missing character") {
+			continue
+		}
+		if !strings.Contains(characters, "丈夫") && lower == "missing husband" {
+			continue
+		}
+		if !strings.Contains(characters, "妻子") && lower == "missing wife" {
+			continue
+		}
+		if closeUpRequested && (lower == "close-up" || lower == "close-up portrait" || lower == "extreme close-up" || lower == "headshot" || lower == "bust shot") {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(uniquePromptTerms(parts), ", ")
 }
 
 func inferAssetEnglishHints(asset *model.DramaAsset, text string) string {

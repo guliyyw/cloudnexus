@@ -38,6 +38,7 @@ import {
   StopOutlined,
   ThunderboltOutlined,
   UploadOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { useAccess } from '../hooks/useAccess'
@@ -374,6 +375,17 @@ export default function DramaPage() {
       source_label: `分镜 ${current.seq} 片段 ${segment.seq}：${segment.title || '未命名片段'}`,
       storyboard_count: 1,
       image_count: 1,
+      segment_ids: [segment.id],
+      force_generate: true,
+    }, [current.id])
+  }
+
+  const handleGenerateSegmentVideo = async (segment: DramaStoryboardSegment) => {
+    if (!detail || !current) return
+    await handleCreateTask('video', {
+      source: 'storyboard_segment',
+      source_label: `分镜 ${current.seq} 片段 ${segment.seq}：${segment.title || '未命名片段'}`,
+      storyboard_count: 1,
       segment_ids: [segment.id],
       force_generate: true,
     }, [current.id])
@@ -862,6 +874,7 @@ ${current.content}`
                                       canWrite={canWrite}
                                       onCopy={copyText}
                                       onGenerate={handleGenerateSegmentImage}
+                                      onGenerateVideo={handleGenerateSegmentVideo}
                                       onDeleteMedia={handleDeleteMedia}
                                     />
                                   )}
@@ -1268,6 +1281,7 @@ function StoryboardSegmentList({
   canWrite,
   onCopy,
   onGenerate,
+  onGenerateVideo,
   onDeleteMedia,
 }: {
   segments: DramaStoryboardSegment[]
@@ -1276,6 +1290,7 @@ function StoryboardSegmentList({
   canWrite: boolean
   onCopy: (text: string) => void
   onGenerate: (segment: DramaStoryboardSegment) => void
+  onGenerateVideo: (segment: DramaStoryboardSegment) => void
   onDeleteMedia: (mediaId: string) => void
 }) {
   return (
@@ -1285,7 +1300,8 @@ function StoryboardSegmentList({
         style={{ marginTop: 8 }}
         dataSource={segments}
         renderItem={(segment) => {
-          const segmentMedia = media.filter((item) => item.segment_id === segment.id && item.kind === 'image')
+          const segmentImageMedia = media.filter((item) => item.segment_id === segment.id && item.kind === 'image')
+          const segmentVideoMedia = media.filter((item) => item.segment_id === segment.id && item.kind === 'video')
           return (
           <List.Item style={{ border: '1px solid #f0eeeb', borderRadius: 8, padding: 10, marginBottom: 8 }}>
             <Space direction="vertical" size={6} style={{ width: '100%' }}>
@@ -1298,6 +1314,7 @@ function StoryboardSegmentList({
                 </Space>
                 <Button size="small" icon={<ThunderboltOutlined />} disabled={!canGenerate} onClick={() => onGenerate(segment)}>生成图片</Button>
               </Space>
+              <Button size="small" icon={<VideoCameraOutlined />} disabled={!canGenerate} onClick={() => onGenerateVideo(segment)}>生成视频</Button>
               {segment.purpose && <Text type="secondary">{segment.purpose}</Text>}
               {segment.action && <Text>{segment.action}</Text>}
               {segment.shot && <Text type="secondary">镜头：{segment.shot}</Text>}
@@ -1310,10 +1327,10 @@ function StoryboardSegmentList({
                   style={{ width: 180, maxWidth: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
                 />
               )}
-              {segmentMedia.length > 0 && (
+              {segmentImageMedia.length > 0 && (
                 <Image.PreviewGroup>
                   <Space wrap size={8}>
-                    {segmentMedia.map((item, index) => (
+                    {segmentImageMedia.map((item, index) => (
                       <div key={item.id} style={{ width: 104 }}>
                         <Image
                           src={getPreviewUrl(item.file_id)}
@@ -1339,6 +1356,20 @@ function StoryboardSegmentList({
                     ))}
                   </Space>
                 </Image.PreviewGroup>
+              )}
+              {segmentVideoMedia.length > 0 && (
+                <Space wrap size={8}>
+                  {segmentVideoMedia.map((item, index) => (
+                    <video
+                      key={item.id}
+                      src={getPreviewUrl(item.file_id)}
+                      controls
+                      preload="metadata"
+                      aria-label={`${segment.title || `segment-${segment.seq}`}-video-${index + 1}`}
+                      style={{ width: 240, maxWidth: '100%', aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 6, background: '#111' }}
+                    />
+                  ))}
+                </Space>
               )}
               <Collapse
                 size="small"
