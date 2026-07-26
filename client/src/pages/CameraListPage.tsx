@@ -17,8 +17,8 @@ export default function CameraListPage() {
   const [form] = Form.useForm()
   const navigate = useNavigate()
 
-  const fetchCameras = useCallback(async () => {
-    setLoading(true)
+  const fetchCameras = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const res = await getCameras(page, 10)
       setCameras(res.items)
@@ -26,11 +26,15 @@ export default function CameraListPage() {
     } catch {
       message.error('获取摄像头列表失败')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [page])
 
-  useEffect(() => { fetchCameras() }, [fetchCameras])
+  useEffect(() => {
+    fetchCameras()
+    const timer = window.setInterval(() => fetchCameras(true), 10000)
+    return () => window.clearInterval(timer)
+  }, [fetchCameras])
 
   const handleSave = async () => {
     const values = await form.validateFields()
@@ -204,7 +208,7 @@ export default function CameraListPage() {
         title={<span><VideoCameraOutlined style={{ marginRight: 8 }} />摄像头管理</span>}
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={fetchCameras}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => fetchCameras()}>刷新</Button>
             <Button icon={<SearchOutlined />} onClick={openDiscover}>发现摄像头</Button>
             <Button
               icon={<ExperimentOutlined />}

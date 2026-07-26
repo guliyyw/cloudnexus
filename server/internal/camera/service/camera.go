@@ -2,10 +2,15 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudnexus/server/internal/camera/repository"
@@ -37,6 +42,81 @@ func NewCameraService(repo *repository.CameraRepository, mediamtxURL, mediamtxUs
 		mediamtxUser:     mediamtxUser,
 		mediamtxPassword: mediamtxPassword,
 	}
+}
+
+func (s *CameraService) StartStatusMonitor(interval time.Duration) {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	go func() {
+		s.refreshCameraStatuses()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			s.refreshCameraStatuses()
+		}
+	}()
+}
+
+func (s *CameraService) refreshCameraStatuses() {
+	cameras, err := s.repo.ListAllCameras()
+	if err != nil {
+		zap.L().Warn("list cameras for status monitor failed", zap.Error(err))
+		return
+	}
+
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i := range cameras {
+		camera := cameras[i]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			online := probeCameraAddress(ctx, &camera)
+			if err := s.repo.UpdateCameraHealth(camera.ID, online, time.Now()); err != nil {
+				zap.L().Warn("update camera health failed",
+					zap.Uint64("camera_id", camera.ID),
+					zap.Error(err),
+				)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func probeCameraAddress(ctx context.Context, camera *model.Camera) bool {
+	parsed, err := url.Parse(camera.StreamURL)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return false
+	}
+	port := parsed.Port()
+	if port == "" {
+		switch strings.ToLower(parsed.Scheme) {
+		case "rtsp":
+			port = "554"
+		case "rtmp":
+			port = "1935"
+		case "https":
+			port = "443"
+		default:
+			port = "80"
+		}
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 func (s *CameraService) ListCameras(ownerID uint64, offset, limit int) ([]model.Camera, int64, error) {
@@ -157,8 +237,6 @@ func (s *CameraService) stopStream(c *model.Camera) error {
 	}
 	defer resp.Body.Close()
 
-	c.Status = "offline"
-	s.repo.UpdateCamera(c)
 	return nil
 }
 

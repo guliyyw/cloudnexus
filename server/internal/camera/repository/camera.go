@@ -38,6 +38,12 @@ func (r *CameraRepository) FindCameraByID(id uint64) (*model.Camera, error) {
 	return &c, nil
 }
 
+func (r *CameraRepository) ListAllCameras() ([]model.Camera, error) {
+	var cameras []model.Camera
+	err := r.db.Order("created_at ASC").Find(&cameras).Error
+	return cameras, err
+}
+
 func (r *CameraRepository) CreateCamera(c *model.Camera) error {
 	return r.db.Create(c).Error
 }
@@ -52,6 +58,17 @@ func (r *CameraRepository) DeleteCamera(id uint64) error {
 
 func (r *CameraRepository) UpdateCameraStatus(id uint64, status string) error {
 	return r.db.Model(&model.Camera{}).Where("id = ?", id).Update("status", status).Error
+}
+
+func (r *CameraRepository) UpdateCameraHealth(id uint64, online bool, checkedAt time.Time) error {
+	updates := map[string]interface{}{
+		"status": "offline",
+	}
+	if online {
+		updates["status"] = "online"
+		updates["last_seen_at"] = checkedAt
+	}
+	return r.db.Model(&model.Camera{}).Where("id = ?", id).Updates(updates).Error
 }
 
 // --- RecognitionEvent ---

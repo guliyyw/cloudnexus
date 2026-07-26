@@ -111,6 +111,7 @@ func main() {
 	inferenceToken := os.Getenv("AI_INFERENCE_TOKEN")
 
 	camSvc := service.NewCameraService(repo, mediamtxURL, mediamtxUser, mediamtxPassword)
+	camSvc.StartStatusMonitor(15 * time.Second)
 	recordingDir := os.Getenv("CAMERA_RECORDING_DIR")
 	if recordingDir == "" {
 		recordingDir = "/app/recordings"
