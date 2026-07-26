@@ -137,3 +137,22 @@ func TestFilterAssetsForSegmentUsesCharacterOrder(t *testing.T) {
 		t.Fatalf("asset order = %#v, want %#v", got, want)
 	}
 }
+
+func TestFilterAssetsForSegmentPrefersExplicitSpatialOrder(t *testing.T) {
+	assets := []model.DramaAsset{
+		{Type: "character", Name: "husband"},
+		{Type: "character", Name: "wife"},
+		{Type: "scene", Name: "living room"},
+	}
+	segment := &model.DramaStoryboardSegment{
+		Characters:      "husband, wife",
+		Scene:           "living room",
+		ReferencePrompt: "wife standing on the left side, husband standing on the right side",
+	}
+	filtered := filterAssetsForSegment(assets, segment)
+	got := []string{filtered[0].Name, filtered[1].Name, filtered[2].Name}
+	want := []string{"wife", "husband", "living room"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("spatial asset order = %#v, want %#v", got, want)
+	}
+}

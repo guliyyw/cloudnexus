@@ -719,6 +719,12 @@ func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStory
 		}
 	}
 	if len(matched) > 0 {
+		characterOrder := make(map[string]int)
+		for _, asset := range matched {
+			if asset.Type == "character" {
+				characterOrder[asset.Name] = strings.Index(characters, asset.Name)
+			}
+		}
 		sort.SliceStable(matched, func(i, j int) bool {
 			if matched[i].Type != matched[j].Type {
 				return matched[i].Type == "character"
@@ -726,8 +732,8 @@ func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStory
 			if matched[i].Type != "character" {
 				return false
 			}
-			left := strings.Index(characters, matched[i].Name)
-			right := strings.Index(characters, matched[j].Name)
+			left := characterRegionRank(segment, matched[i].Name, characterOrder[matched[i].Name])
+			right := characterRegionRank(segment, matched[j].Name, characterOrder[matched[j].Name])
 			if left < 0 {
 				left = len(characters)
 			}
@@ -739,6 +745,56 @@ func filterAssetsForSegment(assets []model.DramaAsset, segment *model.DramaStory
 		return matched
 	}
 	return assets
+}
+
+func characterRegionRank(segment *model.DramaStoryboardSegment, name string, fallback int) int {
+	texts := []string{
+		segment.ReferencePrompt,
+		segment.CompositionPrompt,
+		segment.Action,
+		segment.Shot,
+	}
+	for _, text := range texts {
+		if position, ok := characterSpatialPosition(text, name); ok {
+			return position*1000 + fallback
+		}
+	}
+	return 1000 + fallback
+}
+
+func characterSpatialPosition(text, name string) (int, bool) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" {
+		return 0, false
+	}
+	clauses := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		switch r {
+		case ',', ';', '，', '；', '。', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+	for _, clause := range clauses {
+		if !strings.Contains(clause, name) {
+			continue
+		}
+		hasLeft := strings.Contains(clause, "左侧") || strings.Contains(clause, "左边") ||
+			strings.Contains(clause, "left side") || strings.Contains(clause, "on the left")
+		hasCenter := strings.Contains(clause, "中央") || strings.Contains(clause, "中间") ||
+			strings.Contains(clause, "center")
+		hasRight := strings.Contains(clause, "右侧") || strings.Contains(clause, "右边") ||
+			strings.Contains(clause, "right side") || strings.Contains(clause, "on the right")
+		switch {
+		case hasLeft && !hasCenter && !hasRight:
+			return 0, true
+		case hasCenter && !hasLeft && !hasRight:
+			return 1, true
+		case hasRight && !hasLeft && !hasCenter:
+			return 2, true
+		}
+	}
+	return 0, false
 }
 
 func filterAssetsForSegments(assets []model.DramaAsset, segments []model.DramaStoryboardSegment) []model.DramaAsset {
