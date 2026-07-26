@@ -406,8 +406,11 @@ func buildFFmpegArgs(streamURL, pattern string, segmentSeconds int) []string {
 	}
 	args = append(args,
 		"-i", streamURL,
-		"-an",
+		"-map", "0:v:0",
+		"-map", "0:a:0?",
 		"-c:v", "copy",
+		"-c:a", "aac",
+		"-b:a", "128k",
 		"-f", "segment",
 		"-segment_time", strconv.Itoa(segmentSeconds),
 		"-reset_timestamps", "1",

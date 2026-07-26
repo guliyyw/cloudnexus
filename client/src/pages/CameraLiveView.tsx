@@ -734,6 +734,7 @@ export default function CameraLiveView() {
               <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 12 }}>
                 <Space wrap size="small">
                   <Tag color="blue">每 5 分钟保存一个片段</Tag>
+                  <Tag color="cyan">有音频时同步录音</Tag>
                   <Tag color="green">保存到云盘</Tag>
                   <Tag>手动删除前永久保留</Tag>
                 </Space>
