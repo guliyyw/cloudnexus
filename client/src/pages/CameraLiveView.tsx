@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline } from 'antd'
+import { Card, Button, Space, Tag, message, Table, Switch, Descriptions, Empty, Tabs, Popconfirm, DatePicker, Timeline, Select } from 'antd'
 import { ArrowLeftOutlined, PlayCircleOutlined, PauseCircleOutlined, CameraOutlined, ReloadOutlined, SmileOutlined, VideoCameraOutlined, DeleteOutlined, FolderOpenOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import type { Camera, RecognitionEvent, FaceRecognitionEvent, CameraRecording } from '../services/camera'
 import { getCameras, startStream, stopStream, startRecognition, stopRecognition, getEvents, getFaceEvents, matchFace, clearFaceEvents, startCameraRecording, stopCameraRecording, getCameraRecordingStatus, getCameraRecordings, deleteCameraRecording, getCameraRecordingPlaybackUrl } from '../services/camera'
@@ -93,6 +93,8 @@ export default function CameraLiveView() {
   const [recording, setRecording] = useState(false)
   const [recordings, setRecordings] = useState<CameraRecording[]>([])
   const [recordingLoading, setRecordingLoading] = useState(false)
+  const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(7200)
+  const [recordingEndsAt, setRecordingEndsAt] = useState<string | null>(null)
   const [playbackUrl, setPlaybackUrl] = useState('')
   const segmentSeconds = 300
   const [historyPlaying, setHistoryPlaying] = useState(false)
@@ -137,6 +139,8 @@ export default function CameraLiveView() {
         getCameraRecordings(id, 1, 100, recordingDateKey),
       ])
       setRecording(status.recording)
+      setRecordingEndsAt(status.ends_at)
+      if (status.recording) setRecordingDurationSeconds(status.duration_seconds)
       setRecordings(list.items)
     } catch { /* ignore */ }
   }, [id, recordingDateKey])
@@ -151,6 +155,19 @@ export default function CameraLiveView() {
   }
 
   useEffect(() => { fetchCamera(); fetchEvents(); fetchFaceEvents(); fetchRecordingState() }, [fetchCamera, fetchEvents, fetchFaceEvents, fetchRecordingState])
+
+  useEffect(() => {
+    if (!recording || !id) return
+    const timer = window.setInterval(async () => {
+      try {
+        const status = await getCameraRecordingStatus(id)
+        setRecording(status.recording)
+        setRecordingEndsAt(status.ends_at)
+        if (!status.recording) await fetchRecordingState()
+      } catch { /* ignore transient polling errors */ }
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [recording, id, fetchRecordingState])
 
   // Track actual display size of video/canvas for overlay alignment
   useEffect(() => {
@@ -411,16 +428,19 @@ export default function CameraLiveView() {
       if (checked) {
         const status = await startCameraRecording(id, {
           segment_seconds: segmentSeconds,
+          duration_seconds: recordingDurationSeconds,
           retention_days: 0,
           max_storage_mb: 0,
           timezone_offset_minutes: new Date().getTimezoneOffset(),
         })
         setRecording(status.recording)
-        message.success('Recording started')
+        setRecordingEndsAt(status.ends_at)
+        message.success('连续录像已开始')
       } else {
         await stopCameraRecording(id)
         setRecording(false)
-        message.success('Recording stopped')
+        setRecordingEndsAt(null)
+        message.success('录像已停止')
       }
       await fetchRecordingState()
     } catch (e: any) {
@@ -717,7 +737,28 @@ export default function CameraLiveView() {
                   <Tag color="green">保存到云盘</Tag>
                   <Tag>手动删除前永久保留</Tag>
                 </Space>
-                {recording && <Tag color="red">正在录像，停止后仍会保留，需手动删除</Tag>}
+                <Select
+                  value={recordingDurationSeconds}
+                  disabled={recording || recordingLoading}
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 0, label: '不限时，手动停止' },
+                    { value: 1800, label: '连续录像 30 分钟' },
+                    { value: 3600, label: '连续录像 1 小时' },
+                    { value: 7200, label: '连续录像 2 小时' },
+                    { value: 14400, label: '连续录像 4 小时' },
+                    { value: 28800, label: '连续录像 8 小时' },
+                    { value: 86400, label: '连续录像 24 小时' },
+                  ]}
+                  onChange={setRecordingDurationSeconds}
+                />
+                {recording && (
+                  <Tag color="red">
+                    {recordingEndsAt
+                      ? `正在录像，将于 ${dayjs(recordingEndsAt).format('HH:mm:ss')} 自动停止`
+                      : '正在不限时录像，需手动停止'}
+                  </Tag>
+                )}
                 <DatePicker
                   value={recordingDate}
                   allowClear={false}

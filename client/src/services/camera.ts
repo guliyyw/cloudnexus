@@ -95,6 +95,7 @@ export interface CameraRecording {
 
 export interface RecordingOptions {
   segment_seconds?: number
+  duration_seconds?: number
   retention_days?: number
   max_storage_mb?: number
   timezone_offset_minutes?: number
@@ -104,7 +105,9 @@ export interface RecordingStatus {
   recording: boolean
   camera_id: string
   started_at: string | null
+  ends_at: string | null
   segment_seconds: number
+  duration_seconds: number
   retention_days: number
   max_storage_mb: number
   last_error: string

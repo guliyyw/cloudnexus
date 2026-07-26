@@ -26,20 +26,23 @@ import (
 
 type RecordingOptions struct {
 	SegmentSeconds       int `json:"segment_seconds"`
+	DurationSeconds      int `json:"duration_seconds"`
 	RetentionDays        int `json:"retention_days"`
 	MaxStorageMB         int `json:"max_storage_mb"`
 	TimezoneOffsetMinute int `json:"timezone_offset_minutes"`
 }
 
 type RecordingStatus struct {
-	Recording      bool             `json:"recording"`
-	CameraID       uint64           `json:"camera_id,string"`
-	StartedAt      *time.Time       `json:"started_at"`
-	SegmentSeconds int              `json:"segment_seconds"`
-	RetentionDays  int              `json:"retention_days"`
-	MaxStorageMB   int              `json:"max_storage_mb"`
-	LastError      string           `json:"last_error"`
-	ActiveJobs     []RecordingJobUI `json:"active_jobs,omitempty"`
+	Recording       bool             `json:"recording"`
+	CameraID        uint64           `json:"camera_id,string"`
+	StartedAt       *time.Time       `json:"started_at"`
+	EndsAt          *time.Time       `json:"ends_at"`
+	SegmentSeconds  int              `json:"segment_seconds"`
+	DurationSeconds int              `json:"duration_seconds"`
+	RetentionDays   int              `json:"retention_days"`
+	MaxStorageMB    int              `json:"max_storage_mb"`
+	LastError       string           `json:"last_error"`
+	ActiveJobs      []RecordingJobUI `json:"active_jobs,omitempty"`
 }
 
 type RecordingJobUI struct {
@@ -167,8 +170,17 @@ func (s *RecordingService) Start(cameraID, ownerID uint64, opts RecordingOptions
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	started := time.Now()
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if opts.DurationSeconds > 0 {
+		ctx, cancel = context.WithTimeout(
+			context.Background(),
+			time.Duration(opts.DurationSeconds)*time.Second,
+		)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
 	job := &recordingJob{
 		cameraID:   cameraID,
 		cameraName: c.Name,
@@ -664,6 +676,15 @@ func normalizeRecordingOptions(opts RecordingOptions) RecordingOptions {
 	if opts.SegmentSeconds > 3600 {
 		opts.SegmentSeconds = 3600
 	}
+	if opts.DurationSeconds < 0 {
+		opts.DurationSeconds = 0
+	}
+	if opts.DurationSeconds > 0 && opts.DurationSeconds < 10 {
+		opts.DurationSeconds = 10
+	}
+	if opts.DurationSeconds > 7*24*60*60 {
+		opts.DurationSeconds = 7 * 24 * 60 * 60
+	}
 	if opts.RetentionDays < 0 {
 		opts.RetentionDays = 0
 	}
@@ -685,13 +706,20 @@ func recordingLocation(offsetMinute int) *time.Location {
 
 func (j *recordingJob) status() *RecordingStatus {
 	started := j.started
+	var endsAt *time.Time
+	if j.opts.DurationSeconds > 0 {
+		end := started.Add(time.Duration(j.opts.DurationSeconds) * time.Second)
+		endsAt = &end
+	}
 	return &RecordingStatus{
-		Recording:      true,
-		CameraID:       j.cameraID,
-		StartedAt:      &started,
-		SegmentSeconds: j.opts.SegmentSeconds,
-		RetentionDays:  j.opts.RetentionDays,
-		MaxStorageMB:   j.opts.MaxStorageMB,
-		LastError:      j.lastErr,
+		Recording:       true,
+		CameraID:        j.cameraID,
+		StartedAt:       &started,
+		EndsAt:          endsAt,
+		SegmentSeconds:  j.opts.SegmentSeconds,
+		DurationSeconds: j.opts.DurationSeconds,
+		RetentionDays:   j.opts.RetentionDays,
+		MaxStorageMB:    j.opts.MaxStorageMB,
+		LastError:       j.lastErr,
 	}
 }
