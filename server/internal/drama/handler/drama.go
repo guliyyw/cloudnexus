@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -41,17 +42,28 @@ func (h *DramaHandler) HandleCreateProject(c *gin.Context) {
 	var req struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		VisualStyle string `json:"visual_style"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, response.Error(400, "参数错误"))
 		return
 	}
-	project, err := h.svc.CreateProject(httputil.GetUserID(c), req.Title, req.Description)
+	settings, _ := json.Marshal(map[string]string{"visual_style": normalizeVisualStyle(req.VisualStyle)})
+	project, err := h.svc.CreateProject(httputil.GetUserID(c), req.Title, req.Description, string(settings))
 	if err != nil {
 		c.JSON(500, response.Error(500, "创建项目失败"))
 		return
 	}
 	c.JSON(201, response.OKWithData(gin.H{"project": project}))
+}
+
+func normalizeVisualStyle(style string) string {
+	switch style {
+	case "realistic", "anime", "3d", "illustration":
+		return style
+	default:
+		return "auto"
+	}
 }
 
 func (h *DramaHandler) HandleGetProject(c *gin.Context) {

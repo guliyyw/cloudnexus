@@ -129,7 +129,7 @@ export async function listDramaProjects(params?: { keyword?: string; sort?: stri
   return res.data.data as { items: DramaProject[]; total: number }
 }
 
-export async function createDramaProject(data: { title: string; description?: string }) {
+export async function createDramaProject(data: { title: string; description?: string; visual_style?: string }) {
   const res = await api.post('/drama/projects', data)
   return res.data.data.project as DramaProject
 }

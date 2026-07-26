@@ -380,6 +380,14 @@ export default function DramaPage() {
     }, [current.id])
   }
 
+  const handleProjectVisualStyleChange = async (visualStyle: string) => {
+    if (!detail) return
+    const settings = { ...parseProjectSettings(detail.project.settings), visual_style: visualStyle }
+    const project = await updateDramaProject(detail.project.id, { settings: JSON.stringify(settings) })
+    setDetail({ ...detail, project })
+    message.success('项目视觉风格已更新')
+  }
+
   const handleGenerateSegmentVideo = async (segment: DramaStoryboardSegment) => {
     if (!detail || !current) return
     await handleCreateTask('video', {
@@ -691,6 +699,13 @@ ${current.content}`
                   </Col>
                   <Col>
                     <Space wrap>
+                      <Select
+                        value={parseProjectSettings(detail.project.settings).visual_style}
+                        options={visualStyleOptions}
+                        style={{ width: 116 }}
+                        disabled={!canWrite}
+                        onChange={handleProjectVisualStyleChange}
+                      />
                       <Tag color="blue">{detail.storyboards.length} 镜</Tag>
                       <Tag color={modifiedCount ? 'orange' : 'default'}>{modifiedCount} 已修改</Tag>
                       <Button icon={<CopyOutlined />} onClick={copyAll}>复制全部</Button>
@@ -1035,12 +1050,15 @@ ${current.content}`
       ) : null}
 
       <Modal title="新建短剧项目" open={projectModalOpen} onOk={handleCreate} onCancel={() => setProjectModalOpen(false)}>
-        <Form form={projectForm} layout="vertical">
+        <Form form={projectForm} layout="vertical" initialValues={{ visual_style: 'auto' }}>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
             <Input />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="visual_style" label="视觉风格">
+            <Select options={visualStyleOptions} />
           </Form.Item>
         </Form>
       </Modal>
@@ -1063,6 +1081,22 @@ ${current.content}`
       </Modal>
     </div>
   )
+}
+
+const visualStyleOptions = [
+  { value: 'auto', label: '自动匹配' },
+  { value: 'realistic', label: '真人写实' },
+  { value: 'anime', label: '动漫' },
+  { value: '3d', label: '3D 动画' },
+  { value: 'illustration', label: '插画' },
+]
+
+function parseProjectSettings(raw?: string) {
+  try {
+    return { visual_style: 'auto', ...JSON.parse(raw || '{}') }
+  } catch {
+    return { visual_style: 'auto' }
+  }
 }
 
 function parseImageSettings(raw?: string) {

@@ -101,12 +101,16 @@ func (s *DramaService) ListProjects(ownerID uint64, keyword, sort string, page, 
 	return s.repo.ListProjects(ownerID, keyword, sort, page, pageSize)
 }
 
-func (s *DramaService) CreateProject(ownerID uint64, title, description string) (*model.DramaProject, error) {
+func (s *DramaService) CreateProject(ownerID uint64, title, description string, projectSettings ...string) (*model.DramaProject, error) {
+	settings := "{}"
+	if len(projectSettings) > 0 && strings.TrimSpace(projectSettings[0]) != "" {
+		settings = projectSettings[0]
+	}
 	project := &model.DramaProject{
 		OwnerID:     ownerID,
 		Title:       strings.TrimSpace(title),
 		Description: strings.TrimSpace(description),
-		Settings:    "{}",
+		Settings:    settings,
 	}
 	if project.Title == "" {
 		project.Title = "未命名短剧"
