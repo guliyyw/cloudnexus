@@ -413,6 +413,7 @@ func buildFFmpegArgs(streamURL, pattern string, segmentSeconds int) []string {
 		"-b:a", "128k",
 		"-f", "segment",
 		"-segment_time", strconv.Itoa(segmentSeconds),
+		"-break_non_keyframes", "1",
 		"-segment_format_options", "movflags=+faststart",
 		"-reset_timestamps", "1",
 		"-strftime", "1",

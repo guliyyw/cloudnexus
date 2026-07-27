@@ -40,10 +40,23 @@ func TestCompletedSegmentPathsIncludesNewestAfterFFmpegStops(t *testing.T) {
 
 func TestRecordingSegmentsUseFastStart(t *testing.T) {
 	args := buildFFmpegArgs("rtsp://camera/live", "/tmp/segment_%s.mp4", 300)
+	if !hasAdjacentArgs(args, "-segment_format_options", "movflags=+faststart") {
+		t.Fatalf("buildFFmpegArgs() does not enable MP4 faststart: %v", args)
+	}
+}
+
+func TestRecordingSegmentsBreakAtConfiguredDuration(t *testing.T) {
+	args := buildFFmpegArgs("rtsp://camera/live", "/tmp/segment_%s.mp4", 300)
+	if !hasAdjacentArgs(args, "-break_non_keyframes", "1") {
+		t.Fatalf("buildFFmpegArgs() does not enable precise segment boundaries: %v", args)
+	}
+}
+
+func hasAdjacentArgs(args []string, key, value string) bool {
 	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "-segment_format_options" && args[i+1] == "movflags=+faststart" {
-			return
+		if args[i] == key && args[i+1] == value {
+			return true
 		}
 	}
-	t.Fatalf("buildFFmpegArgs() does not enable MP4 faststart: %v", args)
+	return false
 }
