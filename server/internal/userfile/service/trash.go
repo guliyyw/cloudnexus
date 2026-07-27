@@ -74,14 +74,69 @@ func (s *TrashService) PermanentDelete(userID, fileID uint64) error {
 		return apperrors.NewAppError(403, "无权操作", apperrors.ErrForbidden)
 	}
 
-	if !file.IsDir {
-		s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
+	files, err := s.fileRepo.FindTreeIncludingDeleted(userID, fileID)
+	if err != nil {
+		return apperrors.NewAppError(500, "读取目录内容失败", err)
+	}
+	return s.forceDeleteFiles(files)
+}
+
+func (s *TrashService) CleanupOrphanFiles() (int64, error) {
+	const batchSize = 200
+	var totalDeleted int64
+
+	for {
+		roots, err := s.fileRepo.FindOrphanRoots(batchSize)
+		if err != nil {
+			return totalDeleted, err
+		}
+		if len(roots) == 0 {
+			return totalDeleted, nil
+		}
+		for _, root := range roots {
+			files, err := s.fileRepo.FindTreeIncludingDeleted(root.UserID, root.ID)
+			if err != nil {
+				return totalDeleted, err
+			}
+			if err := s.forceDeleteFiles(files); err != nil {
+				return totalDeleted, err
+			}
+			totalDeleted += int64(len(files))
+		}
+		if len(roots) < batchSize {
+			return totalDeleted, nil
+		}
+	}
+}
+
+func (s *TrashService) forceDeleteFiles(files []model.File) error {
+	if len(files) == 0 {
+		return nil
 	}
 
-	// Also clean up versions
-	s.fileRepo.CleanupFileVersionsByFileID(fileID)
-
-	return s.fileRepo.ForceDelete(fileID)
+	ids := make([]uint64, 0, len(files))
+	activeSizeByUser := make(map[uint64]int64)
+	for _, file := range files {
+		if !file.IsDir && file.StorageKey != "" {
+			if err := s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{}); err != nil {
+				return apperrors.NewAppError(500, "删除实际文件失败", err)
+			}
+		}
+		if !file.IsDir && file.DeletedAt == nil {
+			activeSizeByUser[file.UserID] += file.Size
+		}
+		if err := s.fileRepo.CleanupFileVersionsByFileID(file.ID); err != nil {
+			return apperrors.NewAppError(500, "删除文件版本失败", err)
+		}
+		ids = append(ids, file.ID)
+	}
+	if err := s.fileRepo.BatchForceDelete(ids); err != nil {
+		return apperrors.NewAppError(500, "删除文件记录失败", err)
+	}
+	for userID, size := range activeSizeByUser {
+		_ = s.quotaRepo.AddStorageUsed(userID, -size)
+	}
+	return nil
 }
 
 func (s *TrashService) EmptyTrash(userID uint64) (int64, error) {
@@ -89,7 +144,7 @@ func (s *TrashService) EmptyTrash(userID uint64) (int64, error) {
 	var totalDeleted int64
 
 	for {
-		files, total, err := s.fileRepo.FindDeletedByUser(userID, 1, batchSize)
+		files, _, err := s.fileRepo.FindDeletedByUser(userID, 1, batchSize)
 		if err != nil {
 			return totalDeleted, apperrors.NewAppError(500, "读取回收站失败", err)
 		}
@@ -97,25 +152,11 @@ func (s *TrashService) EmptyTrash(userID uint64) (int64, error) {
 			break
 		}
 
-		ids := make([]uint64, 0, len(files))
-		for _, f := range files {
-			if !f.IsDir {
-				s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
-			}
-			s.fileRepo.CleanupFileVersionsByFileID(f.ID)
-			ids = append(ids, f.ID)
+		deleted, err := s.forceDeleteRoots(files)
+		if err != nil {
+			return totalDeleted, apperrors.NewAppError(500, "清空回收站失败", err)
 		}
-		if len(ids) > 0 {
-			if err := s.fileRepo.BatchForceDelete(ids); err != nil {
-				return totalDeleted, apperrors.NewAppError(500, "清空回收站失败", err)
-			}
-			totalDeleted += int64(len(ids))
-		}
-
-		// If we got fewer than requested, we're done
-		if int64(len(files)) < total && total <= int64(batchSize) {
-			break
-		}
+		totalDeleted += deleted
 		if len(files) < batchSize {
 			break
 		}
@@ -138,20 +179,34 @@ func (s *TrashService) CleanupExpiredTrash(threshold interface{}) (int64, error)
 			break
 		}
 
-		ids := make([]uint64, 0, len(files))
-		for _, f := range files {
-			if !f.IsDir {
-				s.minio.RemoveObject(context.Background(), s.bucket, f.StorageKey, minio.RemoveObjectOptions{})
-			}
-			s.fileRepo.CleanupFileVersionsByFileID(f.ID)
-			ids = append(ids, f.ID)
+		deleted, err := s.forceDeleteRoots(files)
+		if err != nil {
+			return totalDeleted, err
 		}
-		if len(ids) > 0 {
-			if err := s.fileRepo.BatchForceDelete(ids); err != nil {
-				return totalDeleted, err
-			}
-			totalDeleted += int64(len(ids))
+		totalDeleted += deleted
+	}
+	return totalDeleted, nil
+}
+
+func (s *TrashService) forceDeleteRoots(roots []model.File) (int64, error) {
+	processed := make(map[uint64]struct{})
+	var totalDeleted int64
+
+	for _, root := range roots {
+		if _, ok := processed[root.ID]; ok {
+			continue
 		}
+		files, err := s.fileRepo.FindTreeIncludingDeleted(root.UserID, root.ID)
+		if err != nil {
+			return totalDeleted, err
+		}
+		if err := s.forceDeleteFiles(files); err != nil {
+			return totalDeleted, err
+		}
+		for _, file := range files {
+			processed[file.ID] = struct{}{}
+		}
+		totalDeleted += int64(len(files))
 	}
 	return totalDeleted, nil
 }

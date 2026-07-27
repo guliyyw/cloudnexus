@@ -146,6 +146,11 @@ func main() {
 
 	trashSvc := service.NewTrashService(fileRepo, quotaRepo, quotaSvc, minioClient, cfg.MinIO.Bucket)
 	trashH := handler.NewTrashHandler(trashSvc)
+	if deleted, err := trashSvc.CleanupOrphanFiles(); err != nil {
+		log.Printf("cleanup orphan files failed: %v", err)
+	} else if deleted > 0 {
+		log.Printf("cleaned up %d orphan files", deleted)
+	}
 
 	quotaH := handler.NewQuotaHandler(quotaSvc, fileRepo)
 

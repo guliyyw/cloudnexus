@@ -74,6 +74,58 @@ func (r *FileRepository) BatchSoftDelete(ids []uint64, userID uint64) (int64, er
 	return result.RowsAffected, result.Error
 }
 
+func (r *FileRepository) FindActiveTree(userID, rootID uint64) ([]model.File, error) {
+	var files []model.File
+	err := r.db.Raw(`
+		WITH RECURSIVE file_tree AS (
+			SELECT id
+			FROM files
+			WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+			UNION ALL
+			SELECT child.id
+			FROM files child
+			JOIN file_tree parent ON child.parent_id = parent.id
+			WHERE child.user_id = ? AND child.deleted_at IS NULL
+		)
+		SELECT files.*
+		FROM files
+		JOIN file_tree ON file_tree.id = files.id
+		ORDER BY files.is_dir ASC, files.id ASC
+	`, rootID, userID, userID).Scan(&files).Error
+	return files, err
+}
+
+func (r *FileRepository) FindTreeIncludingDeleted(userID, rootID uint64) ([]model.File, error) {
+	var files []model.File
+	err := r.db.Raw(`
+		WITH RECURSIVE file_tree AS (
+			SELECT id
+			FROM files
+			WHERE id = ? AND user_id = ?
+			UNION ALL
+			SELECT child.id
+			FROM files child
+			JOIN file_tree parent ON child.parent_id = parent.id
+			WHERE child.user_id = ?
+		)
+		SELECT files.*
+		FROM files
+		JOIN file_tree ON file_tree.id = files.id
+		ORDER BY files.is_dir ASC, files.id ASC
+	`, rootID, userID, userID).Scan(&files).Error
+	return files, err
+}
+
+func (r *FileRepository) FindOrphanRoots(limit int) ([]model.File, error) {
+	var files []model.File
+	err := r.db.Unscoped().
+		Where("parent_id <> 0 AND NOT EXISTS (SELECT 1 FROM files parent WHERE parent.id = files.parent_id)").
+		Order("id ASC").
+		Limit(limit).
+		Find(&files).Error
+	return files, err
+}
+
 func (r *FileRepository) Update(file *model.File) error {
 	return r.db.Save(file).Error
 }

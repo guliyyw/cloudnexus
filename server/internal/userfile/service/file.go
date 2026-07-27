@@ -445,26 +445,12 @@ func (s *FileService) DeleteFile(userID, fileID uint64) error {
 		return apperrors.NewAppError(403, "无权删除", apperrors.ErrForbidden)
 	}
 
-	// Check trash space before soft-delete
-	if !file.IsDir {
-		if err := s.quotaSvc.CheckTrashSpace(userID, file.Size, s.repo); err != nil {
-			return err
-		}
+	files, err := s.repo.FindActiveTree(userID, fileID)
+	if err != nil {
+		return apperrors.NewAppError(500, "读取目录内容失败", err)
 	}
-
-	if !file.IsDir {
-		s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
-	}
-
-	if err := s.repo.SoftDelete(fileID, userID); err != nil {
-		return err
-	}
-
-	// Reduce quota usage
-	if !file.IsDir {
-		_ = s.quotaRepo.AddStorageUsed(userID, -file.Size)
-	}
-	return nil
+	_, err = s.softDeleteTree(userID, files)
+	return err
 }
 
 func (s *FileService) Mkdir(userID uint64, parentID uint64, name string) (*model.File, error) {
@@ -482,7 +468,8 @@ func (s *FileService) Mkdir(userID uint64, parentID uint64, name string) (*model
 
 func (s *FileService) BatchDelete(userID uint64, ids []uint64) (int64, []string) {
 	var errs []string
-	validIDs := make([]uint64, 0, len(ids))
+	validRoots := make(map[uint64]struct{}, len(ids))
+	filesByID := make(map[uint64]model.File)
 
 	for _, id := range ids {
 		file, err := s.repo.FindByID(id)
@@ -494,22 +481,69 @@ func (s *FileService) BatchDelete(userID uint64, ids []uint64) (int64, []string)
 			errs = append(errs, fmt.Sprintf("%s: 无权删除", file.Name))
 			continue
 		}
-		if !file.IsDir {
-			s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{})
-			_ = s.quotaRepo.AddStorageUsed(userID, -file.Size)
+		tree, err := s.repo.FindActiveTree(userID, id)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: 读取目录内容失败", file.Name))
+			continue
 		}
-		validIDs = append(validIDs, id)
+		validRoots[id] = struct{}{}
+		for _, item := range tree {
+			filesByID[item.ID] = item
+		}
 	}
 
-	if len(validIDs) == 0 {
+	if len(validRoots) == 0 {
 		return 0, errs
 	}
 
-	deleted, err := s.repo.BatchSoftDelete(validIDs, userID)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("数据库错误: %s", err.Error()))
+	files := make([]model.File, 0, len(filesByID))
+	for _, file := range filesByID {
+		files = append(files, file)
 	}
-	return deleted, errs
+	_, err := s.softDeleteTree(userID, files)
+	if err != nil {
+		errs = append(errs, err.Error())
+		return 0, errs
+	}
+	return int64(len(validRoots)), errs
+}
+
+func (s *FileService) softDeleteTree(userID uint64, files []model.File) (int64, error) {
+	if len(files) == 0 {
+		return 0, nil
+	}
+
+	var totalSize int64
+	ids := make([]uint64, 0, len(files))
+	for _, file := range files {
+		ids = append(ids, file.ID)
+		if !file.IsDir {
+			totalSize += file.Size
+		}
+	}
+	if totalSize > 0 {
+		if err := s.quotaSvc.CheckTrashSpace(userID, totalSize, s.repo); err != nil {
+			return 0, err
+		}
+	}
+
+	for _, file := range files {
+		if file.IsDir || file.StorageKey == "" {
+			continue
+		}
+		if err := s.minio.RemoveObject(context.Background(), s.bucket, file.StorageKey, minio.RemoveObjectOptions{}); err != nil {
+			return 0, apperrors.NewAppError(500, "删除实际文件失败", err)
+		}
+	}
+
+	deleted, err := s.repo.BatchSoftDelete(ids, userID)
+	if err != nil {
+		return 0, apperrors.NewAppError(500, "删除文件记录失败", err)
+	}
+	if totalSize > 0 {
+		_ = s.quotaRepo.AddStorageUsed(userID, -totalSize)
+	}
+	return deleted, nil
 }
 
 func (s *FileService) Search(userID uint64, keyword string, page, pageSize int) ([]model.File, int64, error) {
