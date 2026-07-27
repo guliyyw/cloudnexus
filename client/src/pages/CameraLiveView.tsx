@@ -175,6 +175,20 @@ export default function CameraLiveView() {
     return () => window.clearInterval(timer)
   }, [recording, id, fetchRecordingState])
 
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') fetchRecordingState()
+    }
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [fetchRecordingState])
+
   // Track actual display size of video/canvas for overlay alignment
   useEffect(() => {
     if (!playing) return
