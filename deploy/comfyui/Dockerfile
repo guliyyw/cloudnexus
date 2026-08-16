@@ -1,16 +1,22 @@
 FROM python:3.12-slim
 
 ARG COMFYUI_REF=master
-ARG PYTORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu128
+ARG PYTORCH_CUDA_INDEX=https://mirrors.aliyun.com/pytorch-wheels/cu130
+ARG PYTORCH_VERSION=2.11.0
+ARG TORCHVISION_VERSION=0.26.0
+ARG TORCHAUDIO_VERSION=2.11.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
     PATH=/opt/venv/bin:$PATH
 
 WORKDIR /app
 
-RUN sed -i 's/ trixie-updates//g' /etc/apt/sources.list.d/debian.sources \
+RUN sed -i \
+    -e 's#http://deb.debian.org/debian-security#https://mirrors.aliyun.com/debian-security#g' \
+    -e 's#http://deb.debian.org/debian#https://mirrors.aliyun.com/debian#g' \
+    -e 's/ trixie-updates//g' /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Retries=5 update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -28,20 +34,21 @@ RUN git clone --depth 1 --branch "${COMFYUI_REF}" https://github.com/comfyanonym
 
 WORKDIR /app/ComfyUI
 
-RUN pip install --index-url "${PYTORCH_CUDA_INDEX}" torch torchvision torchaudio \
-    && grep -Ev '^(comfyui-workflow-templates|comfyui-embedded-docs)' requirements.txt > /tmp/requirements-runtime.txt \
-    && pip install -r /tmp/requirements-runtime.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install --retries 10 --timeout 120 \
+        "${PYTORCH_CUDA_INDEX}/torch-${PYTORCH_VERSION}%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl" \
+        "${PYTORCH_CUDA_INDEX}/torchvision-${TORCHVISION_VERSION}%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl" \
+        "${PYTORCH_CUDA_INDEX}/torchaudio-${TORCHAUDIO_VERSION}%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl" \
+    && pip install --retries 10 --timeout 120 -r requirements.txt
 
-RUN pip install comfyui-workflow-templates==0.11.9 comfyui-embedded-docs==0.5.8
-
-RUN apt-get -o Acquire::Retries=5 update \
+RUN --mount=type=cache,target=/root/.cache/pip apt-get -o Acquire::Retries=5 update \
     && apt-get install -y --no-install-recommends build-essential \
-    && pip install insightface==0.7.3 onnxruntime \
+    && pip install --retries 10 --timeout 120 insightface==0.7.3 onnxruntime \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/comfyui-entrypoint
-RUN chmod +x /usr/local/bin/comfyui-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/comfyui-entrypoint \
+    && chmod +x /usr/local/bin/comfyui-entrypoint
 
 EXPOSE 8188
 

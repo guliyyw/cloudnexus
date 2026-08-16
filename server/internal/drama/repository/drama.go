@@ -355,7 +355,7 @@ func (r *DramaRepository) GetSetting(ownerID uint64) (*model.DramaSetting, error
 			ImageSettings: `{"width":768,"height":1024,"steps":24,"cfg":7,"sampler":"euler","scheduler":"normal","negative_prompt":"低质量，模糊，变形，多余手指，文字，水印"}`,
 			TTSEngine:     "edge-tts",
 			TTSConfig:     "{}",
-			VideoSettings: `{"resolution":"1080p","fps":30,"bitrate":"8M","subtitle":{"font":"Microsoft YaHei","size":42,"color":"#FFFFFF","outline":"#000000","position":"bottom"}}`,
+			VideoSettings: `{"model":"wan22","h3_mode":"i2v","audio_mode":"external","h3_ref_image_size":"match","size_preset":"auto","continuity":true}`,
 			StorageRoot:   "短剧工坊",
 		}
 		if createErr := r.db.Create(&setting).Error; createErr != nil {

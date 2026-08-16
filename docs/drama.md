@@ -1,88 +1,116 @@
 # AI 短剧工坊
 
-> 更新日期：2026-07-18
+> 本文描述当前实现，以代码为准。
 
-AI 短剧工坊是 CloudNexus 的剧本拆解与媒体生成工作台，对应前端 `/drama` 页面和后端 `drama-svc` 服务。它把项目、分镜、片段、角色/场景资产、生成任务和 ComfyUI 连接配置放在同一个工作流里，目标是让短剧从文本脚本进入可追踪、可复现的图像/视频生成流程。
+AI 短剧工坊提供从剧本拆解到图像、视频和音频素材管理的完整流程。前端入口是 `/drama`，后端服务是 `drama-svc`，默认端口 `8087`。
 
-## 服务边界
+## 模块边界
 
-- 前端入口：`client/src/pages/DramaPage.tsx`
-- 前端 API：`client/src/services/drama.ts`
-- 后端入口：`server/cmd/drama-svc/main.go`
-- 后端业务：`server/internal/drama/`
-- 数据模型：`DramaProject`、`DramaStoryboard`、`DramaStoryboardSegment`、`DramaStoryboardMedia`、`DramaAsset`、`DramaTask`、`DramaSetting`
-- 默认端口：`8087`
-- API 前缀：`/api/v1/drama`
+| 层 | 位置 | 职责 |
+|---|---|---|
+| 前端页面 | `client/src/pages/DramaPage.tsx` | 项目、分镜、片段、资产、任务和设置界面 |
+| 前端 API | `client/src/services/drama.ts` | 短剧接口类型和请求封装 |
+| 服务入口 | `server/cmd/drama-svc/main.go` | 初始化依赖、注册路由和启动任务执行器 |
+| HTTP 层 | `server/internal/drama/handler/` | 参数校验、鉴权和响应封装 |
+| 业务层 | `server/internal/drama/service/` | 剧本解析、提示词构建、生成任务和文件保存 |
+| 数据层 | `server/internal/drama/repository/` | 项目、分镜、片段、资产、媒体和任务的数据库访问 |
 
-`drama-svc` 依赖 PostgreSQL 保存项目与任务数据，依赖 MinIO 保存生成文件和参考图，依赖 Redis 维护任务队列与任务事件发布。
+## 生成流程
 
-## 核心能力
+```text
+创建项目
+  → 导入或粘贴剧本
+  → 解析为分镜
+  → 导入片段和角色/场景资产
+  → 上传或生成参考图
+  → 创建图片/视频任务
+  → Redis 队列异步执行
+  → ComfyUI 生成
+  → 结果保存到 MinIO 和云盘文件表
+  → 回写分镜媒体、片段媒体和任务结果
+```
 
-- 项目管理：创建、编辑、删除、导入、导出短剧项目。
-- 剧本拆解：把脚本文本解析为分镜，并支持继续追加分镜。
-- 片段管理：每个分镜可导入片段 JSON，片段可维护动作、构图、图片提示词、视频提示词和负面提示词。
-- 资产管理：支持角色与场景资产，资产可保存描述、参考提示词、声音名称和参考图片。
-- 音频管理：支持单个分镜上传音频，也支持批量导入音频并按文件名匹配分镜。
-- 生成任务：支持资产参考图、分镜图片和分镜视频生成任务，任务可取消、重试、查看进度和任务详情。
-- 任务详情：前端可查看任务来源、进度、结果、生成提示词日志和原始 payload，便于排查失败任务。
-- ComfyUI 检测：设置页可检测 ComfyUI 连通性、checkpoint、IP-Adapter、ReActor 以及关键本地模型是否就绪。
+### 1. 项目与剧本
 
-## ComfyUI 依赖
+创建项目时保存标题、描述和视觉风格。解析剧本后，服务生成分镜、项目前言和角色/场景资产。追加剧本会在已有分镜之后继续生成，不覆盖原有分镜。
 
-图片一致性工作流依赖：
+### 2. 分镜、片段和资产
 
-- `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors`
-- `ip-adapter-plus_sdxl_vit-h.safetensors`
-- 可选：`ip-adapter-plus-face_sdxl_vit-h.safetensors`
+- 分镜保存剧情文本、场景锚点、对白和基础提示词。
+- 片段保存时长、角色、动作、镜头、构图提示词、视频提示词和负面提示词。
+- 资产分为 `character` 和 `scene`，可保存描述、参考提示词和参考图。
+- 视频生成优先选择片段参考图，其次选择分镜媒体或资产参考图作为首帧。
 
-Wan2.2 本地视频工作流依赖：
+### 3. 图片任务
 
-- `wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors`
-- `wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors`
-- `umt5_xxl_fp8_e4m3fn_scaled.safetensors`
-- `wan_2.1_vae.safetensors`
+图片任务支持三种场景：
 
-`GET /api/v1/drama/settings/comfyui/status` 会返回 `models` 与 `missing` 字段，前端会把上述模型展示为检查清单。
+- `image_generation`：独立图片生成页创建的任务。
+- `image`：批量生成分镜图片。
+- `asset_reference`：生成角色或场景资产参考图。
 
-## 任务执行
+图片任务会读取短剧设置中的 SDXL checkpoint、尺寸、采样步数、CFG、采样器和负面提示词，并根据项目视觉风格选择合适的 checkpoint。
 
-`task_runner.go` 是短剧工坊的异步任务执行器。它启动后从 Redis 队列 `drama:tasks:queue` 中取出任务，更新任务状态，并通过 Redis Pub/Sub 向前端发布任务进度。服务重启后会恢复 `pending` 或 `running` 状态的任务，避免任务长期卡在中间态。
+### 4. 视频任务
 
-任务执行过程中会把生成结果写回任务 payload，并尽量保留：
+当前视频任务类型为 `video`，执行流程是：
 
-- 来源信息：项目、分镜、片段或资产。
-- 生成结果：生成文件 ID、URL、标题和类型。
-- 提示词日志：每个生成目标使用的最终提示词。
-- 错误信息：ComfyUI 节点、模型缺失、输出文件缺失等失败原因。
+1. 读取分镜或片段的首帧。
+2. 构建包含场景、角色、动作、镜头和音频意图的提示词。
+3. 上传首帧到 ComfyUI。
+4. 优先使用本地 Wan2.2 I2V 工作流。
+5. 轮询 ComfyUI 历史记录并下载生成的视频。
+6. 保存视频文件，并写入分镜/片段媒体记录。
+
+如果没有可用首帧，任务会直接失败，并提示先生成或选择图片。视频任务默认时长由任务执行逻辑控制，未实现独立的“视频默认参数 JSON”配置。
+
+### 5. 任务执行
+
+`server/internal/drama/service/task_runner.go` 负责：
+
+- 从 Redis 队列取出任务。
+- 恢复服务重启前的 `pending` 和 `running` 任务。
+- 更新进度和状态。
+- 支持取消、失败重试和任务事件订阅。
+
+任务 payload 中保留来源、提示词日志和生成结果，便于定位生成失败。
+
+## ComfyUI 检查
+
+接口：`GET /api/v1/drama/settings/comfyui/status`
+
+检查内容包括：
+
+- ComfyUI 是否可连接。
+- 可用 checkpoint。
+- IP-Adapter 和 ReActor 节点。
+- CLIP Vision、IP-Adapter、FaceID 和 Wan2.2 模型。
+
+检查通过不代表每个工作流都可用；最终仍以任务提交时的节点校验和 ComfyUI 返回结果为准。
 
 ## API 摘要
 
 | Endpoint | Method | 说明 |
 |---|---|---|
 | `/api/v1/drama/projects` | GET / POST | 项目列表 / 创建项目 |
-| `/api/v1/drama/projects/import` | POST | 导入项目 |
 | `/api/v1/drama/projects/:id` | GET / PUT / DELETE | 项目详情 / 更新 / 删除 |
 | `/api/v1/drama/projects/:id/parse` | POST | 解析剧本 |
 | `/api/v1/drama/projects/:id/append` | POST | 追加分镜 |
-| `/api/v1/drama/projects/:id/export` | GET | 导出项目 |
-| `/api/v1/drama/projects/:id/tasks` | GET / POST | 任务列表 / 创建生成任务 |
+| `/api/v1/drama/projects/:id/tasks` | GET / POST | 任务列表 / 创建任务 |
 | `/api/v1/drama/projects/:id/tasks/:taskId/cancel` | POST | 取消任务 |
 | `/api/v1/drama/projects/:id/tasks/:taskId/retry` | POST | 重试任务 |
-| `/api/v1/drama/projects/:id/storyboards/:storyboardId` | PUT | 更新分镜 |
-| `/api/v1/drama/projects/:id/storyboards/:storyboardId/media/:mediaId/select` | PUT | 选择分镜媒体 |
-| `/api/v1/drama/projects/:id/storyboards/:storyboardId/media/:mediaId` | DELETE | 删除分镜媒体 |
-| `/api/v1/drama/projects/:id/storyboards/:storyboardId/segments/import` | POST | 导入分镜片段 |
-| `/api/v1/drama/projects/:id/storyboards/:storyboardId/audio` | POST | 上传分镜音频 |
-| `/api/v1/drama/projects/:id/audio/import` | POST | 批量导入音频 |
-| `/api/v1/drama/projects/:id/assets/import` | POST | 导入角色/场景资产 |
-| `/api/v1/drama/projects/:id/assets/:assetId` | PUT | 更新资产 |
-| `/api/v1/drama/projects/:id/assets/:assetId/reference` | POST | 上传资产参考图 |
-| `/api/v1/drama/settings` | GET / PUT | 获取 / 保存短剧生成设置 |
-| `/api/v1/drama/settings/comfyui/status` | GET | 检测 ComfyUI 状态 |
+| `/api/v1/drama/settings` | GET / PUT | 获取 / 保存设置 |
+| `/api/v1/drama/settings/comfyui/status` | GET | 检查 ComfyUI |
 
-## 当前注意事项
+## 当前未实现内容
 
-- 视频与图片生成依赖外部 ComfyUI 工作流和本地模型文件，接口可用不代表模型一定就绪。
-- 分镜视频生成会优先使用片段参考图；没有参考图时，需要先生成或选择可用图片作为首帧。
-- 多人物场景建议在片段提示词中明确人数、站位、镜头距离、动作优先级和负面约束。
-- 如果生成任务失败，优先查看任务详情中的提示词日志、原始 payload 和 ComfyUI 模型检查清单。
+- TTS 任务执行器未接入，不在生成任务类型和设置页中展示。
+- 视频设置 JSON 暂不参与视频工作流参数生成。
+- 最终短剧拼接、配音合成和字幕烧录不属于当前 `drama-svc` 生成任务链路。
+
+本地启动：
+
+```bash
+cd server
+CONFIG_PATH=config/config.single.yaml go run ./cmd/drama-svc
+```

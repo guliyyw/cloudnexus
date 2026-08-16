@@ -41,9 +41,9 @@ export default function AppLayout() {
           marginTop: navHeight,
           padding: isDramaWorkbench ? (isMobile ? 8 : 16) : (isMobile ? '12px 12px 96px' : '18px 20px 108px'),
           background: 'transparent',
-          flex: isDramaWorkbench ? 'none' : 1,
-          height: isDramaWorkbench ? `calc(100vh - ${navHeight}px)` : undefined,
-          overflow: isDramaWorkbench ? 'hidden' : 'auto',
+          flex: 1,
+          height: undefined,
+          overflow: 'auto',
           minHeight: 0,
           position: 'relative',
           zIndex: 1,
@@ -54,8 +54,8 @@ export default function AppLayout() {
         <div
           style={{
             maxWidth: isDramaWorkbench ? 'none' : 1480,
-            height: isDramaWorkbench ? '100%' : undefined,
-            minHeight: isDramaWorkbench ? 0 : '100%',
+            height: undefined,
+            minHeight: '100%',
             margin: '0 auto',
             padding: isDramaWorkbench ? 0 : shellPadding,
             borderRadius: isDramaWorkbench ? 0 : (isMobile ? radius.lg : 28),

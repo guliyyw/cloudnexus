@@ -25,7 +25,10 @@ Optional `.env` values:
 ```env
 COMFYUI_PORT=8188
 COMFYUI_REF=master
-PYTORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu128
+PYTORCH_CUDA_INDEX=https://mirrors.aliyun.com/pytorch-wheels/cu130
+PYTORCH_VERSION=2.11.0
+TORCHVISION_VERSION=0.26.0
+TORCHAUDIO_VERSION=2.11.0
 ```
 
 ## Persistent Data

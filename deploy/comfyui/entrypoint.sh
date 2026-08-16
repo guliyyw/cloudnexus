@@ -40,4 +40,15 @@ if [ "${COMFYUI_DOWNLOAD_REALVISXL:-true}" = "true" ]; then
     "/app/ComfyUI/models/checkpoints/RealVisXL_V5.0_fp16.safetensors"
 fi
 
+# MiniMax H3 is opt-in because the four open-weight files are large.  The
+# model directory is persistent, so enabling this once is enough.
+if [ "${COMFYUI_DOWNLOAD_H3_MODELS:-false}" = "true" ]; then
+  h3_repo="https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
+  download_file "${h3_repo}/minimax_h3_fl2va_pruned_int8_convrot.safetensors" "/app/ComfyUI/models/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+  download_file "${h3_repo}/minimax_h3_ref2va_pruned_int8_convrot.safetensors" "/app/ComfyUI/models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+  download_file "${h3_repo}/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" "/app/ComfyUI/models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  download_file "${h3_repo}/minimax_h3_video_vae_fp16.safetensors" "/app/ComfyUI/models/vae/minimax_h3_video_vae_fp16.safetensors"
+  download_file "${h3_repo}/minimax_h3_audio_vae_fp32.safetensors" "/app/ComfyUI/models/vae/minimax_h3_audio_vae_fp32.safetensors"
+fi
+
 exec python main.py "$@"

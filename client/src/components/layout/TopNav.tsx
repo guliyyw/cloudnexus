@@ -158,6 +158,10 @@ export default function TopNav() {
   }
 
   const handleNavClick = (path: string) => {
+    if (path === '/drama') {
+      window.location.assign(`/drama?build=${encodeURIComponent(__APP_BUILD_ID__)}`)
+      return
+    }
     navigate(path)
     if (isMobile) setDrawerOpen(false)
   }

@@ -353,6 +353,7 @@ services:
       context: ../server
       args:
         SERVICE: drama-svc
+        INSTALL_FFMPEG: "true"
     environment:
       CONFIG_PATH: /app/config/config.docker.yaml
       SERVICE_VERSION: latest
@@ -399,8 +400,11 @@ services:
     build:
       context: ./comfyui
       args:
-        COMFYUI_REF: ${COMFYUI_REF:-master}
-        PYTORCH_CUDA_INDEX: ${PYTORCH_CUDA_INDEX:-https://download.pytorch.org/whl/cu128}
+        COMFYUI_REF: ${COMFYUI_REF:-v0.30.0}
+        PYTORCH_CUDA_INDEX: ${PYTORCH_CUDA_INDEX:-https://mirrors.aliyun.com/pytorch-wheels/cu130}
+        PYTORCH_VERSION: ${PYTORCH_VERSION:-2.11.0}
+        TORCHVISION_VERSION: ${TORCHVISION_VERSION:-0.26.0}
+        TORCHAUDIO_VERSION: ${TORCHAUDIO_VERSION:-2.11.0}
     command: ["--listen", "0.0.0.0", "--port", "8188"]
     ports:
       - "${COMFYUI_PORT:-8188}:8188"
@@ -408,6 +412,7 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+      COMFYUI_DOWNLOAD_H3_MODELS: ${COMFYUI_DOWNLOAD_H3_MODELS:-false}
     gpus: all
     shm_size: "8gb"
     volumes:

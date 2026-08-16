@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -111,8 +114,6 @@ func (s *DramaService) executeGenerationTask(ctx context.Context, task *model.Dr
 		return s.executeStandaloneImageTask(ctx, task, update)
 	case "image", "asset_reference":
 		return s.executeImageTask(ctx, task, update)
-	case "tts":
-		return fmt.Errorf("TTS engine will be connected in the next phase")
 	case "video":
 		return s.executeVideoTask(ctx, task, update)
 	default:
@@ -120,23 +121,42 @@ func (s *DramaService) executeGenerationTask(ctx context.Context, task *model.Dr
 	}
 }
 
+func (s *DramaService) comfyClientForTask(ctx context.Context, ownerID uint64) (*ComfyClient, *model.DramaSetting, ComfyStatus, error) {
+	setting, err := s.repo.GetSetting(ownerID)
+	if err != nil {
+		return nil, nil, ComfyStatus{}, err
+	}
+	client := NewComfyClient(setting.ComfyUIURL)
+	status := client.Status(ctx)
+	if !status.Connected {
+		return nil, nil, status, fmt.Errorf("ComfyUI is not reachable: %s", status.Error)
+	}
+	return client, setting, status, nil
+}
+
+func decodeGenerationTaskPayload(task *model.DramaTask) (generationTaskPayload, error) {
+	var payload generationTaskPayload
+	if err := json.Unmarshal([]byte(task.Payload), &payload); err != nil {
+		return generationTaskPayload{}, fmt.Errorf("invalid generation payload: %w", err)
+	}
+	return payload, nil
+}
+
 func (s *DramaService) executeVideoTask(ctx context.Context, task *model.DramaTask, update func(int, string)) error {
 	project, err := s.repo.GetProject(task.OwnerID, task.ProjectID)
 	if err != nil {
 		return err
 	}
-	setting, err := s.repo.GetSetting(task.OwnerID)
+	client, setting, _, err := s.comfyClientForTask(ctx, task.OwnerID)
 	if err != nil {
 		return err
 	}
-	client := NewComfyClient(setting.ComfyUIURL)
-	status := client.Status(ctx)
-	if !status.Connected {
-		return fmt.Errorf("ComfyUI is not reachable: %s", status.Error)
+	payload, err := decodeGenerationTaskPayload(task)
+	if err != nil {
+		return err
 	}
-	var payload generationTaskPayload
-	_ = json.Unmarshal([]byte(task.Payload), &payload)
-	return s.generateStoryboardSegmentVideos(ctx, task, client, project, payload, update)
+	videoSettings := defaultVideoGenerationSettings(setting.VideoSettings)
+	return s.generateStoryboardSegmentVideos(ctx, task, client, project, payload, videoSettings, update)
 }
 
 func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTask, update func(int, string)) error {
@@ -144,14 +164,9 @@ func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTa
 	if err != nil {
 		return err
 	}
-	setting, err := s.repo.GetSetting(task.OwnerID)
+	client, setting, status, err := s.comfyClientForTask(ctx, task.OwnerID)
 	if err != nil {
 		return err
-	}
-	client := NewComfyClient(setting.ComfyUIURL)
-	status := client.Status(ctx)
-	if !status.Connected {
-		return fmt.Errorf("ComfyUI is not reachable: %s", status.Error)
 	}
 	imageSettings := defaultImageGenerationSettings(setting.ImageSettings)
 	imageSettings.Checkpoint = selectImageCheckpoint(
@@ -166,8 +181,10 @@ func (s *DramaService) executeImageTask(ctx context.Context, task *model.DramaTa
 		status.Models["ipadapter_faceid_lora_sdxl"] &&
 		status.Models["faceid_nodes"]
 
-	var payload generationTaskPayload
-	_ = json.Unmarshal([]byte(task.Payload), &payload)
+	payload, err := decodeGenerationTaskPayload(task)
+	if err != nil {
+		return err
+	}
 	if task.Type == "asset_reference" {
 		return s.generateAssetReference(ctx, task, client, imageSettings, project, payload, update)
 	}
@@ -191,10 +208,22 @@ func (s *DramaService) generateAssetReference(ctx context.Context, task *model.D
 		prompt = asset.Description
 	}
 	styleHint := project.Description + " " + project.Settings + " " + project.Preface + " " + prompt
-	prompt = buildAssetReferencePrompt(asset, prompt, styleHint)
-	s.appendTaskPromptLog(task, asset.Name, prompt)
 	update(15, fmt.Sprintf("Generating reference image: %s", asset.Name))
-	data, filename, err := client.Generate(ctx, prompt, assetReferenceSettings(settings, styleHint), update)
+	assetSettings := assetReferenceSettings(settings, styleHint)
+	var data []byte
+	var filename string
+	if asset.Type == "character" {
+		viewPrompts := buildCharacterViewPrompts(asset, prompt, styleHint)
+		for index, viewPrompt := range viewPrompts {
+			s.appendTaskPromptLog(task, fmt.Sprintf("%s %s", asset.Name, characterViewLabel(index)), viewPrompt)
+		}
+		data, filename, err = generateCharacterTurnaround(ctx, client, settings, styleHint, viewPrompts, update)
+		prompt = strings.Join(viewPrompts, "\n")
+	} else {
+		prompt = buildAssetReferencePrompt(asset, prompt, styleHint)
+		s.appendTaskPromptLog(task, asset.Name, prompt)
+		data, filename, err = client.Generate(ctx, prompt, assetSettings, update)
+	}
 	if err != nil {
 		return err
 	}
@@ -468,7 +497,7 @@ func (s *DramaService) generateStoryboardVideos(ctx context.Context, task *model
 	return nil
 }
 
-func (s *DramaService) generateStoryboardSegmentVideos(ctx context.Context, task *model.DramaTask, client *ComfyClient, project *model.DramaProject, payload generationTaskPayload, update func(int, string)) error {
+func (s *DramaService) generateStoryboardSegmentVideos(ctx context.Context, task *model.DramaTask, client *ComfyClient, project *model.DramaProject, payload generationTaskPayload, videoSettings VideoGenerationSettings, update func(int, string)) error {
 	storyboards, err := s.repo.ListStoryboards(project.OwnerID, project.ID)
 	if err != nil {
 		return err
@@ -550,15 +579,59 @@ func (s *DramaService) generateStoryboardSegmentVideos(ctx context.Context, task
 		if err != nil {
 			return err
 		}
-		width, height := videoDimensionsFromImage(imageData)
+		width, height := videoDimensionsForSettings(imageData, videoSettings)
 		targetTitle := storyboardVideoTargetTitle(storyboard, target.Segment)
+		if target.Segment != nil && videoSettings.Continuity {
+			if previous := adjacentSegmentTarget(target.Segment.ID, storyboards, segmentsByStoryboard, -1); previous.Segment != nil {
+				if tail := selectSegmentTailFrame(previous.Segment.ID, mediaByStoryboard[previous.Storyboard.ID]); tail.FileID != 0 {
+					tailData, tailName, tailErr := s.readCloudFile(ctx, project.OwnerID, tail.FileID)
+					if tailErr != nil {
+						return fmt.Errorf("read previous segment tail frame: %w", tailErr)
+					}
+					imageData, imageName, startFrame = tailData, tailName, tail
+					width, height = videoDimensionsForSettings(imageData, videoSettings)
+				}
+			}
+		}
 		s.appendTaskPromptLog(task, targetTitle+" start frame", fmt.Sprintf("%s (file_id=%d)", startFrame.Label, startFrame.FileID))
+		var lastFrameData []byte
+		lastFrameName := ""
+		if target.Segment != nil && videoSettings.Model == "minimax_h3" && videoSettings.H3Mode == "fl2va" {
+			if next := adjacentSegmentTarget(target.Segment.ID, storyboards, segmentsByStoryboard, 1); next.Segment != nil {
+				nextAssets := filterAssetsForSegment(assets, next.Segment)
+				endFrame := selectSegmentPlannedFrame(next.Storyboard, next.Segment, mediaByStoryboard[next.Storyboard.ID], nextAssets)
+				if endFrame.FileID != 0 {
+					lastFrameData, lastFrameName, err = s.readCloudFile(ctx, project.OwnerID, endFrame.FileID)
+					if err != nil {
+						return fmt.Errorf("read H3 FL2VA last frame: %w", err)
+					}
+					prompt += "\nUse the supplied last image as the exact final frame. Preserve identity, wardrobe, props, screen direction, and scene geometry while creating one physically plausible continuous motion path from the first frame to the last frame."
+					s.appendTaskPromptLog(task, targetTitle+" last frame", fmt.Sprintf("%s (file_id=%d)", endFrame.Label, endFrame.FileID))
+				}
+			}
+		}
 		s.appendTaskPromptLog(task, targetTitle, prompt)
+		r2vReferences := make([]ComfyReferenceImage, 0)
+		if videoSettings.Model == "minimax_h3" && videoSettings.H3Mode == "r2v" {
+			for _, asset := range relevantAssets {
+				if asset.ReferenceFileID == 0 || asset.ReferenceFileID == startFrame.FileID {
+					continue
+				}
+				refData, refName, refErr := s.readCloudFile(ctx, project.OwnerID, asset.ReferenceFileID)
+				if refErr != nil {
+					return fmt.Errorf("读取 R2V 资产参考图失败（%s）：%w", asset.Name, refErr)
+				}
+				r2vReferences = append(r2vReferences, ComfyReferenceImage{Name: refName, Data: refData, Kind: asset.Type})
+				if len(r2vReferences) >= 8 {
+					break
+				}
+			}
+		}
 
 		baseProgress := index * 90 / len(targets)
 		span := 90 / len(targets)
 		update(5+baseProgress, fmt.Sprintf("Generating video %d/%d: %s", index+1, len(targets), targetTitle))
-		data, filename, err := client.GenerateVideoFromImageSized(ctx, imageData, imageName, prompt, negative, durationSec, width, height, func(localProgress int, message string) {
+		data, filename, err := client.GenerateVideoBetweenFramesSizedWithReferences(ctx, imageData, imageName, lastFrameData, lastFrameName, prompt, negative, durationSec, width, height, videoSettings, r2vReferences, func(localProgress int, message string) {
 			update(5+baseProgress+localProgress*span/100, fmt.Sprintf("Video %d/%d: %s", index+1, len(targets), message))
 		})
 		if err != nil {
@@ -600,6 +673,29 @@ func (s *DramaService) generateStoryboardSegmentVideos(ctx context.Context, task
 		}); err != nil {
 			return err
 		}
+		if target.Segment != nil && videoSettings.Continuity {
+			tailData, tailErr := extractVideoTailFrame(ctx, data)
+			if tailErr != nil {
+				return fmt.Errorf("extract %s tail frame: %w", targetTitle, tailErr)
+			}
+			tailID, tailErr := s.saveGeneratedImage(project.OwnerID, project.ID, project.Title, "images", fmt.Sprintf("storyboard-%03d-segment-%02d-tail", storyboard.Seq, target.Segment.Seq), "tail.png", tailData)
+			if tailErr != nil {
+				return tailErr
+			}
+			tailSortOrder, tailErr := s.repo.NextStoryboardMediaSort(project.OwnerID, project.ID, storyboard.ID)
+			if tailErr != nil {
+				return tailErr
+			}
+			tailMedia := model.DramaStoryboardMedia{
+				ProjectID: project.ID, StoryboardID: storyboard.ID, SegmentID: target.Segment.ID, OwnerID: project.OwnerID,
+				Kind: "image", FileID: tailID, Source: "video_tail", Prompt: "Automatically extracted final video frame", SortOrder: tailSortOrder,
+			}
+			if tailErr = s.repo.CreateStoryboardMedia(&tailMedia); tailErr != nil {
+				return tailErr
+			}
+			mediaByStoryboard[storyboard.ID] = append(mediaByStoryboard[storyboard.ID], tailMedia)
+			s.appendTaskPromptLog(task, targetTitle+" extracted tail frame", fmt.Sprintf("file_id=%d", tailID))
+		}
 		result := generationTaskResult{
 			Kind: resultKind, FileID: strconv.FormatUint(fileID, 10), StoryboardID: strconv.FormatUint(storyboard.ID, 10),
 			Title: fmt.Sprintf("%s %ds %dx%d", targetTitle, durationSec, width, height), Prompt: prompt,
@@ -624,23 +720,21 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	}
 	segmentTitle := ""
 	compositionPrompt := ""
+	visibleState := plot
 	if segment != nil {
 		segmentTitle = strings.TrimSpace(segment.Title)
 		compositionPrompt = strings.TrimSpace(segment.CompositionPrompt)
 		if strings.TrimSpace(segment.ReferencePrompt) != "" {
 			basePrompt = strings.TrimSpace(segment.ReferencePrompt)
+			// A segment reference prompt describes the final static frame. Once it
+			// exists, do not mix the action timeline (or the video prompt) back into
+			// the image request; doing so turns a still-image prompt into motion.
+			visibleState = strings.TrimSpace(segment.ReferencePrompt)
+		} else {
+			visibleState = strings.TrimSpace(segment.Action)
 		}
 		if strings.TrimSpace(segment.Scene) != "" {
 			scene = strings.TrimSpace(segment.Scene)
-		}
-		segmentPlot := strings.Join([]string{
-			strings.TrimSpace(segment.Purpose),
-			strings.TrimSpace(segment.Action),
-			strings.TrimSpace(segment.Dialogue),
-			strings.TrimSpace(segment.Shot),
-		}, " ")
-		if strings.TrimSpace(segmentPlot) != "" {
-			plot = segmentPlot
 		}
 	}
 	relevantAssets := assets
@@ -653,7 +747,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 	scenes := make([]string, 0)
 	for _, asset := range relevantAssets {
 		name := strings.TrimSpace(asset.Name)
-		description := compactText(strings.TrimSpace(asset.Description+" "+asset.ReferencePrompt), 140)
+		description := compactText(storyboardAssetPrompt(asset), 140)
 		if name == "" && description == "" {
 			continue
 		}
@@ -664,7 +758,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		if asset.Type == "character" {
 			characters = append(characters, line)
 			characterNames = append(characterNames, name)
-			characterLabels = append(characterLabels, characterSemanticLabel(name, asset.Description+" "+asset.ReferencePrompt))
+			characterLabels = append(characterLabels, characterSemanticLabel(name, storyboardAssetPrompt(asset)))
 		} else if asset.Type == "scene" {
 			scenes = append(scenes, line)
 		}
@@ -673,7 +767,7 @@ func (s *DramaService) buildStoryboardImagePrompt(project *model.DramaProject, s
 		"Mandatory frame constraints: " + mandatoryStoryboardConstraints(characterLabels, basePrompt+" "+scene),
 		"Composition priority: " + compactText(compositionPrompt, 260),
 		projectVisualStyleDirective(project, basePrompt+" "+compositionPrompt) + ", wide horizontal 16:9, coherent lighting, clear subjects and details.",
-		"Visible action and dialogue state: " + compactText(plot, 360),
+		"Visible static frame state: " + compactText(visibleState, 380),
 		"Scene: " + compactText(scene, 180),
 		"Visual details: " + compactText(basePrompt, 380),
 		"Continuity rule: preserve identities, age, hairstyle, clothing, body shape, props, and room layout from approved references. References control identity and environment only; the composition priority controls pose and framing.",
@@ -959,7 +1053,7 @@ func (s *DramaService) buildComfyReferenceImages(ctx context.Context, ownerID ui
 			Data:   data,
 			Kind:   asset.Type,
 			Weight: referenceAssetWeight(asset),
-			Prompt: strings.TrimSpace(asset.ReferencePrompt),
+			Prompt: storyboardAssetPrompt(asset),
 		})
 	}
 	return refs, nil
@@ -1067,7 +1161,7 @@ func selectStoryboardVideoStartFrame(storyboard *model.DramaStoryboard, segments
 func selectSegmentVideoStartFrame(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment, media []model.DramaStoryboardMedia, assets []model.DramaAsset) storyboardVideoStartFrame {
 	for index := len(media) - 1; index >= 0; index-- {
 		item := media[index]
-		if item.Kind == "image" && item.FileID != 0 && item.SegmentID == segment.ID {
+		if item.Kind == "image" && item.Source != "video_tail" && item.FileID != 0 && item.SegmentID == segment.ID {
 			return storyboardVideoStartFrame{FileID: item.FileID, Label: fmt.Sprintf("segment %d latest generated image", segment.Seq)}
 		}
 	}
@@ -1094,6 +1188,52 @@ func selectSegmentVideoStartFrame(storyboard *model.DramaStoryboard, segment *mo
 		}
 	}
 	return storyboardVideoStartFrame{}
+}
+
+func selectSegmentTailFrame(segmentID uint64, media []model.DramaStoryboardMedia) storyboardVideoStartFrame {
+	for index := len(media) - 1; index >= 0; index-- {
+		item := media[index]
+		if item.SegmentID == segmentID && item.Kind == "image" && item.Source == "video_tail" && item.FileID != 0 {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: "previous segment extracted tail frame"}
+		}
+	}
+	return storyboardVideoStartFrame{}
+}
+
+// selectSegmentPlannedFrame deliberately excludes extracted video tails. It is
+// used as the FL2VA destination, while tails are reserved for continuity starts.
+func selectSegmentPlannedFrame(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment, media []model.DramaStoryboardMedia, assets []model.DramaAsset) storyboardVideoStartFrame {
+	for index := len(media) - 1; index >= 0; index-- {
+		item := media[index]
+		if item.Kind == "image" && item.Source != "video_tail" && item.FileID != 0 && item.SegmentID == segment.ID {
+			return storyboardVideoStartFrame{FileID: item.FileID, Label: fmt.Sprintf("segment %d planned image", segment.Seq)}
+		}
+	}
+	if segment.ReferenceFileID != 0 {
+		return storyboardVideoStartFrame{FileID: segment.ReferenceFileID, Label: fmt.Sprintf("segment %d reference image", segment.Seq)}
+	}
+	return storyboardVideoStartFrame{}
+}
+
+func adjacentSegmentTarget(segmentID uint64, storyboards []model.DramaStoryboard, segmentsByStoryboard map[uint64][]model.DramaStoryboardSegment, offset int) storyboardVideoTarget {
+	ordered := make([]storyboardVideoTarget, 0)
+	for storyboardIndex := range storyboards {
+		storyboard := &storyboards[storyboardIndex]
+		segments := segmentsByStoryboard[storyboard.ID]
+		for segmentIndex := range segments {
+			ordered = append(ordered, storyboardVideoTarget{Storyboard: storyboard, Segment: &segments[segmentIndex]})
+		}
+	}
+	for index := range ordered {
+		if ordered[index].Segment.ID == segmentID {
+			targetIndex := index + offset
+			if targetIndex >= 0 && targetIndex < len(ordered) {
+				return ordered[targetIndex]
+			}
+			break
+		}
+	}
+	return storyboardVideoTarget{}
 }
 
 func buildSegmentVideoPrompt(storyboard *model.DramaStoryboard, segment *model.DramaStoryboardSegment, assets []model.DramaAsset) string {
@@ -1197,6 +1337,67 @@ func videoDimensionsFromImage(data []byte) (int, int) {
 	}
 	width := roundVideoDimension(832 * config.Width / config.Height)
 	return width, 832
+}
+
+func videoDimensionsForSettings(data []byte, settings VideoGenerationSettings) (int, int) {
+	if settings.Model == "minimax_h3" {
+		orientationWidth, orientationHeight := videoDimensionsFromImage(data)
+		switch settings.SizePreset {
+		case "landscape":
+			orientationWidth, orientationHeight = 16, 9
+		case "portrait":
+			orientationWidth, orientationHeight = 9, 16
+		case "square":
+			orientationWidth, orientationHeight = 1, 1
+		}
+		return normalizeH3VideoDimensions(orientationWidth, orientationHeight, settings.QualityPreset)
+	}
+	switch settings.SizePreset {
+	case "landscape":
+		return 832, 480
+	case "portrait":
+		return 480, 832
+	case "square":
+		return 832, 832
+	default:
+		return videoDimensionsFromImage(data)
+	}
+}
+
+func extractVideoTailFrame(ctx context.Context, video []byte) ([]byte, error) {
+	input, err := os.CreateTemp("", "cloudnexus-drama-tail-*.mp4")
+	if err != nil {
+		return nil, err
+	}
+	inputName := input.Name()
+	defer os.Remove(inputName)
+	if _, err = input.Write(video); err != nil {
+		input.Close()
+		return nil, err
+	}
+	if err = input.Close(); err != nil {
+		return nil, err
+	}
+	output, err := os.CreateTemp("", "cloudnexus-drama-tail-*.png")
+	if err != nil {
+		return nil, err
+	}
+	outputName := output.Name()
+	output.Close()
+	defer os.Remove(outputName)
+
+	command := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-sseof", "-0.08", "-i", inputName, "-frames:v", "1", outputName)
+	if output, commandErr := command.CombinedOutput(); commandErr != nil {
+		return nil, fmt.Errorf("ffmpeg: %w (%s)", commandErr, strings.TrimSpace(string(output)))
+	}
+	frame, err := os.ReadFile(outputName)
+	if err != nil {
+		return nil, err
+	}
+	if len(frame) == 0 {
+		return nil, fmt.Errorf("ffmpeg produced an empty tail frame")
+	}
+	return frame, nil
 }
 
 func roundVideoDimension(value int) int {
@@ -1353,12 +1554,14 @@ func buildAssetReferencePrompt(asset *model.DramaAsset, raw, styleHint string) s
 	} else if style == "illustration" {
 		prefix = "high-quality illustrated character reference, consistent art direction and proportions"
 	}
-	if asset.Type == "character" {
-		prefix += ", single character, full body or medium full shot, unobstructed face and costume"
-	} else if asset.Type == "scene" {
+	if asset.Type == "scene" {
 		prefix += ", environment only, wide establishing view, clear spatial layout, coherent lighting, no foreground character"
 	}
-	parts := []string{prefix, englishHints, referencePrompt, "no text, no watermark, no logo, no UI, no extra people unless requested"}
+	ending := "no text, no watermark, no logo, no UI"
+	if asset.Type == "scene" {
+		ending += ", no people"
+	}
+	parts := []string{prefix, englishHints, referencePrompt, ending}
 	kept := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -1369,8 +1572,126 @@ func buildAssetReferencePrompt(asset *model.DramaAsset, raw, styleHint string) s
 	return strings.Join(kept, ", ")
 }
 
+func buildCharacterViewPrompts(asset *model.DramaAsset, raw, styleHint string) []string {
+	if strings.TrimSpace(asset.ReferencePrompt) != "" {
+		raw = asset.ReferencePrompt
+	}
+	appearance := extractPromptField(raw, []string{"参考图提示词", "reference_prompt", "Reference prompt"})
+	if appearance == "" {
+		appearance = cleanPromptText(raw)
+	}
+	appearance = characterAppearancePrompt(asset, appearance)
+	style := detectDramaVisualStyle(styleHint + " " + appearance)
+	stylePrefix := "photorealistic full-body studio character reference, natural skin and fabric texture"
+	switch style {
+	case "anime":
+		stylePrefix = "polished anime full-body studio character reference, clean linework, flat consistent coloring"
+	case "3d":
+		stylePrefix = "high-quality stylized 3D full-body studio character reference, consistent materials"
+	case "illustration":
+		stylePrefix = "high-quality illustrated full-body studio character reference, consistent art direction"
+	}
+	common := strings.Join([]string{
+		stylePrefix,
+		"one single person, exactly one full-body depiction, centered",
+		"head and both feet fully visible with comfortable margin",
+		"neutral expression, closed mouth, relaxed A-pose, arms slightly away from torso, straight legs",
+		"eye-level orthographic projection, no perspective distortion",
+		"seamless light-gray studio background, flat even shadowless lighting",
+		appearance,
+		"no text, no watermark, no logo, no UI",
+	}, ", ")
+	return []string{
+		"STRICT ORIENTATION: FRONT VIEW ONLY, exact 0-degree front-facing orthographic view, face torso knees and toes point directly toward camera, symmetrical shoulders, both eyes visible, " + common,
+		"STRICT ORIENTATION: LEFT PROFILE ONLY, exact 90-degree left-facing orthographic side view, head torso hips knees and feet all point left, nose silhouette points left, exactly one eye visible, shoulders and hips seen from the side, " + common,
+		"STRICT ORIENTATION: BACK VIEW ONLY, exact 180-degree rear-facing orthographic view, head torso hips knees and heels all point directly away from camera, back of head and rear of outfit visible, face and eyes completely hidden, " + common,
+	}
+}
+
+func characterViewLabel(index int) string {
+	labels := []string{"front view", "left profile view", "rear view"}
+	if index < 0 || index >= len(labels) {
+		return "view"
+	}
+	return labels[index]
+}
+
+func generateCharacterTurnaround(ctx context.Context, client *ComfyClient, settings ImageGenerationSettings, styleHint string, prompts []string, update func(int, string)) ([]byte, string, error) {
+	if len(prompts) != 3 {
+		return nil, "", fmt.Errorf("character turnaround requires exactly three view prompts")
+	}
+	viewSettings := characterViewReferenceSettings(settings, styleHint)
+	viewSettings.Width = 512
+	viewSettings.Height = 768
+	views := make([][]byte, 0, len(prompts))
+	for index, prompt := range prompts {
+		label := characterViewLabel(index)
+		currentSettings := viewSettings
+		currentSettings.Seed = 0 // Each orientation needs independent composition noise.
+		currentSettings.NegativePrompt = strings.TrimSpace(strings.Join([]string{currentSettings.NegativePrompt, characterViewOrientationNegative(index)}, ", "))
+		update(15+index*22, fmt.Sprintf("Generating character %s %d/3", label, index+1))
+		data, _, err := client.Generate(ctx, prompt, currentSettings, func(localProgress int, message string) {
+			update(15+index*22+localProgress*20/100, fmt.Sprintf("Character %s: %s", label, message))
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("generate character %s: %w", label, err)
+		}
+		views = append(views, data)
+	}
+	update(88, "Combining front, profile, and rear views")
+	combined, err := stitchCharacterViews(views)
+	if err != nil {
+		return nil, "", err
+	}
+	return combined, "character-turnaround.png", nil
+}
+
+func characterViewOrientationNegative(index int) string {
+	switch index {
+	case 0:
+		return "side view, profile view, three-quarter view, rear view, back view, turned body, asymmetrical shoulders"
+	case 1:
+		return "front view, front-facing, rear view, back view, three-quarter view, looking at camera, both eyes visible, chest facing camera, symmetrical shoulders"
+	case 2:
+		return "front view, front-facing, side view, profile view, three-quarter view, visible face, visible eyes, looking at camera, nose visible, chest visible, toes visible"
+	default:
+		return ""
+	}
+}
+
+func stitchCharacterViews(encodedViews [][]byte) ([]byte, error) {
+	if len(encodedViews) != 3 {
+		return nil, fmt.Errorf("stitch character views: expected 3 images, got %d", len(encodedViews))
+	}
+	decoded := make([]image.Image, 0, len(encodedViews))
+	panelWidth, panelHeight := 0, 0
+	for index, encoded := range encodedViews {
+		view, _, err := image.Decode(bytes.NewReader(encoded))
+		if err != nil {
+			return nil, fmt.Errorf("decode character %s: %w", characterViewLabel(index), err)
+		}
+		width, height := view.Bounds().Dx(), view.Bounds().Dy()
+		if index == 0 {
+			panelWidth, panelHeight = width, height
+		} else if width != panelWidth || height != panelHeight {
+			return nil, fmt.Errorf("stitch character views: inconsistent image sizes %dx%d and %dx%d", panelWidth, panelHeight, width, height)
+		}
+		decoded = append(decoded, view)
+	}
+	canvas := image.NewRGBA(image.Rect(0, 0, panelWidth*3, panelHeight))
+	for index, view := range decoded {
+		target := image.Rect(index*panelWidth, 0, (index+1)*panelWidth, panelHeight)
+		draw.Draw(canvas, target, view, view.Bounds().Min, draw.Src)
+	}
+	var output bytes.Buffer
+	if err := png.Encode(&output, canvas); err != nil {
+		return nil, fmt.Errorf("encode character turnaround: %w", err)
+	}
+	return output.Bytes(), nil
+}
+
 func assetReferenceSettings(settings ImageGenerationSettings, styleHint string) ImageGenerationSettings {
-	styleNegative := "text, watermark, logo, UI, duplicate subject, cropped subject"
+	styleNegative := "text, watermark, logo, UI, cropped subject"
 	switch detectDramaVisualStyle(styleHint) {
 	case "realistic":
 		styleNegative += ", anime, illustration, painting, sketch, plastic skin, doll"
@@ -1381,6 +1702,56 @@ func assetReferenceSettings(settings ImageGenerationSettings, styleHint string) 
 	}
 	settings.NegativePrompt = strings.TrimSpace(strings.Join([]string{settings.NegativePrompt, styleNegative}, ", "))
 	return settings
+}
+
+func characterViewReferenceSettings(settings ImageGenerationSettings, styleHint string) ImageGenerationSettings {
+	settings = assetReferenceSettings(settings, styleHint)
+	viewNegative := "multiple people, two people, three people, duplicate person, repeated person, extra body, extra head, extra limbs, collage, triptych, contact sheet, model sheet, split screen, multiple panels, panel border, cropped head, cropped feet, close-up, bust shot, action pose, bent legs, props, scenery, labels, annotations"
+	settings.NegativePrompt = strings.TrimSpace(strings.Join([]string{settings.NegativePrompt, viewNegative}, ", "))
+	return settings
+}
+
+func characterAppearancePrompt(asset *model.DramaAsset, referencePrompt string) string {
+	referencePrompt = strings.TrimSpace(referencePrompt)
+	lower := strings.ToLower(referencePrompt)
+	if strings.Contains(lower, "character turnaround") || strings.Contains(lower, "model sheet") || strings.Contains(lower, "triptych") || strings.Contains(lower, "contact sheet") || strings.Contains(lower, "three views") || strings.Contains(lower, "exactly 3 panels") || strings.Contains(lower, "exactly three full-body") {
+		// The layout portion is regenerated canonically above. Asset Description
+		// contains the stable age/face/hair/clothing fields and is safer than
+		// attempting to preserve arbitrary, possibly contradictory sheet syntax.
+		referencePrompt = ""
+	}
+	if referencePrompt != "" {
+		return compactText(referencePrompt, 700)
+	}
+	return compactText(characterVisualDescription(asset.Description), 700)
+}
+
+func characterVisualDescription(description string) string {
+	visualLabels := []string{"年龄", "外貌", "服装", "age", "appearance", "clothing"}
+	lines := strings.Split(strings.ReplaceAll(description, "；", "\n"), "\n")
+	visual := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+		for _, label := range visualLabels {
+			if strings.HasPrefix(lower, strings.ToLower(label)+"：") || strings.HasPrefix(lower, strings.ToLower(label)+":") {
+				visual = append(visual, line)
+				break
+			}
+		}
+	}
+	if len(visual) > 0 {
+		return strings.Join(visual, ", ")
+	}
+	return strings.TrimSpace(description)
+}
+
+func storyboardAssetPrompt(asset model.DramaAsset) string {
+	if asset.Type == "character" {
+		// Never leak the character-sheet layout into a cinematic storyboard.
+		return compactText(asset.Description, 320)
+	}
+	return compactText(strings.TrimSpace(asset.Description+" "+asset.ReferencePrompt), 360)
 }
 
 func storyboardImageSettings(settings ImageGenerationSettings, segment *model.DramaStoryboardSegment) ImageGenerationSettings {

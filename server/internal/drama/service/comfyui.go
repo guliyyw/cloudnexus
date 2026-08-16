@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -37,6 +38,43 @@ type ImageGenerationSettings struct {
 	Scheduler      string  `json:"scheduler"`
 	NegativePrompt string  `json:"negative_prompt"`
 	UseFaceID      bool    `json:"-"`
+	Seed           int64   `json:"-"`
+}
+
+// VideoGenerationSettings is persisted in DramaSetting.VideoSettings.  The
+// JSON field is kept for backwards compatibility with existing installations.
+type VideoGenerationSettings struct {
+	Model          string `json:"model"`
+	H3Mode         string `json:"h3_mode"`
+	AudioMode      string `json:"audio_mode"`
+	H3RefImageSize string `json:"h3_ref_image_size"`
+	QualityPreset  string `json:"quality_preset"`
+	SizePreset     string `json:"size_preset"`
+	Continuity     bool   `json:"continuity"`
+}
+
+func defaultVideoGenerationSettings(raw string) VideoGenerationSettings {
+	settings := VideoGenerationSettings{Model: "wan22", H3Mode: "i2v", AudioMode: "external", H3RefImageSize: "match", QualityPreset: "standard", SizePreset: "auto", Continuity: true}
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &settings)
+	}
+	if settings.Model != "minimax_h3" && settings.Model != "wan22" {
+		settings.Model = "wan22"
+	}
+	if settings.H3Mode != "i2v" && settings.H3Mode != "fl2va" && settings.H3Mode != "r2v" {
+		settings.H3Mode = "i2v"
+	}
+	if settings.AudioMode != "native" && settings.AudioMode != "external" && settings.AudioMode != "none" {
+		settings.AudioMode = "external"
+	}
+	if settings.H3RefImageSize != "max" {
+		settings.H3RefImageSize = "match"
+	}
+	settings.QualityPreset = normalizeVideoQualityPreset(settings.QualityPreset)
+	if settings.SizePreset != "landscape" && settings.SizePreset != "portrait" && settings.SizePreset != "square" {
+		settings.SizePreset = "auto"
+	}
+	return settings
 }
 
 type ComfyImage struct {
@@ -107,6 +145,12 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 	status.Models["wan22_low_noise"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors")
 	status.Models["wan22_text_encoder"] = objectOptionContains(objectInfo, "CLIPLoader", "clip_name", "umt5_xxl_fp8_e4m3fn_scaled.safetensors")
 	status.Models["wan_vae"] = objectOptionContains(objectInfo, "VAELoader", "vae_name", "wan_2.1_vae.safetensors")
+	status.Models["minimax_h3_nodes"] = objectInfoHasNodes(objectInfo, "MiniMaxH3ImageToVideo", "MiniMaxH3ReferenceToVideo", "MiniMaxH3SigmaShift")
+	status.Models["minimax_h3_fl2va"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "minimax_h3_fl2va_pruned_int8_convrot.safetensors")
+	status.Models["minimax_h3_ref2va"] = objectOptionContains(objectInfo, "UNETLoader", "unet_name", "minimax_h3_ref2va_pruned_int8_convrot.safetensors")
+	status.Models["minimax_h3_text_encoder"] = objectOptionContains(objectInfo, "CLIPLoader", "clip_name", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")
+	status.Models["minimax_h3_video_vae"] = objectOptionContains(objectInfo, "VAELoader", "vae_name", "minimax_h3_video_vae_fp16.safetensors")
+	status.Models["minimax_h3_audio_vae"] = objectOptionContains(objectInfo, "VAELoader", "vae_name", "minimax_h3_audio_vae_fp32.safetensors")
 	for name := range objectInfo {
 		lower := strings.ToLower(name)
 		if strings.Contains(lower, "ipadapter") || strings.Contains(lower, "ip_adapter") {
@@ -136,6 +180,21 @@ func (c *ComfyClient) Status(ctx context.Context) ComfyStatus {
 		if !status.Models[key] {
 			status.Missing = append(status.Missing, label)
 		}
+	}
+	if status.Models["minimax_h3_nodes"] {
+		for key, label := range map[string]string{
+			"minimax_h3_fl2va":        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+			"minimax_h3_ref2va":       "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+			"minimax_h3_text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+			"minimax_h3_video_vae":    "minimax_h3_video_vae_fp16.safetensors",
+			"minimax_h3_audio_vae":    "minimax_h3_audio_vae_fp32.safetensors",
+		} {
+			if !status.Models[key] {
+				status.Missing = append(status.Missing, label)
+			}
+		}
+	} else {
+		status.Missing = append(status.Missing, "MiniMax H3 ComfyUI 节点（需 ComfyUI 0.30.0+）")
 	}
 	return status
 }
@@ -174,7 +233,27 @@ func (c *ComfyClient) GenerateWithReferences(ctx context.Context, prompt string,
 		return c.Generate(ctx, prompt, settings, progress)
 	}
 	workflow := systemTextToImageIPAdapterWorkflow(prompt, settings, uploaded, references)
-	return c.generateWithWorkflow(ctx, workflow, progress)
+	data, filename, err := c.generateWithWorkflow(ctx, workflow, progress)
+	if err == nil || !settings.UseFaceID || !isFaceIDNoFaceError(err.Error()) {
+		return data, filename, err
+	}
+
+	// FaceID is an optional identity-strengthening path. A generated character
+	// reference may be a full-body shot, have an occluded/small face, or depict a
+	// non-human character. InsightFace treats all of those as fatal, so retry the
+	// same prompt and uploaded references with the regular portrait IPAdapter.
+	// This preserves character appearance without failing the entire storyboard.
+	progress(20, "FaceID 未在角色参考图中检测到清晰人脸，正在使用普通角色参考模式重试")
+	fallbackSettings := settings
+	fallbackSettings.UseFaceID = false
+	fallbackWorkflow := systemTextToImageIPAdapterWorkflow(prompt, fallbackSettings, uploaded, references)
+	return c.generateWithWorkflow(ctx, fallbackWorkflow, progress)
+}
+
+func isFaceIDNoFaceError(message string) bool {
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "insightface") &&
+		(strings.Contains(lower, "no face detected") || strings.Contains(lower, "no face found"))
 }
 
 func (c *ComfyClient) GenerateVideoFromImage(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec int, progress func(int, string)) ([]byte, string, error) {
@@ -182,18 +261,74 @@ func (c *ComfyClient) GenerateVideoFromImage(ctx context.Context, image []byte, 
 }
 
 func (c *ComfyClient) GenerateVideoFromImageSized(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec, width, height int, progress func(int, string)) ([]byte, string, error) {
+	return c.GenerateVideoFromImageSizedWithSettings(ctx, image, imageName, prompt, negativePrompt, durationSec, width, height, defaultVideoGenerationSettings(""), progress)
+}
+
+func (c *ComfyClient) GenerateVideoFromImageSizedWithSettings(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec, width, height int, settings VideoGenerationSettings, progress func(int, string)) ([]byte, string, error) {
+	return c.GenerateVideoFromImageSizedWithReferences(ctx, image, imageName, prompt, negativePrompt, durationSec, width, height, settings, nil, progress)
+}
+
+func (c *ComfyClient) GenerateVideoFromImageSizedWithReferences(ctx context.Context, image []byte, imageName, prompt, negativePrompt string, durationSec, width, height int, settings VideoGenerationSettings, references []ComfyReferenceImage, progress func(int, string)) ([]byte, string, error) {
+	return c.GenerateVideoBetweenFramesSizedWithReferences(ctx, image, imageName, nil, "", prompt, negativePrompt, durationSec, width, height, settings, references, progress)
+}
+
+// GenerateVideoBetweenFramesSizedWithReferences optionally constrains the H3
+// FL2VA output with a final frame. Other modes safely ignore the final frame.
+func (c *ComfyClient) GenerateVideoBetweenFramesSizedWithReferences(ctx context.Context, image []byte, imageName string, lastImage []byte, lastImageName, prompt, negativePrompt string, durationSec, width, height int, settings VideoGenerationSettings, references []ComfyReferenceImage, progress func(int, string)) ([]byte, string, error) {
 	uploadedName, err := c.UploadImage(ctx, image, imageName)
 	if err != nil {
 		return nil, "", fmt.Errorf("上传视频首帧到 ComfyUI 失败：%w", err)
 	}
-	workflow, err := c.imageToVideoWorkflow(ctx, uploadedName, prompt, negativePrompt, durationSec, width, height)
+	uploadedReferences := []string{uploadedName}
+	if settings.Model == "minimax_h3" && settings.H3Mode == "r2v" {
+		for index, reference := range references {
+			if len(uploadedReferences) >= 9 || len(reference.Data) == 0 {
+				break
+			}
+			name := reference.Name
+			if strings.TrimSpace(name) == "" {
+				name = fmt.Sprintf("h3-reference-%d.png", index+1)
+			}
+			uploadedReference, uploadErr := c.UploadImage(ctx, reference.Data, name)
+			if uploadErr != nil {
+				return nil, "", fmt.Errorf("上传 H3 R2V 参考图失败：%w", uploadErr)
+			}
+			uploadedReferences = append(uploadedReferences, uploadedReference)
+		}
+	}
+	uploadedLastName := ""
+	if settings.Model == "minimax_h3" && settings.H3Mode == "fl2va" && len(lastImage) > 0 {
+		if strings.TrimSpace(lastImageName) == "" {
+			lastImageName = "h3-last-frame.png"
+		}
+		uploadedLastName, err = c.UploadImage(ctx, lastImage, lastImageName)
+		if err != nil {
+			return nil, "", fmt.Errorf("upload H3 FL2VA last frame: %w", err)
+		}
+	}
+	workflow, err := c.imageToVideoWorkflow(ctx, uploadedName, uploadedLastName, prompt, negativePrompt, durationSec, width, height, settings, uploadedReferences)
 	if err != nil {
 		return nil, "", err
 	}
 	return c.generateVideoWithWorkflow(ctx, workflow, progress)
 }
 
-func (c *ComfyClient) imageToVideoWorkflow(ctx context.Context, uploadedName, prompt, negativePrompt string, durationSec, width, height int) (map[string]interface{}, error) {
+func (c *ComfyClient) imageToVideoWorkflow(ctx context.Context, uploadedName, lastFrameName, prompt, negativePrompt string, durationSec, width, height int, settings VideoGenerationSettings, referenceNames []string) (map[string]interface{}, error) {
+	if settings.Model == "minimax_h3" {
+		settings.QualityPreset = normalizeVideoQualityPreset(settings.QualityPreset)
+		if settings.QualityPreset == "fast" {
+			settings.AudioMode = "external"
+		}
+		key := "minimax_h3_fl2va"
+		if settings.H3Mode == "r2v" {
+			key = "minimax_h3_ref2va"
+		}
+		status := c.Status(ctx)
+		if !status.Models["minimax_h3_nodes"] || !status.Models[key] || !status.Models["minimax_h3_text_encoder"] || !status.Models["minimax_h3_video_vae"] || ((settings.H3Mode == "r2v" || settings.AudioMode == "native") && !status.Models["minimax_h3_audio_vae"]) {
+			return nil, fmt.Errorf("MiniMax H3 组件或模型未准备完整，请检查 ComfyUI 状态: %s", strings.Join(status.Missing, ", "))
+		}
+		return systemMiniMaxH3ImageToVideoWorkflow(uploadedName, lastFrameName, prompt, negativePrompt, durationSec, width, height, settings, referenceNames), nil
+	}
 	ok, err := c.hasLocalWan22I2V(ctx)
 	if err == nil && ok {
 		return systemWan22LocalImageToVideoWorkflow(uploadedName, prompt, negativePrompt, durationSec, width, height), nil
@@ -437,7 +572,7 @@ func (c *ComfyClient) doJSON(ctx context.Context, method, endpoint string, body 
 }
 
 func systemTextToImageWorkflow(prompt string, settings ImageGenerationSettings) map[string]interface{} {
-	seed := time.Now().UnixNano() & 0x7fffffffffffffff
+	seed := imageGenerationSeed(settings)
 	return map[string]interface{}{
 		"1": map[string]interface{}{"class_type": "CheckpointLoaderSimple", "inputs": map[string]interface{}{"ckpt_name": settings.Checkpoint}},
 		"2": map[string]interface{}{"class_type": "CLIPTextEncode", "inputs": map[string]interface{}{"text": prompt, "clip": []interface{}{"1", 1}}},
@@ -457,7 +592,7 @@ func systemTextToImageIPAdapterWorkflow(prompt string, settings ImageGenerationS
 	if workflow, err := systemRegionalStoryboardWorkflow(prompt, settings, uploaded, references); err == nil {
 		return workflow
 	}
-	seed := time.Now().UnixNano() & 0x7fffffffffffffff
+	seed := imageGenerationSeed(settings)
 	workflow := map[string]interface{}{
 		"1": map[string]interface{}{"class_type": "CheckpointLoaderSimple", "inputs": map[string]interface{}{"ckpt_name": settings.Checkpoint}},
 		"2": map[string]interface{}{"class_type": "CLIPTextEncode", "inputs": map[string]interface{}{"text": prompt, "clip": []interface{}{"1", 1}}},
@@ -524,6 +659,13 @@ func systemTextToImageIPAdapterWorkflow(prompt string, settings ImageGenerationS
 	workflow["6"] = map[string]interface{}{"class_type": "VAEDecode", "inputs": map[string]interface{}{"samples": []interface{}{"5", 0}, "vae": []interface{}{"1", 2}}}
 	workflow["7"] = map[string]interface{}{"class_type": "SaveImage", "inputs": map[string]interface{}{"filename_prefix": "cloudnexus_drama", "images": []interface{}{"6", 0}}}
 	return workflow
+}
+
+func imageGenerationSeed(settings ImageGenerationSettings) int64 {
+	if settings.Seed > 0 {
+		return settings.Seed
+	}
+	return time.Now().UnixNano() & 0x7fffffffffffffff
 }
 
 func systemWanImageToVideoWorkflow(imageName, prompt, negativePrompt string, durationSec int) map[string]interface{} {
@@ -597,6 +739,133 @@ func systemWan22LocalImageToVideoWorkflow(imageName, prompt, negativePrompt stri
 		"14": map[string]interface{}{"class_type": "CreateVideo", "inputs": map[string]interface{}{"images": []interface{}{"13", 0}, "fps": fps}},
 		"15": map[string]interface{}{"class_type": "SaveVideo", "inputs": map[string]interface{}{"video": []interface{}{"14", 0}, "filename_prefix": "cloudnexus_drama_video", "format": "mp4", "codec": "h264"}},
 	}
+}
+
+// systemMiniMaxH3ImageToVideoWorkflow follows ComfyUI's native AV workflow:
+// H3 produces video and audio latents together, then the audio branch is
+// optionally discarded so the existing drama pipeline can keep external TTS.
+func systemMiniMaxH3ImageToVideoWorkflow(imageName, lastFrameName, prompt, negativePrompt string, durationSec, width, height int, settings VideoGenerationSettings, referenceNames []string) map[string]interface{} {
+	settings.QualityPreset = normalizeVideoQualityPreset(settings.QualityPreset)
+	width, height = normalizeH3VideoDimensions(width, height, settings.QualityPreset)
+	length := normalizeH3VideoLength(durationSec)
+	steps := h3VideoSteps(settings.QualityPreset)
+	if settings.QualityPreset == "fast" {
+		settings.AudioMode = "external"
+	}
+	modelName := "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+	conditioning := "MiniMaxH3ImageToVideo"
+	if settings.H3Mode == "r2v" {
+		modelName = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+		conditioning = "MiniMaxH3ReferenceToVideo"
+	}
+	workflow := map[string]interface{}{
+		"1":  map[string]interface{}{"class_type": "UNETLoader", "inputs": map[string]interface{}{"unet_name": modelName, "weight_dtype": "default"}},
+		"2":  map[string]interface{}{"class_type": "CLIPLoader", "inputs": map[string]interface{}{"clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "type": "minimax", "device": "default"}},
+		"3":  map[string]interface{}{"class_type": "VAELoader", "inputs": map[string]interface{}{"vae_name": "minimax_h3_video_vae_fp16.safetensors"}},
+		"4":  map[string]interface{}{"class_type": "VAELoader", "inputs": map[string]interface{}{"vae_name": "minimax_h3_audio_vae_fp32.safetensors"}},
+		"5":  map[string]interface{}{"class_type": "LoadImage", "inputs": map[string]interface{}{"image": imageName}},
+		"6":  map[string]interface{}{"class_type": "MiniMaxH3SigmaShift", "inputs": map[string]interface{}{"model": []interface{}{"1", 0}, "shift_video": 12.0, "shift_audio": 3.0}},
+		"7":  map[string]interface{}{"class_type": conditioning, "inputs": map[string]interface{}{"clip": []interface{}{"2", 0}, "vae": []interface{}{"3", 0}, "prompt": strings.TrimSpace(prompt), "width": width, "height": height, "length": length}},
+		"8":  map[string]interface{}{"class_type": "RandomNoise", "inputs": map[string]interface{}{"noise_seed": time.Now().UnixNano() & 0x7fffffffffffffff}},
+		"9":  map[string]interface{}{"class_type": "KSamplerSelect", "inputs": map[string]interface{}{"sampler_name": "res_multistep"}},
+		"10": map[string]interface{}{"class_type": "BasicScheduler", "inputs": map[string]interface{}{"model": []interface{}{"6", 0}, "scheduler": "simple", "steps": steps, "denoise": 1.0}},
+		"11": map[string]interface{}{"class_type": "BasicGuider", "inputs": map[string]interface{}{"model": []interface{}{"6", 0}, "conditioning": []interface{}{"7", 0}}},
+		"12": map[string]interface{}{"class_type": "SamplerCustomAdvanced", "inputs": map[string]interface{}{"noise": []interface{}{"8", 0}, "guider": []interface{}{"11", 0}, "sampler": []interface{}{"9", 0}, "sigmas": []interface{}{"10", 0}, "latent_image": []interface{}{"7", 1}}},
+		"13": map[string]interface{}{"class_type": "VAEDecode", "inputs": map[string]interface{}{"samples": []interface{}{"12", 0}, "vae": []interface{}{"3", 0}}},
+		"14": map[string]interface{}{"class_type": "CreateVideo", "inputs": map[string]interface{}{"images": []interface{}{"13", 0}, "fps": 24.0}},
+		"15": map[string]interface{}{"class_type": "SaveVideo", "inputs": map[string]interface{}{"video": []interface{}{"14", 0}, "filename_prefix": "cloudnexus_h3_video", "format": "mp4", "codec": "h264"}},
+	}
+	// I2V needs the uploaded frame; R2V presents it as Picture 1.  The
+	// conditioning node's dynamic reference input is an API input name.
+	if settings.H3Mode == "r2v" {
+		workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})["audio_vae"] = []interface{}{"4", 0}
+		workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})["ref_image_size"] = settings.H3RefImageSize
+		if len(referenceNames) == 0 {
+			referenceNames = []string{imageName}
+		}
+		workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})["prompt"] = "Use <Picture 1> as the primary shot composition and use additional Picture references for identity and scene consistency. " + strings.TrimSpace(prompt)
+		for index, referenceName := range referenceNames {
+			if index >= 9 {
+				break
+			}
+			if index == 0 && referenceName == imageName {
+				workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})[fmt.Sprintf("ref_image_%d", index+1)] = []interface{}{"5", 0}
+				continue
+			}
+			loaderID := fmt.Sprintf("18%d", index+1)
+			workflow[loaderID] = map[string]interface{}{"class_type": "LoadImage", "inputs": map[string]interface{}{"image": referenceName}}
+			workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})[fmt.Sprintf("ref_image_%d", index+1)] = []interface{}{loaderID, 0}
+		}
+	} else {
+		workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})["first_frame"] = []interface{}{"5", 0}
+		if settings.H3Mode == "fl2va" && strings.TrimSpace(lastFrameName) != "" {
+			workflow["18"] = map[string]interface{}{"class_type": "LoadImage", "inputs": map[string]interface{}{"image": lastFrameName}}
+			workflow["7"].(map[string]interface{})["inputs"].(map[string]interface{})["last_frame"] = []interface{}{"18", 0}
+		}
+	}
+	if settings.AudioMode == "native" {
+		workflow["16"] = map[string]interface{}{"class_type": "VAEDecodeAudio", "inputs": map[string]interface{}{"samples": []interface{}{"12", 0}, "vae": []interface{}{"4", 0}}}
+		workflow["17"] = map[string]interface{}{"class_type": "CreateVideo", "inputs": map[string]interface{}{"images": []interface{}{"13", 0}, "audio": []interface{}{"16", 0}, "fps": 24.0}}
+		workflow["15"].(map[string]interface{})["inputs"].(map[string]interface{})["video"] = []interface{}{"17", 0}
+	}
+	return workflow
+}
+
+func normalizeVideoQualityPreset(value string) string {
+	switch value {
+	case "fast", "standard", "final":
+		return value
+	default:
+		return "standard"
+	}
+}
+
+func h3VideoSteps(quality string) int {
+	switch normalizeVideoQualityPreset(quality) {
+	case "fast":
+		return 8
+	case "final":
+		return 20
+	default:
+		return 12
+	}
+}
+
+func normalizeH3VideoDimensions(width, height int, quality string) (int, int) {
+	if width <= 0 || height <= 0 {
+		width, height = 9, 16
+	}
+	shortSide, longSide, squareSide := 576, 1024, 768
+	switch normalizeVideoQualityPreset(quality) {
+	case "fast":
+		shortSide, longSide, squareSide = 512, 896, 512
+	case "final":
+		shortSide, longSide, squareSide = 768, 1344, 1024
+	}
+	if width == height {
+		return squareSide, squareSide
+	}
+	if width > height {
+		return longSide, shortSide
+	}
+	return shortSide, longSide
+}
+
+func normalizeH3VideoLength(durationSec int) int {
+	if durationSec < 1 {
+		durationSec = 1
+	}
+	if durationSec > 15 {
+		durationSec = 15
+	}
+	frames := int(math.Round(float64(durationSec) * 24))
+	if frames < 5 {
+		frames = 5
+	}
+	for frames%17 != 5 {
+		frames++
+	}
+	return frames
 }
 
 func normalizeWanVideoDimensions(width, height int) (int, int) {

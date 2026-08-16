@@ -17,8 +17,11 @@ import {
   Row,
   Select,
   Space,
+  Spin,
+  Switch,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -30,6 +33,8 @@ import {
   EditOutlined,
   ImportOutlined,
   LeftOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   PlusOutlined,
   RedoOutlined,
   RightOutlined,
@@ -82,6 +87,16 @@ import { getPreviewUrl } from '../services/file'
 const { Text, Title } = Typography
 const { TextArea } = Input
 
+type H3PromptMode = 't2va' | 'i2va' | 'fl2va' | 'l2va' | 'ref2va'
+
+const h3PromptModeOptions = [
+  { value: 't2va', label: 'T2VA 文生视频' },
+  { value: 'i2va', label: 'I2VA 首帧生视频' },
+  { value: 'fl2va', label: 'FL2VA 首尾帧' },
+  { value: 'l2va', label: 'L2VA 末帧生视频' },
+  { value: 'ref2va', label: 'Ref2VA 多参考图' },
+]
+
 const defaultSuffix = '皮肤毛孔清晰，光影颗粒，新国风写实风格，电影级构图，细节丰富，高清质感'
 
 export default function DramaPage() {
@@ -100,11 +115,15 @@ export default function DramaPage() {
   const [taskDetail, setTaskDetail] = useState<DramaTask | null>(null)
   const [suffix, setSuffix] = useState(defaultSuffix)
   const [setting, setSetting] = useState<DramaSetting | null>(null)
+  const [settingLoading, setSettingLoading] = useState(true)
+  const [settingError, setSettingError] = useState('')
   const [comfyStatus, setComfyStatus] = useState<ComfyUIStatus | null>(null)
   const [comfyChecking, setComfyChecking] = useState(false)
   const [aiAssetText, setAiAssetText] = useState('')
   const [aiSegmentText, setAiSegmentText] = useState('')
   const [activeTab, setActiveTab] = useState('script')
+  const [h3PromptMode, setH3PromptMode] = useState<H3PromptMode>('i2va')
+  const [projectPanelCollapsed, setProjectPanelCollapsed] = useState(() => localStorage.getItem('drama_project_panel_collapsed') === '1')
   const [imageCount, setImageCount] = useState(3)
   const [projectForm] = Form.useForm()
   const [settingForm] = Form.useForm()
@@ -127,13 +146,24 @@ export default function DramaPage() {
     [detail?.segments, current?.id],
   )
   const modifiedCount = useMemo(() => detail?.storyboards.filter((item) => item.modified).length || 0, [detail])
+  const activeTaskKey = useMemo(
+    () => detail?.tasks.filter((item) => item.status === 'pending' || item.status === 'running').map((item) => item.id).sort().join(',') || '',
+    [detail?.tasks],
+  )
 
   useEffect(() => {
     if (!accessLoading && canRead) {
       loadProjects()
-      loadSetting()
     }
   }, [accessLoading, canRead, keyword, sort])
+
+  useEffect(() => {
+    if (!accessLoading && canRead) loadSetting()
+  }, [accessLoading, canRead])
+
+  useEffect(() => {
+    localStorage.setItem('drama_project_panel_collapsed', projectPanelCollapsed ? '1' : '0')
+  }, [projectPanelCollapsed])
 
   useEffect(() => {
     const projectID = detail?.project.id
@@ -173,6 +203,25 @@ export default function DramaPage() {
     return () => window.clearInterval(timer)
   }, [activeTab, detail?.project.id])
 
+  // WebSocket is the fast path, but asset pages must still update if a socket
+  // event is missed during a long ComfyUI generation or browser reconnect.
+  useEffect(() => {
+    const projectID = detail?.project.id
+    if (!projectID || !activeTaskKey) return
+    const timer = window.setInterval(async () => {
+      try {
+        const tasks = await listDramaTasks(projectID)
+        const activeIDs = new Set(activeTaskKey.split(','))
+        const reachedTerminalState = tasks.some((task) => activeIDs.has(task.id) && ['done', 'failed', 'canceled'].includes(task.status))
+        setDetail((previous) => previous?.project.id === projectID ? { ...previous, tasks } : previous)
+        if (reachedTerminalState) await refreshGeneratedResults(projectID)
+      } catch {
+        // Retry while the task remains active.
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [detail?.project.id, activeTaskKey])
+
   const loadProjects = async () => {
     setLoading(true)
     try {
@@ -189,12 +238,16 @@ export default function DramaPage() {
   }
 
   const loadSetting = async () => {
+    setSettingLoading(true)
+    setSettingError('')
     try {
       const data = await getDramaSetting()
       setSetting(data)
-      settingForm.setFieldsValue({ ...data, ...parseImageSettings(data.image_settings) })
+      settingForm.setFieldsValue({ ...data, ...parseImageSettings(data.image_settings), ...parseVideoSettings(data.video_settings) })
     } catch {
-      // Keep the workbench usable if settings are unavailable.
+      setSettingError('系统设置读取失败，请检查短剧服务后重试。')
+    } finally {
+      setSettingLoading(false)
     }
   }
 
@@ -210,7 +263,7 @@ export default function DramaPage() {
           segments: remote.segments || [],
           assets: previous.assets.map((asset) => {
             const next = remote.assets.find((item) => item.id === asset.id)
-            return next ? { ...asset, reference_file_id: next.reference_file_id } : asset
+            return next ? { ...asset, ...next } : asset
           }),
           storyboards: previous.storyboards.map((storyboard) => {
             const next = remote.storyboards.find((item) => item.id === storyboard.id)
@@ -419,12 +472,19 @@ export default function DramaPage() {
       scheduler: values.scheduler || 'normal',
       negative_prompt: values.negative_prompt || '',
     }
+    const videoSettings = {
+      model: values.video_model || 'wan22',
+      h3_mode: values.h3_mode || 'i2v',
+      audio_mode: values.video_audio_mode || 'external',
+      h3_ref_image_size: values.h3_ref_image_size || 'match',
+      quality_preset: values.video_quality_preset || 'standard',
+      size_preset: values.video_size_preset || 'auto',
+      continuity: values.video_continuity !== false,
+    }
     const next = await saveDramaSetting({
       comfyui_url: values.comfyui_url,
       image_settings: JSON.stringify(imageSettings),
-      tts_engine: values.tts_engine,
-      tts_config: values.tts_config,
-      video_settings: values.video_settings,
+      video_settings: JSON.stringify(videoSettings),
       storage_root: values.storage_root,
     })
     setSetting(next)
@@ -474,7 +534,7 @@ export default function DramaPage() {
       "personality": "气质与表演状态",
       "voice_suggestion": "适合的中文音色建议",
       "voice_name": "可选：zh-CN-XiaoxiaoNeural 或 zh-CN-YunxiNeural 等",
-      "reference_prompt": "可直接发给 ComfyUI/SDXL 的角色参考图提示词"
+      "reference_prompt": "用于生成角色三视图的英文稳定外观描述，只写年龄、族裔、性别、脸型、五官、发型、体态、服装、鞋和配饰"
     }
   ],
   "scenes": [
@@ -490,13 +550,16 @@ export default function DramaPage() {
 要求：
 1. 角色名称保持短且稳定，避免别名重复。
 2. 外貌、服装、场景细节要适合做连续分镜一致性参考。
-3. reference_prompt 必须是“适合 SDXL 的短提示词”，不要写成长篇档案，不要包含解释、字段名或换行。
-4. reference_prompt 使用中英混合：开头先给英文强约束，再接中文关键细节。角色提示词格式参考：
-   modern realistic cinematic photo of a [age] [Chinese man/woman], [face/hair/body], [exact clothing], [accessories], clear face, full body or medium full shot, natural skin texture, warm indoor lighting, 影视感, 写实摄影, 一致性保持
-5. 现代都市/家庭/职场短剧角色必须保留现代现实服装。禁止把西装、衬衫、连衣裙、家居服改写成铠甲、长袍、斗篷、奇幻服装、游戏角色、概念设定图。
-6. 场景 reference_prompt 要明确空间类型、时代、布置、光线和镜头，如：realistic cinematic environment photo, modern apartment living room, warm indoor light, clear spatial layout, no people, 影视感。
-7. 如果原文没有奇幻、古装、科幻设定，不要生成 fantasy、medieval、armor、knight、sci-fi 等词。
-8. 只输出 JSON。
+3. 角色 reference_prompt 必须使用英文，控制在 35-65 个英文单词，只描述一个可重复生成的固定造型。推荐顺序：年龄与族裔性别 → 脸型和稳定五官 → 发型 → 身高体态 → 上装 → 下装 → 鞋 → 固定配饰。
+4. reference_prompt 不要写任何表情、姿势、朝向或动作，包括 neutral expression、closed mouth、relaxed posture、smiling、standing。也不要写性格、气质、眼神含义、职业动作、家务动作、声音、音色、环境、光线、镜头、画质或艺术风格；这些由后端按每个视角分别控制。
+5. reference_prompt 不要写 character turnaround、model sheet、triptych、contact sheet、three views、front view、side view、back view、panel、row、A-pose 等数量或版式词；后端会分别生成三个单人视角后自动拼接，不再要求模型在一张图里生成三个人。
+6. 避免同义重复，不要同时写多套服装，不要使用“常见服装”“可选配饰”等不确定表达。所有颜色、材质和款式必须明确。
+7. 合格示例：58-year-old Chinese woman, round face, soft jawline, subtle crow's feet, warm medium skin tone, dark hair in a neat low bun, short and plump build, red cotton lounge top and matching straight-leg trousers, small floral apron tied at the waist, beige cotton house slippers, no jewelry
+8. 后端会分别生成正面、左侧面、背面三个单人全身视角，再固定按该顺序拼接为三视图。
+9. 现代都市/家庭/职场短剧角色必须保留现代现实服装。禁止把西装、衬衫、连衣裙、家居服改写成铠甲、长袍、斗篷、奇幻服装、游戏角色、概念设定图。
+10. 场景 reference_prompt 要明确空间类型、时代、布置、光线和镜头，如：realistic cinematic environment photo, modern apartment living room, warm indoor light, clear spatial layout, no people, 影视感。
+11. 如果原文没有奇幻、古装、科幻设定，不要生成 fantasy、medieval、armor、knight、sci-fi 等词。
+12. 只输出 JSON。
 
 前言：
 ${detail.project.preface || '无'}
@@ -514,6 +577,14 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
       reference_prompt: asset.reference_prompt,
       has_reference_image: asset.reference_file_id !== '0',
     }))
+    const h3AlignmentInstruction = {
+      t2va: 'No reference-image alignment instruction; start directly with the three core fields.',
+      i2va: 'First line must be: For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced. Develop forward from the first-frame state.',
+      fl2va: 'First line must align Picture 1 to 0.00 seconds and Picture 2 to the final video time, then describe the continuous path between them.',
+      l2va: 'First line must align <Picture 1> (from [Shot N]) to the final video time, then infer a plausible preceding state and converge to it.',
+      ref2va: 'Use stable <Picture 1>, <Picture 2> reference labels; define the referenced subjects first, then preserve and animate them through the shots.',
+    }[h3PromptMode]
+    const h3PromptStructure = 'Write video_prompt in this exact order: integrated_multimodal_description: [Shot 1] ...; overall_soundscape: ...; non_diegetic_music: ... . Use timed shots, concrete camera motion with type/amplitude/speed, stable speaker IDs, dialogue in original language, diegetic sound in the timeline, and 1-4 sentence ambient sound plus 1-3 sentence non-diegetic music.'
     return `你是短剧分镜导演，同时熟悉 ComfyUI / SDXL / IPAdapter 多参考图工作流。请根据“当前分镜文本”在原有剧情、人物、场景、动作、台词基础上进一步完善提示词，生成可直接用于片段图片和片段视频的提示词，输出严格 JSON，不要输出解释文字。
 
 重要前提：
@@ -528,6 +599,8 @@ ${detail.storyboards.map((item) => item.content).join('\n\n')}`
 输出格式：
 {
   "storyboard_seq": ${current.seq},
+  "h3_mode": "${h3PromptMode}",
+  "h3_alignment_instruction": "${h3PromptStructure} ${h3AlignmentInstruction}",
   "storyboard_title": "${current.title}",
   "segments": [
     {
@@ -625,18 +698,31 @@ ${current.content}`
 
   const showStoryboardNav = activeTab === 'storyboards' && !!detail?.storyboards.length
   const scrollAreaStyle: React.CSSProperties = {
-    height: '100%',
-    minHeight: 0,
-    overflow: 'auto',
+    minHeight: '100%',
     paddingRight: 4,
     paddingBottom: 12,
+    boxSizing: 'border-box',
   }
 
   return (
-    <div style={{ height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <Row gutter={16} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <Col xs={24} lg={7} xl={6} style={{ height: '100%', minHeight: 0 }}>
-          <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="drama-workbench-page">
+      <Row className={`drama-workbench-layout${projectPanelCollapsed ? ' is-project-collapsed' : ''}`} gutter={0} wrap={false}>
+        <Col className="drama-project-panel" flex={projectPanelCollapsed ? '0 0 48px' : '0 0 280px'}>
+          <div className="drama-project-panel-inner">
+            <Tooltip title={projectPanelCollapsed ? '展开项目列表' : '折叠项目列表'} placement="right">
+            <Button
+              className="drama-project-collapse-button"
+              shape="circle"
+              size="small"
+              type={projectPanelCollapsed ? 'primary' : 'default'}
+              icon={projectPanelCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setProjectPanelCollapsed((value) => !value)}
+              aria-label={projectPanelCollapsed ? '展开项目列表' : '折叠项目列表'}
+            >
+              {!projectPanelCollapsed && '项目'}
+            </Button>
+            </Tooltip>
+            {!projectPanelCollapsed && <>
             <Space.Compact style={{ width: '100%' }}>
               <Input.Search placeholder="搜索项目" value={keyword} onChange={(e) => setKeyword(e.target.value)} allowClear />
               <Select
@@ -683,18 +769,20 @@ ${current.content}`
                 )}
               />
             </div>
+            </>}
           </div>
         </Col>
 
-        <Col xs={24} lg={17} xl={18} style={{ height: '100%', minHeight: 0 }}>
+        <Col className="drama-main-panel" flex="1 1 0">
           {!detail ? (
             <Empty description="选择或新建一个短剧项目" />
           ) : (
-            <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="drama-main-panel-inner">
               <Card style={{ flexShrink: 0 }}>
                 <Row gutter={[12, 12]} align="middle">
                   <Col flex="auto">
                     <Title level={4} style={{ margin: 0 }}>{detail.project.title}</Title>
+                    {activeTab === 'storyboards' && <Select<H3PromptMode> value={h3PromptMode} onChange={setH3PromptMode} options={h3PromptModeOptions} size="small" style={{ minWidth: 158, marginTop: 8 }} aria-label="MiniMax H3 提示词模式" />}
                     <Text type="secondary">{detail.project.description || '短剧工坊'}</Text>
                   </Col>
                   <Col>
@@ -719,7 +807,7 @@ ${current.content}`
                 className="drama-workbench-tabs"
                 activeKey={activeTab}
                 onChange={setActiveTab}
-                style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+                style={{ width: '100%' }}
                 tabBarStyle={{ marginBottom: 12 }}
                 items={[
                   {
@@ -760,9 +848,9 @@ ${current.content}`
                     key: 'storyboards',
                     label: '分镜编辑',
                     children: (
-                      <div style={scrollAreaStyle}>
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} xl={7}>
+                      <div className="drama-storyboard-editor" style={{ height: '100%', minHeight: 0, overflow: 'hidden', paddingRight: 4, paddingBottom: 12, boxSizing: 'border-box' }}>
+                        <Row className="drama-storyboard-editor-row" gutter={[16, 16]}>
+                          <Col className="drama-storyboard-list" xs={24} lg={7} style={{ minHeight: 0 }}>
                             <Collapse
                               items={[{
                                 key: 'preface',
@@ -793,7 +881,7 @@ ${current.content}`
                               )}
                             />
                           </Col>
-                          <Col xs={24} xl={17}>
+                          <Col className="drama-storyboard-content" xs={24} lg={17} style={{ minHeight: 0 }}>
                             {current ? (
                               <Card
                                 title={<Space><Text strong>{current.title}</Text>{current.modified && <Tag color="orange">已修改</Tag>}</Space>}
@@ -980,9 +1068,31 @@ ${current.content}`
                     children: (
                       <div style={scrollAreaStyle}>
                         <Card>
+                          {settingLoading ? (
+                            <div style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}><Spin tip="正在读取系统设置" /></div>
+                          ) : settingError ? (
+                            <Alert type="error" showIcon message={settingError} action={<Button size="small" onClick={loadSetting}>重新加载</Button>} />
+                          ) : (
                           <Form form={settingForm} layout="vertical" initialValues={setting || undefined}>
                             <Row gutter={16}>
                               <Col xs={24} md={18}>
+                                <Form.Item name="video_model" label="短剧视频模型"><Select options={[{ value: 'wan22', label: 'Wan2.2' }, { value: 'minimax_h3', label: 'MiniMax H3' }]} /></Form.Item>
+                                <Form.Item name="h3_mode" label="H3 模式"><Select options={[{ value: 'i2v', label: 'I2V（首帧）' }, { value: 'fl2va', label: 'FL2VA（首尾帧）' }, { value: 'r2v', label: 'R2V（多参考图）' }]} /></Form.Item>
+                                <Form.Item name="video_audio_mode" label="H3 音频"><Select options={[{ value: 'external', label: '外部 TTS' }, { value: 'native', label: 'H3 原生音频' }, { value: 'none', label: '无音频' }]} /></Form.Item>
+                                <Form.Item name="h3_ref_image_size" label="H3 参考图"><Select options={[{ value: 'match', label: '匹配尺寸' }, { value: 'max', label: '高保真' }]} /></Form.Item>
+                                <Form.Item name="video_quality_preset" label="视频质量档位" tooltip="快速预览会强制关闭 H3 原生音频，以降低显存和解码开销">
+                                  <Select options={[
+                                    { value: 'fast', label: '快速预览 · 512×896 · 8步 · 无原生音频' },
+                                    { value: 'standard', label: '标准 · 576×1024 · 12步 · 音频可选' },
+                                    { value: 'final', label: '最终 · 768×1344 · 20步 · 音频可选' },
+                                  ]} />
+                                </Form.Item>
+                                <Form.Item name="video_size_preset" label="视频尺寸/比例">
+                                  <Select options={[{ value: 'auto', label: '跟随首帧' }, { value: 'landscape', label: '横屏 16:9' }, { value: 'portrait', label: '竖屏 9:16' }, { value: 'square', label: '方形 1:1' }]} />
+                                </Form.Item>
+                                <Form.Item name="video_continuity" label="连续镜头" valuePropName="checked" tooltip="生成后自动提取尾帧，并优先作为下一片段首帧">
+                                  <Switch checkedChildren="自动衔接" unCheckedChildren="独立生成" />
+                                </Form.Item>
                                 <Form.Item name="comfyui_url" label="ComfyUI API 地址">
                                   <Input placeholder="http://comfyui:8188" />
                                 </Form.Item>
@@ -1020,13 +1130,11 @@ ${current.content}`
                               <Col xs={12} md={6}><Form.Item name="sampler" label="采样器"><Select options={[{ value: 'euler', label: 'Euler' }, { value: 'euler_ancestral', label: 'Euler a' }, { value: 'dpmpp_2m', label: 'DPM++ 2M' }]} /></Form.Item></Col>
                               <Col xs={12} md={6}><Form.Item name="scheduler" label="调度器"><Select options={[{ value: 'normal', label: 'Normal' }, { value: 'karras', label: 'Karras' }, { value: 'simple', label: 'Simple' }]} /></Form.Item></Col>
                               <Col xs={24}><Form.Item name="negative_prompt" label="默认负面提示词"><TextArea autoSize={{ minRows: 2, maxRows: 5 }} /></Form.Item></Col>
-                              <Col xs={24} md={12}><Form.Item name="tts_engine" label="TTS 引擎"><Select options={[{ value: 'edge-tts', label: 'edge-tts' }, { value: 'azure', label: 'Azure Speech' }]} /></Form.Item></Col>
                               <Col xs={24} md={12}><Form.Item name="storage_root" label="云盘根目录"><Input prefix={<SettingOutlined />} /></Form.Item></Col>
-                              <Col xs={24}><Form.Item name="tts_config" label="TTS 配置 JSON"><TextArea autoSize={{ minRows: 4 }} /></Form.Item></Col>
-                              <Col xs={24}><Form.Item name="video_settings" label="视频默认参数 JSON"><TextArea autoSize={{ minRows: 5 }} /></Form.Item></Col>
                             </Row>
                             <Button type="primary" icon={<SaveOutlined />} disabled={!canAdmin} onClick={handleSaveSetting}>保存设置</Button>
                           </Form>
+                          )}
                         </Card>
                       </div>
                     ),
@@ -1111,6 +1219,24 @@ function parseImageSettings(raw?: string) {
   }
 }
 
+function parseVideoSettings(raw?: string) {
+  const defaults = { video_model: 'wan22', h3_mode: 'i2v', video_audio_mode: 'external', h3_ref_image_size: 'match', video_quality_preset: 'standard', video_size_preset: 'auto', video_continuity: true }
+  try {
+    const parsed = JSON.parse(raw || '{}')
+    return {
+      video_model: parsed.model || defaults.video_model,
+      h3_mode: parsed.h3_mode || defaults.h3_mode,
+      video_audio_mode: parsed.audio_mode || defaults.video_audio_mode,
+      h3_ref_image_size: parsed.h3_ref_image_size || defaults.h3_ref_image_size,
+      video_quality_preset: parsed.quality_preset || defaults.video_quality_preset,
+      video_size_preset: parsed.size_preset || defaults.video_size_preset,
+      video_continuity: parsed.continuity !== false,
+    }
+  } catch {
+    return defaults
+  }
+}
+
 function ComfyModelChecklist({ status }: { status: ComfyUIStatus }) {
   const models = status.models || {}
   const items = [
@@ -1120,6 +1246,12 @@ function ComfyModelChecklist({ status }: { status: ComfyUIStatus }) {
     { key: 'wan22_low_noise', label: 'Wan2.2 Low' },
     { key: 'wan22_text_encoder', label: 'Wan 文本编码器' },
     { key: 'wan_vae', label: 'Wan VAE' },
+    { key: 'minimax_h3_nodes', label: 'H3 节点' },
+    { key: 'minimax_h3_fl2va', label: 'H3 I2V' },
+    { key: 'minimax_h3_ref2va', label: 'H3 R2V' },
+    { key: 'minimax_h3_text_encoder', label: 'H3 文本编码器' },
+    { key: 'minimax_h3_video_vae', label: 'H3 视频 VAE' },
+    { key: 'minimax_h3_audio_vae', label: 'H3 音频 VAE' },
   ]
   return (
     <Space wrap size={4}>
@@ -1136,7 +1268,6 @@ function getTaskTypeLabel(type: string) {
   return ({
     asset_reference: '资产参考图',
     image: '分镜图片',
-    tts: '语音生成',
     video: '视频合成',
   } as Record<string, string>)[type] || type
 }
@@ -1375,7 +1506,7 @@ function StoryboardSegmentList({
                           style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
                         />
                         <Space size={4} style={{ marginTop: 4, width: '100%', justifyContent: 'space-between' }}>
-                          <Tag>#{index + 1}</Tag>
+                          <Tag color={item.source === 'video_tail' ? 'purple' : undefined}>{item.source === 'video_tail' ? '连续尾帧' : `#${index + 1}`}</Tag>
                           <Popconfirm
                             title="删除这张片段图片？"
                             description="文件会移入回收站"
@@ -1485,6 +1616,7 @@ function AssetPanel({
   }
 
   const createAssetImageTask = async (asset: DramaAsset) => {
+    const prompt = asset.reference_prompt || asset.description
     const task = await createDramaTask(detail.project.id, {
       type: 'asset_reference',
       payload: JSON.stringify({
@@ -1493,7 +1625,7 @@ function AssetPanel({
         asset_id: asset.id,
         asset_type: asset.type,
         name: asset.name,
-        prompt: asset.reference_prompt || asset.description,
+        prompt,
       }),
     })
     onChange({ ...detail, tasks: [task, ...detail.tasks] })
@@ -1514,12 +1646,13 @@ function AssetPanel({
               {asset.reference_file_id !== '0' && (
                 <Image
                   src={getPreviewUrl(asset.reference_file_id)}
-                  alt={asset.name}
-                  style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 8, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
+                  alt={asset.type === 'character' ? `${asset.name} 人物三视图` : asset.name}
+                  style={{ width: '100%', height: asset.type === 'character' ? 240 : 180, objectFit: 'contain', borderRadius: 8, border: '1px solid #f0eeeb', background: '#f7f7f5' }}
                 />
               )}
               <Input value={asset.name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { name: asset.name })} />
-              <TextArea value={asset.description} disabled={!canWrite} autoSize={{ minRows: 5, maxRows: 9 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, description: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { description: asset.description })} />
+               <TextArea value={asset.description} disabled={!canWrite} autoSize={{ minRows: 5, maxRows: 9 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, description: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { description: asset.description })} />
+               {asset.type === 'character' && <Text type="secondary">这里只填写角色稳定外观。系统会自动生成正面、左侧面、背面三视图，并保持脸型、发型、服装和颜色一致。</Text>}
               <TextArea placeholder="参考图提示词：用于 ComfyUI 生成资产参考图" value={asset.reference_prompt || ''} disabled={!canWrite} autoSize={{ minRows: 3, maxRows: 7 }} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, reference_prompt: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { reference_prompt: asset.reference_prompt || '' })} />
               {asset.type === 'character' && (
                 <Input placeholder="角色音色，例如 zh-CN-XiaoxiaoNeural" value={asset.voice_name} disabled={!canWrite} onChange={(e) => onChange({ ...detail, assets: detail.assets.map((item) => (item.id === asset.id ? { ...item, voice_name: e.target.value } : item)) })} onBlur={() => updateAsset(asset, { voice_name: asset.voice_name })} />

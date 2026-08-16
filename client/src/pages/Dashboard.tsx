@@ -128,7 +128,7 @@ export default function Dashboard() {
                 status={moduleStatusMap.get(mod.key)?.status || 'green'}
                 detail={moduleStatusMap.get(mod.key)?.detail || mod.detail}
                 eyebrow={mod.eyebrow}
-                onClick={() => navigate(mod.path)}
+                onClick={() => mod.path === '/drama' ? window.location.assign(`/drama?build=${encodeURIComponent(__APP_BUILD_ID__)}`) : navigate(mod.path)}
               />
             </Col>
           ))}

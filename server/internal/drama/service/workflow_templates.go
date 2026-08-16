@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 //go:embed workflows/*.json
@@ -103,7 +102,7 @@ func systemRegionalStoryboardWorkflow(prompt string, settings ImageGenerationSet
 		"negative_prompt": settings.NegativePrompt,
 		"width":           settings.Width,
 		"height":          settings.Height,
-		"seed":            time.Now().UnixNano() & 0x7fffffffffffffff,
+		"seed":            imageGenerationSeed(settings),
 		"steps":           settings.Steps,
 		"cfg":             settings.CFG,
 		"sampler":         settings.Sampler,

@@ -31,6 +31,7 @@ import MusicPage from './pages/MusicPage'
 import DramaPage from './pages/DramaPage'
 import ImageGenerationPage from './pages/ImageGenerationPage'
 import ErrorBoundary from './components/ErrorBoundary'
+import AppVersionGuard from './components/AppVersionGuard'
 import { colors, radius, shadow } from './theme/tokens'
 
 const { darkAlgorithm, defaultAlgorithm } = antdTheme
@@ -147,6 +148,7 @@ export default function App() {
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
+        <AppVersionGuard />
         <Routes>
           {/* 公开路由不挂应用壳，避免登录和分享页被业务导航打断。 */}
           <Route path="/login" element={<LoginPage />} />
