@@ -32,6 +32,9 @@ server/bin/
 server/tmp/
 server/*-svc
 
+# Logs
+server/logs/
+
 # Local test artifacts
 scene-001.wav
 test-audio-001.wav
